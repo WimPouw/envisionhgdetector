@@ -1,0 +1,15 @@
+MANIFEST.in
+README.md
+requirements.txt
+setup.py
+envisionhgdetector/__init__.py
+envisionhgdetector/config.py
+envisionhgdetector/detector.py
+envisionhgdetector/model.py
+envisionhgdetector/preprocessing.py
+envisionhgdetector/utils.py
+envisionhgdetector.egg-info/PKG-INFO
+envisionhgdetector.egg-info/SOURCES.txt
+envisionhgdetector.egg-info/dependency_links.txt
+envisionhgdetector.egg-info/requires.txt
+envisionhgdetector.egg-info/top_level.txt
