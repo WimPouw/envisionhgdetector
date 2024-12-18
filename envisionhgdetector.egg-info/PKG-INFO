@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envisionhgdetector
-Version: 0.0.1
+Version: 0.0.2
 Summary: Hand gesture detection using MediaPipe and CNN
 Home-page: https://github.com/wimpouw/envisionhgdetector
 Author: Wim Pouw
@@ -12,6 +12,7 @@ Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Classifier: Topic :: Scientific/Engineering :: Image Recognition
 Requires-Python: >=3.7
 Description-Content-Type: text/markdown
+License-File: LICENSE
 Requires-Dist: numpy<2.0.0,>=1.21.0
 Requires-Dist: opencv-python>=4.7.0.72
 Requires-Dist: mediapipe>=0.10.5
@@ -23,25 +24,25 @@ Requires-Dist: black>=22.0.0
 # EnvisionHGDetector: Hand Gesture Detection Using Convolutional Neural Networks
 
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
-
 <div align="center">Wim Pouw (wim.pouw@donders.ru.nl)</div>
 
 ## Info
-This package provides a straightforward way to detect hand gestures in videos using a combination of MediaPipe Holistic features and a convolutional neural network (CNN). The package performs:
+This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a convolutional neural network (CNN). We plan to update this package with better predicting network in the near future, and we plan to also make an evaluation report so that it is clear how it performs for several types of videos. For now, feel free to experiment. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by rates will be much superior to this gesture coder.
+
+The package performs:
 
 * Feature extraction using MediaPipe Holistic (hand, body, and face features)
-* Real-time gesture detection using a pre-trained CNN model, that I trained on SAGA, TEDM3D dataset, and the zhubo open gesture annotated datasets.
+* Post-hoc gesture detection using a pre-trained CNN model, that I trained on SAGA, TEDM3D dataset, and the zhubo, open gesture annotated datasets.
 * Automatic annotation of videos with gesture classifications
 * Output generation in CSV format and ELAN-compatible files, and video labeled
 
 Currently, the detector can identify:
-- General motion states
-- Specific hand gestures ("Gesture")
-- Movement patterns ("Move"; this is only trained on SAGA, because these also annotated movements that were not gestures, like nose scratching); it will therefore be an unreliably category perhaps
+- Just a general hand gesture, ("Gesture")
+- Movement patterns ("Move"; this is only trained on SAGA, because these also annotated movements that were not gestures, like nose scratching); it will therefore be an unreliable category perhaps
 
 ## Installation
 
-```bash
+```bash / cmd / anaconda prompt
 pip install envisionhgdetector
 ```
 
@@ -114,17 +115,29 @@ The package builds on previous work in gesture detection, particularly focused o
 
 If you use this package, please cite:
 
-Pouw, W. (2024). EnvisionHGDetector: Hand Gesture Detection Using Convolutional Neural Networks [Version 0.0.1]. Retrieved from: [repository URL]
+Pouw, W. (2024). EnvisionHGDetector: Hand Gesture Detection Using a Convolutional Neural Network [Version 0.0.1]. Retrieved from: https://github.com/WimPouw/envisionhgdetector
 
 ### Additional Citations
+
+Zhubo dataset (used for training):
+Bao, Y., Weng, D., & Gao, N. (2024). Editable Co-Speech Gesture Synthesis Enhanced with Individual Representative Gestures. Electronics, 13(16), 3315.
+
+SAGA dataset (used for training)
+Lücking, A., Bergmann, K., Hahn, F., Kopp, S., & Rieser, H. (2010). The Bielefeld speech and gesture alignment corpus (SaGA). In LREC 2010 workshop: Multimodal corpora–advances in capturing, coding and analyzing multimodality.
+
+TED M3D:
+Rohrer, Patrick. A temporal and pragmatic analysis of gesture-speech association: A corpus-based approach using the novel MultiModal MultiDimensional (M3D) labeling system. Diss. Nantes Université; Universitat Pompeu Fabra (Barcelone, Espagne), 2022.
 
 MediaPipe:
 Lugaresi, C., Tang, J., Nash, H., McClanahan, C., Uboweja, E., Hays, M., ... & Grundmann, M. (2019). MediaPipe: A framework for building perception pipelines. arXiv preprint arXiv:1906.08172.
 
+Adapted CNN Training and inference code:
+Pouw, W. (2024). EnvisionBOX modules for social signal processing (Version 1.0.0) [Computer software]. https://github.com/WimPouw/envisionBOX_modulesWP
+
+Original Noddingpigeon Training code:
+Yung, B. (2022). Nodding Pigeon (Version 0.6.0) [Computer software]. https://github.com/bhky/nodding-pigeon
+
 ## Contributing
 
-Feel free to help improve this code. As this is primarily aimed at making gesture detection accessible for research purposes, contributions focusing on usability and reliability are especially welcome.
+Feel free to help improve this code. As this is primarily aimed at making automatic gesture detection easily accessible for research purposes, contributions focusing on usability and reliability are especially welcome (happy to collaborate).
 
-## Support
-
-For issues and questions, please use the GitHub issue tracker. For academic inquiries, contact [your contact info].

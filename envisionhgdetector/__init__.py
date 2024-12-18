@@ -6,7 +6,7 @@ from .config import Config
 from .detector import GestureDetector
 from .model import GestureModel, make_model
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 __author__ = "Wim Pouw"
 __email__ = "wim.pouw@donders.ru.nl"
 

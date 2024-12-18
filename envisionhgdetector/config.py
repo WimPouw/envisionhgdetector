@@ -15,10 +15,10 @@ class Config:
     num_original_features: int = 29  # Number of input features
     
     # Default thresholds (can be overridden in detector)
-    default_motion_threshold: float = 0.8
-    default_gesture_threshold: float = 0.8
-    default_min_gap_s: float = 0.3
-    default_min_length_s: float = 0.3
+    default_motion_threshold: float = 0.7
+    default_gesture_threshold: float = 0.7
+    default_min_gap_s: float = 0.5
+    default_min_length_s: float = 0.5
     
     def __post_init__(self):
         """Setup paths after initialization."""

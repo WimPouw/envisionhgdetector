@@ -6,6 +6,8 @@ import numpy as np
 from .config import Config
 from .model import GestureModel
 from .preprocessing import VideoProcessor, create_sliding_windows
+from .utils import create_segments, get_prediction_at_threshold, create_elan_file, label_video
+import cv2 as cv2
 
 class GestureDetector:
     """Main class for gesture detection in videos."""
@@ -65,13 +67,18 @@ class GestureDetector:
         predictions = self.model.predict(windows)
         
         # Create results DataFrame
+         # get fps
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = int(fps)
+        cap.release()
         rows = []
         for i, pred in enumerate(predictions):
             has_motion = pred[0]
             gesture_probs = pred[1:]
             
             rows.append({
-                'time': i * stride / 30,  # Assuming 30 fps
+                'time': i * stride / fps,  # Assuming 30 fps
                 'has_motion': float(has_motion),
                 'NoGesture_confidence': float(1 - has_motion),
                 'Gesture_confidence': float(gesture_probs[0]),
@@ -79,7 +86,24 @@ class GestureDetector:
             })
         
         results_df = pd.DataFrame(rows)
-        
+
+        # Apply thresholds
+        results_df['label'] = results_df.apply(
+            lambda row: get_prediction_at_threshold(
+                row,
+                self.params['motion_threshold'],
+                self.params['gesture_threshold']
+            ),
+            axis=1
+        )
+
+        # Create segments
+        segments = create_segments(
+            results_df,
+            min_length_s=self.params['min_length_s'],
+            label_column='label'
+        )
+
         # Calculate statistics
         stats = {
             'average_motion': float(results_df['has_motion'].mean()),
@@ -87,7 +111,7 @@ class GestureDetector:
             'average_move': float(results_df['Move_confidence'].mean())
         }
         
-        return results_df, stats
+        return results_df, stats, segments
     
     def process_folder(
         self,
@@ -116,20 +140,62 @@ class GestureDetector:
             
             try:
                 # Process video
-                predictions_df, stats = self.predict_video(video_path)
+                predictions_df, stats, segments = self.predict_video(video_path)
                 
                 if not predictions_df.empty:
                     # Save predictions
-                    output_path = os.path.join(
+                    output_pathpred = os.path.join(
                         output_folder,
                         f"{video_name}_predictions.csv"
                     )
-                    predictions_df.to_csv(output_path, index=False)
+                    predictions_df.to_csv( output_pathpred, index=False)
                     
+                    # save segments
+                    output_pathseg = os.path.join(
+                        output_folder,
+                        f"{video_name}_segments.csv"
+                    )
+                    segments.to_csv(output_pathseg, index=False)
+
+                    # Labeled video generation
+                    print("Generating labeled video...")
+                    output_pathvid = os.path.join(
+                        output_folder,
+                        f"labeled_{video_name}"
+                    )
+
+                    label_video(
+                        video_path, 
+                        segments, 
+                        output_pathvid
+                    )
+                    print("Generating elan file...")
+
+                    # Create ELAN file
+                    output_path = os.path.join(
+                        output_folder,
+                        f"{video_name}.eaf"
+                    )
+                    # get fps
+                    cap = cv2.VideoCapture(video_path)
+                    fps = cap.get(cv2.CAP_PROP_FPS)
+                    fps = int(fps)
+                    cap.release()
+                    # Create ELAN file
+                    create_elan_file(
+                        video_path,
+                        segments,
+                        output_path,
+                        fps=fps,
+                        include_ground_truth=False
+                    )
+    
                     results[video_name] = {
                         "stats": stats,
                         "output_path": output_path
                     }
+                    # print that were done with this video
+                    print(f"Done processing {video_name}, go look in the output folder")
                 else:
                     results[video_name] = {"error": "No predictions generated"}
                     
