@@ -93,6 +93,7 @@ The package builds on previous work in gesture detection, particularly focused o
 If you use this package, please cite:
 
 Pouw, W. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 0.0.2) [Computer software]. https://pypi.org/project/envisionhgdetector/
+
 ### Additional Citations
 
 Zhubo dataset (used for training):
