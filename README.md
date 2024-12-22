@@ -21,8 +21,8 @@ Currently, the detector can identify:
 - Movement patterns ("Move"; this is only trained on SAGA, because these also annotated movements that were not gestures, like nose scratching); it will therefore be an unreliable category perhaps
 
 ## Installation
-
-```bash / cmd / anaconda prompt
+Consider creating a conda environment python = 3.9.
+```bash
 pip install envisionhgdetector
 ```
 
