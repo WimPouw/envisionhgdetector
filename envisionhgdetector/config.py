@@ -1,7 +1,7 @@
-
 from dataclasses import dataclass
 from typing import Tuple
-import os
+from importlib.resources import files  # if using Python 3.9+
+# or from pkg_resources import resource_filename  # for older Python versions
 
 @dataclass
 class Config:
@@ -22,15 +22,11 @@ class Config:
     
     def __post_init__(self):
         """Setup paths after initialization."""
-        # Get the package root directory
-        package_root = os.path.dirname(os.path.dirname(__file__))
+        # Using importlib.resources (Python 3.9+)
+        self.weights_path = str(files('envisionhgdetector').joinpath('model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5'))
         
-        # Set up model weights path
-        self.weights_path = os.path.join(
-            package_root,
-            "model",
-            "SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5"
-        )
+        # Or using pkg_resources (older Python versions)
+        # self.weights_path = resource_filename('envisionhgdetector', 'model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5')
     
     @property
     def default_thresholds(self):
@@ -45,13 +41,13 @@ class Config:
 # envisionhgdetector/envisionhgdetector/__init__.py
 
 """
-EnvisionHGDetector: Head Gesture Detection Package
+EnvisionHGDetector: Hand Gesture Detection Package
 """
 
 from .config import Config
 from .detector import GestureDetector
 
-__version__ = "0.0.1"
+__version__ = "0.0.4.1"
 __author__ = "Wim Pouw"
 __email__ = "wim.pouw@donders.ru.nl"
 

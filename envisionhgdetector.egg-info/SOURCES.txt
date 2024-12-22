@@ -14,3 +14,4 @@ envisionhgdetector.egg-info/SOURCES.txt
 envisionhgdetector.egg-info/dependency_links.txt
 envisionhgdetector.egg-info/requires.txt
 envisionhgdetector.egg-info/top_level.txt
+envisionhgdetector/model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5

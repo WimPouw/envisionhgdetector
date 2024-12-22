@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envisionhgdetector
-Version: 0.0.2
+Version: 0.0.4.1
 Summary: Hand gesture detection using MediaPipe and CNN
 Home-page: https://github.com/wimpouw/envisionhgdetector
 Author: Wim Pouw
@@ -15,7 +15,7 @@ Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: numpy<2.0.0,>=1.21.0
 Requires-Dist: opencv-python>=4.7.0.72
-Requires-Dist: mediapipe>=0.10.5
+Requires-Dist: mediapipe==0.10.7
 Requires-Dist: tensorflow-cpu<3.0.0,>=2.12.0
 Requires-Dist: pandas<2.0.0,>=1.5.0
 Requires-Dist: pytest>=7.0.0
@@ -115,7 +115,7 @@ The package builds on previous work in gesture detection, particularly focused o
 
 If you use this package, please cite:
 
-Pouw, W. (2024). EnvisionHGDetector: Hand Gesture Detection Using a Convolutional Neural Network [Version 0.0.1]. Retrieved from: https://github.com/WimPouw/envisionhgdetector
+Pouw, W. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 0.0.2) [Computer software]. https://pypi.org/project/envisionhgdetector/
 
 ### Additional Citations
 

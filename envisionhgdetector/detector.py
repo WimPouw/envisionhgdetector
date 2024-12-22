@@ -9,6 +9,7 @@ from .preprocessing import VideoProcessor, create_sliding_windows
 from .utils import create_segments, get_prediction_at_threshold, create_elan_file, label_video
 import cv2 as cv2
 
+
 class GestureDetector:
     """Main class for gesture detection in videos."""
     
