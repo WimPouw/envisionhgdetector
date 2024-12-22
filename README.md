@@ -43,7 +43,7 @@ detector = GestureDetector(
 
 # Process videos
 results = detector.process_folder(
-    video_folder="path/to/videos",
+    input_folder="path/to/videos",
     output_folder="path/to/output"
 )
 ```
