@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envisionhgdetector
-Version: 0.0.4.1
+Version: 0.0.4.2
 Summary: Hand gesture detection using MediaPipe and CNN
 Home-page: https://github.com/wimpouw/envisionhgdetector
 Author: Wim Pouw
@@ -15,16 +15,19 @@ Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: numpy<2.0.0,>=1.21.0
 Requires-Dist: opencv-python>=4.7.0.72
-Requires-Dist: mediapipe==0.10.7
 Requires-Dist: tensorflow-cpu<3.0.0,>=2.12.0
+Requires-Dist: mediapipe==0.10.7
 Requires-Dist: pandas<2.0.0,>=1.5.0
 Requires-Dist: pytest>=7.0.0
 Requires-Dist: black>=22.0.0
 
 # EnvisionHGDetector: Hand Gesture Detection Using Convolutional Neural Networks
-
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
 <div align="center">Wim Pouw (wim.pouw@donders.ru.nl)</div>
+
+<div align="center">
+<img src="images/ex.gif" alt="Hand Gesture Detection Demo">
+</div>
 
 ## Info
 This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a convolutional neural network (CNN). We plan to update this package with better predicting network in the near future, and we plan to also make an evaluation report so that it is clear how it performs for several types of videos. For now, feel free to experiment. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by rates will be much superior to this gesture coder.
@@ -63,7 +66,7 @@ detector = GestureDetector(
 
 # Process videos
 results = detector.process_folder(
-    video_folder="path/to/videos",
+    input_folder="path/to/videos",
     output_folder="path/to/output"
 )
 ```
