@@ -1,5 +1,5 @@
 # EnvisionHGDetector: Hand Gesture Detection Using Convolutional Neural Networks
-
+![Hand Gesture Detection Demo](images/ex.gif)
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
 <div align="center">Wim Pouw (wim.pouw@donders.ru.nl)</div>
 
