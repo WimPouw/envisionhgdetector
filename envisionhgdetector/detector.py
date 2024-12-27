@@ -6,9 +6,8 @@ import numpy as np
 from .config import Config
 from .model import GestureModel
 from .preprocessing import VideoProcessor, create_sliding_windows
-from .utils import create_segments, get_prediction_at_threshold, create_elan_file, label_video
+from .utils import create_segments, get_prediction_at_threshold, create_elan_file, label_video, cut_video_by_segments
 import cv2 as cv2
-
 
 class GestureDetector:
     """Main class for gesture detection in videos."""
@@ -53,7 +52,7 @@ class GestureDetector:
         
         if not features:
             return pd.DataFrame(), {"error": "No features detected"}
-            
+        
         # Create windows
         windows = create_sliding_windows(
             features,
@@ -112,7 +111,7 @@ class GestureDetector:
             'average_move': float(results_df['Move_confidence'].mean())
         }
         
-        return results_df, stats, segments
+        return results_df, stats, segments, features
     
     def process_folder(
         self,
@@ -141,7 +140,7 @@ class GestureDetector:
             
             try:
                 # Process video
-                predictions_df, stats, segments = self.predict_video(video_path)
+                predictions_df, stats, segments, features = self.predict_video(video_path)
                 
                 if not predictions_df.empty:
                     # Save predictions
@@ -157,6 +156,14 @@ class GestureDetector:
                         f"{video_name}_segments.csv"
                     )
                     segments.to_csv(output_pathseg, index=False)
+
+                    # Save features
+                    output_pathfeat = os.path.join(
+                        output_folder,
+                        f"{video_name}_features.npy"
+                    )
+                    feature_array = np.array(features)
+                    np.save(output_pathfeat, feature_array)
 
                     # Labeled video generation
                     print("Generating labeled video...")
@@ -205,3 +212,4 @@ class GestureDetector:
                 results[video_name] = {"error": str(e)}
         
         return results
+        

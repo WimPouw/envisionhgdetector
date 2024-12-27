@@ -7,6 +7,8 @@ import pandas as pd
 import numpy as np
 import time
 from typing import Dict, Optional
+import glob
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
 def create_segments(
     annotations: pd.DataFrame,
@@ -15,13 +17,17 @@ def create_segments(
     min_length_s: float = 0.5
 ) -> pd.DataFrame:
     """
-    Create segments from frame-by-frame annotations.
+    Create segments from frame-by-frame annotations, merging segments that are close in time.
     
     Args:
         annotations: DataFrame with predictions
         label_column: Name of label column
-        min_gap_s: Minimum gap between segments in seconds
+        min_gap_s: Minimum gap between segments in seconds. Segments with gaps smaller 
+                  than this will be merged
         min_length_s: Minimum segment length in seconds
+        
+    Returns:
+        DataFrame with columns: start_time, end_time, labelid, label, duration
     """
     is_gesture = annotations[label_column] == 'Gesture'
     is_move = annotations[label_column] == 'Move'
@@ -29,7 +35,7 @@ def create_segments(
     
     if not is_any_gesture.any():
         return pd.DataFrame(
-            columns=['start_time', 'end_time', 'labelid', 'label']
+            columns=['start_time', 'end_time', 'labelid', 'label', 'duration']
         )
     
     # Find state changes
@@ -40,10 +46,9 @@ def create_segments(
     if len(start_idxs) > len(end_idxs):
         end_idxs = np.append(end_idxs, len(annotations) - 1)
     
-    segments = []
-    i = 0
-    
-    while i < len(start_idxs):
+    # Create initial segments
+    initial_segments = []
+    for i in range(len(start_idxs)):
         start_idx = start_idxs[i]
         end_idx = end_idxs[i]
         
@@ -56,20 +61,57 @@ def create_segments(
         ]
         current_label = segment_labels.mode()[0]
         
-        # Check segment duration
-        if end_time - start_time >= min_length_s:
-            if current_label != 'NoGesture':
-                segments.append({
-                    'start_time': start_time,
-                    'end_time': end_time,
-                    'labelid': len(segments) + 1,
-                    'label': current_label,
-                    'duration': end_time - start_time
-                })
-        
-        i += 1
+        # Only add segments with valid labels
+        if current_label != 'NoGesture':
+            initial_segments.append({
+                'start_time': start_time,
+                'end_time': end_time,
+                'label': current_label
+            })
     
-    return pd.DataFrame(segments)
+    if not initial_segments:
+        return pd.DataFrame(
+            columns=['start_time', 'end_time', 'labelid', 'label', 'duration']
+        )
+    
+    # Sort segments by start time
+    initial_segments.sort(key=lambda x: x['start_time'])
+    
+    # Merge close segments
+    merged_segments = []
+    current_segment = initial_segments[0]
+    
+    for next_segment in initial_segments[1:]:
+        time_gap = next_segment['start_time'] - current_segment['end_time']
+        
+        # If segments are close enough and have the same label, merge them
+        if (time_gap <= min_gap_s and 
+            current_segment['label'] == next_segment['label']):
+            current_segment['end_time'] = next_segment['end_time']
+        else:
+            # Check if current segment meets minimum length requirement
+            if (current_segment['end_time'] - 
+                current_segment['start_time']) >= min_length_s:
+                merged_segments.append(current_segment)
+            current_segment = next_segment
+    
+    # Add the last segment if it meets the minimum length requirement
+    if (current_segment['end_time'] - 
+        current_segment['start_time']) >= min_length_s:
+        merged_segments.append(current_segment)
+    
+    # Create final DataFrame with all required columns
+    final_segments = []
+    for idx, segment in enumerate(merged_segments, 1):
+        final_segments.append({
+            'start_time': segment['start_time'],
+            'end_time': segment['end_time'],
+            'labelid': idx,
+            'label': segment['label'],
+            'duration': segment['end_time'] - segment['start_time']
+        })
+    
+    return pd.DataFrame(final_segments)
 
 def get_prediction_at_threshold(
     row: pd.Series,
@@ -258,3 +300,119 @@ def label_video(
     # Release video objects
     cap.release()
     out.release()
+
+# a function that allows you to cut the videos by segments
+def cut_video_by_segments(
+    output_folder: str,
+    segments_pattern: str = "*_segments.csv",
+    labeled_video_prefix: str = "labeled_",
+    output_subfolder: str = "gesture_segments"
+) -> Dict[str, List[str]]:
+    """
+    Extracts video segments and corresponding features from labeled videos based on segments.csv files.
+    
+    Args:
+        output_folder: Path to the folder containing segments.csv files and labeled videos
+        segments_pattern: Pattern to match segment CSV files
+        labeled_video_prefix: Prefix of labeled video files
+        output_subfolder: Name of subfolder to store segmented videos
+        
+    Returns:
+        Dictionary mapping original video names to lists of generated segment paths
+    """
+    # Create subfolder for segments if it doesn't exist
+    segments_folder = os.path.join(output_folder, output_subfolder)
+    os.makedirs(segments_folder, exist_ok=True)
+    
+    # Get all segment CSV files
+    segment_files = glob.glob(os.path.join(output_folder, segments_pattern))
+    results = {}
+    
+    for segment_file in segment_files:
+        try:
+            # Get original video name from segments file name
+            base_name = os.path.basename(segment_file).replace('_segments.csv', '')
+            labeled_video = os.path.join(output_folder, f"{labeled_video_prefix}{base_name}")
+            features_path = os.path.join(output_folder, f"{base_name}_features.npy")
+            
+            # Check if labeled video and features exist
+            if not os.path.exists(labeled_video):
+                print(f"Warning: Labeled video not found for {base_name}")
+                continue
+            if not os.path.exists(features_path):
+                print(f"Warning: Features file not found for {base_name}")
+                continue
+                
+            # Read segments file
+            segments_df = pd.read_csv(segment_file)
+            
+            if segments_df.empty:
+                print(f"No segments found in {segment_file}")
+                continue
+            
+            # Create subfolder for this video's segments
+            video_segments_folder = os.path.join(segments_folder, base_name)
+            os.makedirs(video_segments_folder, exist_ok=True)
+            
+            # Load video and get fps
+            video = VideoFileClip(labeled_video)
+            fps = video.fps
+            
+            # Load features
+            features = np.load(features_path)
+            
+            segment_paths = []
+            
+            # Process each segment
+            for idx, segment in segments_df.iterrows():
+                start_time = segment['start_time']
+                end_time = segment['end_time']
+                label = segment['label']
+                
+                # Calculate frame indices
+                start_frame = int(start_time * fps)
+                end_frame = int(end_time * fps)
+                
+                # Create segment filenames
+                segment_filename = f"{base_name}_segment_{idx+1}_{label}_{start_time:.2f}_{end_time:.2f}.mp4"
+                features_filename = f"{base_name}_segment_{idx+1}_{label}_{start_time:.2f}_{end_time:.2f}_features.npy"
+                
+                segment_path = os.path.join(video_segments_folder, segment_filename)
+                features_path = os.path.join(video_segments_folder, features_filename)
+                
+                # Extract and save video segment
+                try:
+                    # Cut video
+                    segment_clip = video.subclipped(start_time, end_time)
+                    segment_clip.write_videofile(
+                        segment_path,
+                        codec='libx264',
+                        audio=False
+                    )
+                    segment_clip.close()
+                    
+                    # Cut and save features
+                    if start_frame < len(features) and end_frame <= len(features):
+                        segment_features = features[start_frame:end_frame]
+                        np.save(features_path, segment_features)
+                        print(f"Created segment and features: {segment_filename}")
+                    else:
+                        print(f"Warning: Frame indices {start_frame}:{end_frame} out of bounds for features array of length {len(features)}")
+                    
+                    segment_paths.append(segment_path)
+                    
+                except Exception as e:
+                    print(f"Error creating segment {segment_filename}: {str(e)}")
+                    continue
+            
+            # Clean up
+            video.close()
+            
+            results[base_name] = segment_paths
+            print(f"Completed processing segments for {base_name}")
+            
+        except Exception as e:
+            print(f"Error processing {segment_file}: {str(e)}")
+            continue
+    
+    return results

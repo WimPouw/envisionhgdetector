@@ -7,6 +7,7 @@ import numpy as np
 import mediapipe as mp
 from typing import Tuple
 from .config import Config
+from tqdm import tqdm
 
 # MediaPipe setup
 mp_holistic = mp.solutions.holistic
@@ -252,7 +253,8 @@ def video_to_landmarks(
     prev_features: List[float] = []
     landmarks: List[List[float]] = []
     cap = cv2.VideoCapture(video_path)
-
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    pbar = tqdm(total=total_frames, desc="Processing frames")
     with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
         while cap.isOpened():
             ret, bgr_frame = cap.read()
@@ -441,7 +443,9 @@ def video_to_landmarks(
                 landmarks.append(features)
                 prev_features = features
                 valid_frame_count += 1
-
+                pbar.update(1)
+                
+        pbar.close()
         cap.release()
 
         if not landmarks:

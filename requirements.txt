@@ -1,7 +1,9 @@
+moviepy==2.1.1
 numpy>=1.21.0, <2.0.0
 opencv-python>=4.7.0.72
 tensorflow-cpu>=2.12.0, <3.0.0
 mediapipe==0.10.7
 pandas>=1.5.0, <2.0.0
-pytest>=7.0.0  # For testing
-black>=22.0.0  # For code formatting
+pytest>=7.0.0
+black>=22.0.0
+tqdm>=4.65.0, <5.0.0
