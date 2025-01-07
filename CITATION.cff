@@ -1,10 +1,10 @@
-cff-version: 0.0.4.4
+cff-version: 0.0.4.5
 message: "If you use this software, please cite it as below."
 authors:
 - family-names: "Pouw"
   given-names: "Wim"
   orcid: "https://orcid.org/0000-0003-2729-6502"
 title: "envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network"
-version: 0.0.4.2
+version: 0.0.4.5
 date-released: 12-8-2024
 url: "https://pypi.org/project/envisionhgdetector/"
