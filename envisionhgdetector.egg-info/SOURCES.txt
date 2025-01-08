@@ -15,3 +15,4 @@ envisionhgdetector.egg-info/dependency_links.txt
 envisionhgdetector.egg-info/requires.txt
 envisionhgdetector.egg-info/top_level.txt
 envisionhgdetector/model/SAGAZHUBOTEDM3DMULTISIMOv1.h5
+envisionhgdetector/model/snelliusSAGAZHUBOTEDM3DMULTISIMOv1.h5

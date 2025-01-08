@@ -9,6 +9,11 @@ from .preprocessing import VideoProcessor, create_sliding_windows
 from .utils import create_segments, get_prediction_at_threshold, create_elan_file, label_video, cut_video_by_segments
 import cv2 as cv2
 
+# We will now also smooth the confidence time series for each gesture class.
+def apply_smoothing(series: pd.Series, window: int = 5) -> pd.Series:
+    """Apply simple moving average smoothing to a series."""
+    return series.rolling(window=window, center=True).mean().fillna(series)
+
 class GestureDetector:
     """Main class for gesture detection in videos."""
     
@@ -87,7 +92,12 @@ class GestureDetector:
         
         results_df = pd.DataFrame(rows)
 
-        # Apply thresholds
+        # smooth predictions
+        results_df['Gesture_confidence'] = apply_smoothing(results_df['Gesture_confidence'])
+        results_df['Move_confidence'] = apply_smoothing(results_df['Move_confidence'])
+        results_df['has_motion'] = apply_smoothing(results_df['has_motion'])
+        
+         # Apply thresholds
         results_df['label'] = results_df.apply(
             lambda row: get_prediction_at_threshold(
                 row,
@@ -96,6 +106,7 @@ class GestureDetector:
             ),
             axis=1
         )
+
 
         # Create segments
         segments = create_segments(
