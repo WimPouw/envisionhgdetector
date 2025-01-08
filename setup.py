@@ -28,7 +28,7 @@ setup(
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
         "Topic :: Scientific/Engineering :: Image Recognition",
     ],
-    python_requires="==3.9",
+    python_requires=">=3.7",
     install_requires=required,
     include_package_data=True,
     package_data={
