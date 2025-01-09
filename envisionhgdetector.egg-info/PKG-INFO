@@ -1,6 +1,6 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.2
 Name: envisionhgdetector
-Version: 0.0.4.7
+Version: 0.0.4.8
 Summary: Hand gesture detection using MediaPipe and CNN
 Home-page: https://github.com/wimpouw/envisionhgdetector
 Author: Wim Pouw
@@ -10,7 +10,7 @@ Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
 Classifier: Topic :: Scientific/Engineering :: Artificial Intelligence
 Classifier: Topic :: Scientific/Engineering :: Image Recognition
-Requires-Python: ==3.9
+Requires-Python: >=3.7
 Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: moviepy==2.1.1
@@ -22,6 +22,15 @@ Requires-Dist: pandas<2.0.0,>=1.5.0
 Requires-Dist: pytest>=7.0.0
 Requires-Dist: black>=22.0.0
 Requires-Dist: tqdm<5.0.0,>=4.65.0
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
 
 # EnvisionHGDetector: Hand Gesture Detection Using Convolutional Neural Networks
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
