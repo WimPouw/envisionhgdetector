@@ -1,6 +1,6 @@
 # EnvisionHGDetector: Hand Gesture Detection Using Convolutional Neural Networks
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
-<div align="center">Wim Pouw (wim.pouw@donders.ru.nl)</div>
+<div align="center">Wim Pouw (wim.pouw@donders.ru.nl), Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele</div>
 
 <div align="center">
 <img src="images/ex.gif" alt="Hand Gesture Detection Demo">
@@ -41,10 +41,10 @@ from envisionhgdetector import GestureDetector
 
 # Initialize detector
 detector = GestureDetector(
-    motion_threshold=0.8,    # Sensitivity to motion
-    gesture_threshold=0.8,   # Confidence threshold for gestures
-    min_gap_s=0.3,          # Minimum gap between gestures
-    min_length_s=0.3        # Minimum gesture duration
+    motion_threshold=0.9,    # Sensitivity to motion
+    gesture_threshold=0.5,   # Confidence threshold for gestures
+    min_gap_s=0.1,          # Minimum gap between gestures
+    min_length_s=0.1        # Minimum gesture duration
 )
 
 # Process videos
@@ -105,7 +105,7 @@ The package builds on previous work in gesture detection, particularly focused o
 
 If you use this package, please cite:
 
-Pouw, W. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 0.0.2) [Computer software]. https://pypi.org/project/envisionhgdetector/
+Pouw, W., Yung, B., Shaikh, S., Trujillo, J., de Melo, G., Owoyele, B. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 0.0.5.0) [Computer software]. https://pypi.org/project/envisionhgdetector/
 
 ### Additional Citations
 

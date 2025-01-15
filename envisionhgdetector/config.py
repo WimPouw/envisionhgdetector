@@ -23,7 +23,7 @@ class Config:
     def __post_init__(self):
         """Setup paths after initialization."""
         # Using importlib.resources (Python 3.9+)
-        self.weights_path = str(files('envisionhgdetector').joinpath('model/snelliusSAGAZHUBOTEDM3DMULTISIMOv1.h5'))
+        self.weights_path = str(files('envisionhgdetector').joinpath('model/snelliusSAGAZHUBOTEDM3DMULTISIMOAUGMENTEDv3.h5'))
         
         # Or using pkg_resources (older Python versions)
         # self.weights_path = resource_filename('envisionhgdetector', 'model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5')
@@ -47,8 +47,8 @@ EnvisionHGDetector: Hand Gesture Detection Package
 from .config import Config
 from .detector import GestureDetector
 
-__version__ = "0.0.4.8"
-__author__ = "Wim Pouw"
+__version__ = "0.0.5.0"
+__author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele"
 __email__ = "wim.pouw@donders.ru.nl"
 
 # Make key classes available at package level
