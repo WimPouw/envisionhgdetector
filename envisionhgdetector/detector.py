@@ -53,7 +53,7 @@ class GestureDetector:
             DataFrame with predictions and statistics dictionary
         """
         # Extract features
-        features = self.video_processor.process_video(video_path)
+        features, timestamps = self.video_processor.process_video(video_path)
         
         if not features:
             return pd.DataFrame(), {"error": "No features detected"}
@@ -78,12 +78,12 @@ class GestureDetector:
         fps = int(fps)
         cap.release()
         rows = []
-        for i, pred in enumerate(predictions):
+        for i, (pred, time) in enumerate(zip(predictions, timestamps[::stride])):
             has_motion = pred[0]
             gesture_probs = pred[1:]
             
             rows.append({
-                'time': i * stride / fps,  # Assuming 30 fps
+                'time': time, 
                 'has_motion': float(has_motion),
                 'NoGesture_confidence': float(1 - has_motion),
                 'Gesture_confidence': float(gesture_probs[0]),
@@ -93,9 +93,9 @@ class GestureDetector:
         results_df = pd.DataFrame(rows)
 
         # smooth predictions
-        results_df['Gesture_confidence'] = apply_smoothing(results_df['Gesture_confidence'])
-        results_df['Move_confidence'] = apply_smoothing(results_df['Move_confidence'])
-        results_df['has_motion'] = apply_smoothing(results_df['has_motion'])
+        #results_df['Gesture_confidence'] = apply_smoothing(results_df['Gesture_confidence'])
+        #results_df['Move_confidence'] = apply_smoothing(results_df['Move_confidence'])
+        #results_df['has_motion'] = apply_smoothing(results_df['has_motion'])
         
          # Apply thresholds
         results_df['label'] = results_df.apply(

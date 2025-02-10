@@ -14,4 +14,4 @@ envisionhgdetector.egg-info/SOURCES.txt
 envisionhgdetector.egg-info/dependency_links.txt
 envisionhgdetector.egg-info/requires.txt
 envisionhgdetector.egg-info/top_level.txt
-envisionhgdetector/model/snelliusSAGAZHUBOTEDM3DMULTISIMOAUGMENTEDv3.h5
+envisionhgdetector/model/model_weights_20250210_042008.h5

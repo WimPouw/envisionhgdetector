@@ -255,6 +255,7 @@ def video_to_landmarks(
     cap = cv2.VideoCapture(video_path)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     pbar = tqdm(total=total_frames, desc="Processing frames")
+    frame_timestamps = []  # Add this
     with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
         while cap.isOpened():
             ret, bgr_frame = cap.read()
@@ -262,7 +263,7 @@ def video_to_landmarks(
                 if video_path == 0:
                     continue
                 break
-
+            current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0  # Get actual timestamp
             if max_num_frames and video_segment == VideoSegment.BEGINNING \
                     and valid_frame_count >= max_num_frames:
                 break
@@ -275,6 +276,7 @@ def video_to_landmarks(
             face_2d = []
 
             if resultsh.face_landmarks and resultsh.pose_landmarks:
+                frame_timestamps.append(current_time)  # Store actual timestamp
                 # Head rotation calculation
                 for idx, lm in enumerate(resultsh.face_landmarks.landmark):
                     if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
@@ -458,7 +460,7 @@ def video_to_landmarks(
             last = landmarks[-1]
             landmarks = landmarks + [last] * (max_num_frames - len(landmarks))
 
-        return landmarks
+        return landmarks, frame_timestamps
     
 class VideoProcessor:
     """Handles video processing and feature extraction."""
