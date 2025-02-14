@@ -6,8 +6,8 @@ from .config import Config
 from .detector import GestureDetector
 from .model import GestureModel, make_model
 
-__version__ = "0.0.5.0"
-__author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele"
+__version__ = "0.0.5.2"
+__author__ = "Wim Pouw"
 __email__ = "wim.pouw@donders.ru.nl"
 
 # Make key classes available at package level

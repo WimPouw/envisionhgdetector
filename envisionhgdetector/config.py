@@ -15,15 +15,15 @@ class Config:
     num_original_features: int = 29  # Number of input features
     
     # Default thresholds (can be overridden in detector)
-    default_motion_threshold: float = 0.5
-    default_gesture_threshold: float = 0.8
+    default_motion_threshold: float = 0.7
+    default_gesture_threshold: float = 0.7
     default_min_gap_s: float = 0.5
     default_min_length_s: float = 0.5
     
     def __post_init__(self):
         """Setup paths after initialization."""
         # Using importlib.resources (Python 3.9+)
-        self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250210_042008.h5'))
+        self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250210_230142.h5'))
         
         # Or using pkg_resources (older Python versions)
         # self.weights_path = resource_filename('envisionhgdetector', 'model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5')
@@ -47,8 +47,8 @@ EnvisionHGDetector: Hand Gesture Detection Package
 from .config import Config
 from .detector import GestureDetector
 
-__version__ = "0.0.5.1"
-__author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele"
+__version__ = "0.0.4.7"
+__author__ = "Wim Pouw"
 __email__ = "wim.pouw@donders.ru.nl"
 
 # Make key classes available at package level
