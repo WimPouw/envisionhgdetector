@@ -15,7 +15,6 @@ from .utils import (
     setup_dashboard_folders, joint_map, calc_mcneillian_space, calc_vert_height,
     calc_volume_size, calc_holds
 )
-from .dashboard import run_dashboard_server  # New import for dashboard
 from typing import Optional
 # Standard library imports
 import json

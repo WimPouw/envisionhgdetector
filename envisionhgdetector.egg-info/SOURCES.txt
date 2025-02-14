@@ -14,4 +14,5 @@ envisionhgdetector.egg-info/SOURCES.txt
 envisionhgdetector.egg-info/dependency_links.txt
 envisionhgdetector.egg-info/requires.txt
 envisionhgdetector.egg-info/top_level.txt
-envisionhgdetector/model/model_weights_20250210_042008.h5
+envisionhgdetector/dashboard/app.py
+envisionhgdetector/model/model_weights_20250210_230142.h5
