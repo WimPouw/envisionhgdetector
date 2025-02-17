@@ -1,4 +1,4 @@
-cff-version: 0.0.5.2
+cff-version: 0.0.5.3
 message: "If you use this software, please cite it as below."
 authors:
 - family-names: "Pouw"
@@ -15,6 +15,6 @@ authors:
 - family-names: "Owoyele"
   given-names: "Babajide"
 title: "envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network"
-version: 0.0.5.2
+version: 0.0.5.3
 date-released: 12-8-2024
 url: "https://pypi.org/project/envisionhgdetector/"

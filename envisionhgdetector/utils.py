@@ -488,9 +488,9 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
         wrists, and mean-centered fingers.
     """
     # Check if landmarks are the expected shape
-    print(f"Debug: Landmarks shape is {landmarks.shape}")
+    #print(f"Debug: Landmarks shape is {landmarks.shape}")
     if landmarks.ndim != 3 or landmarks.shape[2] != 3:
-        print(f"Debug: Landmarks shape is not as expected! Shape: {landmarks.shape}")
+        #print(f"Debug: Landmarks shape is not as expected! Shape: {landmarks.shape}")
         raise ValueError("Landmarks must be a 3D array with shape [N, num_points, 3]")
     
     # Update the keypoint indices based on the 33 keypoints (0-32)
@@ -521,7 +521,7 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
     
     # Extract basic features (shoulders, elbows, wrists)
     for key, index in keypoint_indices.items():
-        print(f"Debug: Extracting keypoint {key} at index {index}")
+        #print(f"Debug: Extracting keypoint {key} at index {index}")
         feature = landmarks[:, index]  # Shape (N, 3) for each joint (x, y, z)
         
         # Check for missing data
@@ -534,7 +534,7 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
     # Mean center left hand fingers
     left_fingers = []
     for key, index in left_finger_indices.items():
-        print(f"Debug: Extracting left finger keypoint {key} at index {index}")
+        #print(f"Debug: Extracting left finger keypoint {key} at index {index}")
         feature = landmarks[:, index]
         
         # Check for missing data
@@ -554,7 +554,7 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
     # Mean center right hand fingers
     right_fingers = []
     for key, index in right_finger_indices.items():
-        print(f"Debug: Extracting right finger keypoint {key} at index {index}")
+        #print(f"Debug: Extracting right finger keypoint {key} at index {index}")
         feature = landmarks[:, index]
         
         # Check for missing data

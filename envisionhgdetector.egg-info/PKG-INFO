@@ -1,6 +1,6 @@
 Metadata-Version: 2.2
 Name: envisionhgdetector
-Version: 0.0.5.2
+Version: 0.0.5.3
 Summary: Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.
 Home-page: https://github.com/wimpouw/envisionhgdetector
 Author: Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele
@@ -98,6 +98,39 @@ results = detector.process_folder(
 # additional processing of videos to segmented videos cut by gesture event
 from envisionhgdetector import utils
 segments = utils.cut_video_by_segments(outputfolder)
+
+# retrack the videos with metric pose world landmarks
+# Step 3: Create paths
+gesture_segments_folder = os.path.join(outputfolder, "gesture_segments")
+retracked_folder = os.path.join(outputfolder, "retracked")
+analysis_folder = os.path.join(outputfolder, "analysis")
+
+print(f"\nLooking for segments in: {gesture_segments_folder}")
+if os.path.exists(gesture_segments_folder):
+    segment_files = [f for f in os.listdir(gesture_segments_folder) if f.endswith('.mp4')]
+    print(f"Found {len(segment_files)} segment files")
+else:
+    print("Gesture segments folder not found!")
+
+# Step 3: Retrack gestures with world landmarks
+print("\nStep 4: Retracking gestures...")
+tracking_results = detector.retrack_gestures(
+    input_folder=gesture_segments_folder,
+    output_folder=retracked_folder
+)
+print(f"Tracking results: {tracking_results}")
+
+# Compute DTW distance matrix and kinematic features
+analysis_results = detector.analyze_dtw_kinematics(
+        landmarks_folder=tracking_results["landmarks_folder"],
+        output_folder=analysis_folder
+    )
+print(f"Analysis results: {analysis_results}")
+
+# Create dashboard (then launched in python, python app.py [in a seperate teriminal])
+detector.prepare_gesture_dashboard(
+    data_folder=analysis_folder
+    )
 ```
 
 ## Features
@@ -106,9 +139,7 @@ The detector uses 29 features extracted from MediaPipe Holistic, including:
 - Head rotations
 - Hand positions and movements
 - Body landmark distances
-- Normalized motion metrics
-
-## Output
+- Normalized feature metrics
 
 ## Output
 
@@ -130,6 +161,17 @@ The detector generates three types of output in your specified output folder:
    - Shows real-time gesture detection and confidence scores
    - Useful for quick verification of detection quality
    - Format: `labeled_video_name.mp4`
+
+4. Retracked Videos (`/output/retracked/`)
+   - rendered tracked videos and pose world landmarks
+
+5. Kinematic analysis (`output/analyis/`)
+   - DTW distance matrix (.csv) between all gesture comparisons
+   - Kinematic features (.csv) per gesture (e.g., number of submovements, max speed, max acceleration)
+   - Gesture visualization (.csv; UMAP of DTW distance matrix, for input for Dashboard)
+
+6. Dashboard (`/output/app.py`)
+   - This app visualizes the gesture similarity space and shows the kinematic features, the user can click on the videos and identify metrics
 
 ## Technical Background
 
