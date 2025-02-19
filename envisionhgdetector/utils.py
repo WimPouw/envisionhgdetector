@@ -1055,7 +1055,7 @@ def find_movepauses(velocity_array):
     Returns:
         Array of indices for pause moments
     """
-    # We are using a 0.015m/s threshold, but this can be adjusted
+    # We are using a 0.15m/s threshold, but this can be adjusted
     pause_ix = []
     for index, velpoint in enumerate(velocity_array):
         if velpoint < 0.15:
