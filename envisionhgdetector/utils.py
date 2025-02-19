@@ -488,9 +488,9 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
         wrists, and mean-centered fingers.
     """
     # Check if landmarks are the expected shape
-    #print(f"Debug: Landmarks shape is {landmarks.shape}")
+    print(f"Debug: Landmarks shape is {landmarks.shape}")
     if landmarks.ndim != 3 or landmarks.shape[2] != 3:
-        #print(f"Debug: Landmarks shape is not as expected! Shape: {landmarks.shape}")
+        print(f"Debug: Landmarks shape is not as expected! Shape: {landmarks.shape}")
         raise ValueError("Landmarks must be a 3D array with shape [N, num_points, 3]")
     
     # Update the keypoint indices based on the 33 keypoints (0-32)
@@ -521,7 +521,7 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
     
     # Extract basic features (shoulders, elbows, wrists)
     for key, index in keypoint_indices.items():
-        #print(f"Debug: Extracting keypoint {key} at index {index}")
+        print(f"Debug: Extracting keypoint {key} at index {index}")
         feature = landmarks[:, index]  # Shape (N, 3) for each joint (x, y, z)
         
         # Check for missing data
@@ -534,7 +534,7 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
     # Mean center left hand fingers
     left_fingers = []
     for key, index in left_finger_indices.items():
-        #print(f"Debug: Extracting left finger keypoint {key} at index {index}")
+        print(f"Debug: Extracting left finger keypoint {key} at index {index}")
         feature = landmarks[:, index]
         
         # Check for missing data
@@ -554,7 +554,7 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
     # Mean center right hand fingers
     right_fingers = []
     for key, index in right_finger_indices.items():
-        #print(f"Debug: Extracting right finger keypoint {key} at index {index}")
+        print(f"Debug: Extracting right finger keypoint {key} at index {index}")
         feature = landmarks[:, index]
         
         # Check for missing data
@@ -882,6 +882,7 @@ def calc_volume_size(df, hand):
     
     return vol
 
+
 def calc_mcneillian_space(df, hand_idx):
     """Calculate McNeillian space features."""
     # Initialize with empty lists for both hands
@@ -1057,7 +1058,7 @@ def find_movepauses(velocity_array):
     # We are using a 0.015m/s threshold, but this can be adjusted
     pause_ix = []
     for index, velpoint in enumerate(velocity_array):
-        if velpoint < 0.015:
+        if velpoint < 0.15:
             pause_ix.append(index)
     if len(pause_ix) == 0:
         pause_ix = 0
@@ -1184,15 +1185,17 @@ def calc_holds(df, subslocs_L, subslocs_R, FPS, hand):
 
 def compute_kinematic_features(
     landmarks: np.ndarray,
+    visibility: np.ndarray = None,
     fps: float = 25.0,
     gesture_id: str = "",
     video_id: str = ""
 ) -> KinematicFeatures:
     """
-    Compute comprehensive kinematic features from landmark data.
+    Compute comprehensive kinematic features from landmark data with visibility checks.
     
     Args:
         landmarks: Numpy array of shape (frames, joints, 3) containing 3D landmark positions
+        visibility: Optional numpy array of shape (frames, joints) containing visibility scores
         fps: Frames per second of the video
         gesture_id: Identifier for the gesture
         video_id: Identifier for the video
@@ -1207,19 +1210,69 @@ def compute_kinematic_features(
     for joint in ['L_Hand', 'R_Hand', 'LElb', 'RElb', 'LShoulder', 'RShoulder', 
                  'Neck', 'MidHip', 'LEye', 'REye', 'Nose']:
         df[joint] = [landmarks[i, joint_map[joint]] for i in range(len(landmarks))]
-        
-    # Calculate McNeillian space features
-    space_use_L, space_use_R, mcneillian_maxL, mcneillian_maxR, mcneillian_modeL, mcneillian_modeR = \
-        calc_mcneillian_space(df, 'B')
-        
-    # Calculate vertical height features
-    max_height_R = calc_vert_height(df, "R")
-    max_height_L = calc_vert_height(df, "L")
     
-    # Calculate volume features
-    volume_both = calc_volume_size(df, 'B')
-    volume_right = calc_volume_size(df, 'R')
-    volume_left = calc_volume_size(df, 'L')
+    # Determine which hands to analyze based on visibility
+    hands_to_analyze = 'B'  # Default to both hands
+    
+    if visibility is not None:
+        # Check if hands are visible in enough frames
+        visibility_threshold = 0.5
+        min_visibility_percentage = 0.3  # Must be visible in at least 30% of frames
+        
+        # Create DataFrame for visibility scores
+        vis_df = pd.DataFrame()
+        for joint in ['L_Hand', 'R_Hand']:
+            vis_df[joint] = [visibility[i, joint_map[joint]] for i in range(len(visibility))]
+        
+        # Calculate visibility percentages
+        left_visible_percent = np.mean(vis_df['L_Hand'] > visibility_threshold)
+        right_visible_percent = np.mean(vis_df['R_Hand'] > visibility_threshold)
+        
+        # Determine which hands to analyze
+        left_is_visible = left_visible_percent > min_visibility_percentage
+        right_is_visible = right_visible_percent > min_visibility_percentage
+        
+        if left_is_visible and right_is_visible:
+            hands_to_analyze = 'B'
+        elif left_is_visible:
+            hands_to_analyze = 'L'
+        elif right_is_visible:
+            hands_to_analyze = 'R'
+        # If neither hand is sufficiently visible, keep default 'B'
+        
+        print(f"Visibility analysis: Left hand {left_visible_percent:.1%}, Right hand {right_visible_percent:.1%}")
+        print(f"Analyzing hands: {hands_to_analyze}")
+    
+    # Calculate McNeillian space features with determined hands
+    space_use_L, space_use_R, mcneillian_maxL, mcneillian_maxR, mcneillian_modeL, mcneillian_modeR = \
+        calc_mcneillian_space(df, hands_to_analyze)
+        
+    # Calculate vertical height features for appropriate hands
+    if hands_to_analyze == 'B' or hands_to_analyze == 'R':
+        max_height_R = calc_vert_height(df, "R")
+    else:
+        max_height_R = 0
+        
+    if hands_to_analyze == 'B' or hands_to_analyze == 'L':
+        max_height_L = calc_vert_height(df, "L")
+    else:
+        max_height_L = 0
+    
+    # Calculate volume features for appropriate hands
+    if hands_to_analyze == 'B':
+        volume_both = calc_volume_size(df, 'B')
+        volume_right = calc_volume_size(df, 'R')
+        volume_left = calc_volume_size(df, 'L')
+    elif hands_to_analyze == 'R':
+        volume_both = 0
+        volume_right = calc_volume_size(df, 'R')
+        volume_left = 0
+    elif hands_to_analyze == 'L':
+        volume_both = 0 
+        volume_right = 0
+        volume_left = calc_volume_size(df, 'L')
+    else:
+        volume_both = volume_right = volume_left = 0
     
     # Compute kinematics for each arm segment
     r_hand = compute_limb_kinematics(np.array([p for p in df['R_Hand']]), fps)
@@ -1235,11 +1288,10 @@ def compute_kinematic_features(
     combined_elbow_speed = np.linalg.norm(r_elbow.velocity + l_elbow.velocity, axis=1)
     combined_elbow_peaks, combined_elbow_heights = find_submovements(combined_elbow_speed, fps)
     
-    # Calculate hold features using hand peaks
-    hold_count, hold_time, hold_avg = calc_holds(df, l_hand.peaks, r_hand.peaks, fps, 'B')
+    # Calculate hold features using hand peaks and the determined hands to analyze
+    hold_count, hold_time, hold_avg = calc_holds(df, l_hand.peaks, r_hand.peaks, fps, hands_to_analyze)
     
-    # Safe mean calculation helper
-   # Define safe computation helpers
+    # Safe computation helpers
     def safe_mean(arr):
         return float(np.mean(arr)) if len(arr) > 0 else 0.0
 
@@ -1584,10 +1636,18 @@ def retrack_gesture_videos(
     input_folder: str,
     output_folder: str,
     video_pattern: str = "*.mp4"
-) -> Dict[str, np.ndarray]:
+) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     """
     Retrack gesture videos using MediaPipe world landmarks and save visualization.
-    Missing frames are filled with nearest neighbor values.
+    Now also tracks and saves visibility scores separately.
+    
+    Args:
+        input_folder: Folder containing input videos
+        output_folder: Folder to save tracked data
+        video_pattern: Pattern to match video files
+        
+    Returns:
+        Dictionary mapping video names to tuples of (landmarks, visibility scores)
     """
     os.makedirs(output_folder, exist_ok=True)
     tracked_folder = os.path.join(output_folder, "tracked_videos")
@@ -1622,8 +1682,9 @@ def retrack_gesture_videos(
             (frame_width, frame_height)
         )
         
-        # Store world landmarks and frame indices
+        # Store world landmarks, visibility, and frame indices
         world_landmarks = []
+        visibility_scores = []
         frame_indices = []
         
         with mp_pose.Pose(
@@ -1646,7 +1707,12 @@ def retrack_gesture_videos(
                     # Extract world landmarks
                     frame_landmarks = [coord for landmark in results.pose_world_landmarks.landmark 
                                     for coord in (landmark.x, landmark.y, landmark.z)]
+                    
+                    # Extract visibility scores separately
+                    frame_visibility = [landmark.visibility for landmark in results.pose_world_landmarks.landmark]
+                    
                     world_landmarks.append(frame_landmarks)
+                    visibility_scores.append(frame_visibility)
                     frame_indices.append(frame_idx)
                     
                     # Draw pose on frame
@@ -1667,19 +1733,22 @@ def retrack_gesture_videos(
             out.release()
         
         if world_landmarks:
-            # Convert to numpy array
+            # Convert landmarks to numpy array
             landmarks_array = np.array(world_landmarks)
+            visibility_array = np.array(visibility_scores)
             frame_indices = np.array(frame_indices)
             
             # Reshape landmarks to (frames, num_keypoints, 3)
             num_landmarks = landmarks_array.shape[1] // 3
             landmarks_array = landmarks_array.reshape(-1, num_landmarks, 3)
             
-            # Create full array with all frames
+            # Create full arrays with all frames
             full_landmarks = np.zeros((total_frames, num_landmarks, 3))
+            full_visibility = np.zeros((total_frames, num_landmarks))
             
             # Fill detected frames
             full_landmarks[frame_indices] = landmarks_array
+            full_visibility[frame_indices] = visibility_array
             
             # Fill missing frames with nearest neighbor
             missing_indices = np.setdiff1d(np.arange(total_frames), frame_indices)
@@ -1691,8 +1760,9 @@ def retrack_gesture_videos(
                     # Find nearest detected frame
                     nearest_idx = frame_indices[np.abs(frame_indices - missing_idx).argmin()]
                     full_landmarks[missing_idx] = full_landmarks[nearest_idx]
+                    full_visibility[missing_idx] = full_visibility[nearest_idx]
             
-            # Apply smoothing (Gaussian filter)
+            # Apply smoothing (Gaussian filter) to landmarks
             smoothed = np.zeros_like(full_landmarks)
             for i in range(full_landmarks.shape[1]):  # Iterate over keypoints
                 smoothed[:, i] = gaussian_filter1d(
@@ -1701,10 +1771,14 @@ def retrack_gesture_videos(
                 )
             
             # Save smoothed landmarks
-            save_path = os.path.join(output_folder, f"{video_name}_world_landmarks.npy")
-            np.save(save_path, smoothed)
+            landmarks_save_path = os.path.join(output_folder, f"{video_name}_world_landmarks.npy")
+            np.save(landmarks_save_path, smoothed)
             
-            tracked_data[video_name] = smoothed
+            # Save visibility scores
+            visibility_save_path = os.path.join(output_folder, f"{video_name}_visibility.npy")
+            np.save(visibility_save_path, full_visibility)
+            
+            tracked_data[video_name] = (smoothed, full_visibility)
     
     return tracked_data
 
