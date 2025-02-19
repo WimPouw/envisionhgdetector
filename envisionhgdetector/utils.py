@@ -241,7 +241,8 @@ def create_elan_file(
 def label_video(
     video_path: str, 
     segments: pd.DataFrame, 
-    output_path: str 
+    output_path: str,
+    valid_timestamps: Optional[List[float]] = None
 ) -> None:
     """
     Label a video with predicted gestures based on segments
@@ -251,6 +252,7 @@ def label_video(
         segments: DataFrame containing video segments 
             (must have columns: start_time, end_time, label)
         output_path: Path to save labeled video
+        valid_timestamps: List of timestamps where skeleton was detected
     """
     # Open video
     cap = cv2.VideoCapture(video_path)
@@ -277,31 +279,39 @@ def label_video(
         ]
         return matching_segments['label'].iloc[0] if len(matching_segments) > 0 else 'NoGesture'
     
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    for frame_idx in range(frame_count):
-        # Calculate current time
-        current_time = frame_idx / fps
-        
+    frame_idx = 0
+    while True:
         ret, frame = cap.read()
         if not ret:
             break
+            
+        # Get actual timestamp from the video
+        current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
         
-        # Get label for this time
-        label = get_label_at_time(current_time)
+        # Check if this frame is close to a valid timestamp
+        is_valid_frame = True
+        if valid_timestamps:
+            # Consider a frame valid if it's within a small threshold of any valid timestamp
+            threshold = 1.0 / (2 * fps)  # Half frame duration
+            is_valid_frame = any(abs(current_time - t) < threshold for t in valid_timestamps)
         
-        # Add text label to frame
-        cv2.putText(
-            frame, 
-            label, 
-            (10, 30), 
-            cv2.FONT_HERSHEY_SIMPLEX, 
-            1, 
-            color_map.get(label, (255, 255, 255)), 
-            2
-        )
+        if is_valid_frame:
+            # Get label for this time
+            label = get_label_at_time(current_time)
+            
+            # Add text label to frame
+            cv2.putText(
+                frame, 
+                label, 
+                (10, 30), 
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                1, 
+                color_map.get(label, (255, 255, 255)), 
+                2
+            )
         
         out.write(frame)
+        frame_idx += 1
     
     # Release video objects
     cap.release()

@@ -470,7 +470,7 @@ class VideoProcessor:
         self.seq_length = seq_length
         self.mp_holistic = mp.solutions.holistic
         
-    def process_video(self, video_path: str) -> List[List[float]]:
+    def process_video(self, video_path: str) -> Tuple[List[List[float]], List[float]]:
         """
         Process video and extract landmarks features.
         
@@ -478,16 +478,16 @@ class VideoProcessor:
             video_path: Path to video file
             
         Returns:
-            List of feature vectors for each frame
+            Tuple of (features_list, timestamps)
         """
         # Directly use video_to_landmarks to extract features
-        features_list = video_to_landmarks(
+        features_list, timestamps = video_to_landmarks(
             video_path=video_path, 
             max_num_frames=None,  # Process entire video
             video_segment=VideoSegment.BEGINNING
         )
         
-        return features_list
+        return features_list, timestamps
 
 def create_sliding_windows(
     features: List[List[float]],

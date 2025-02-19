@@ -91,11 +91,11 @@ class GestureDetector:
         Returns:
             DataFrame with predictions and statistics dictionary
         """
-        # Extract features
+        # Extract features and timestamps
         features, timestamps = self.video_processor.process_video(video_path)
         
         if not features:
-            return pd.DataFrame(), {"error": "No features detected"}
+            return pd.DataFrame(), {"error": "No features detected"}, pd.DataFrame(), np.array([])
         
         # Create windows
         windows = create_sliding_windows(
@@ -105,13 +105,12 @@ class GestureDetector:
         )
         
         if len(windows) == 0:
-            return pd.DataFrame(), {"error": "No valid windows created"}
+            return pd.DataFrame(), {"error": "No valid windows created"}, pd.DataFrame(), np.array([])
             
         # Get predictions
         predictions = self.model.predict(windows)
         
-        # Create results DataFrame
-         # get fps
+        # Create results DataFrame - use the actual timestamps for frames with valid skeleton data
         fps = self._get_video_fps(video_path)
         rows = []
         for i, (pred, time) in enumerate(zip(predictions, timestamps[::stride])):
@@ -165,99 +164,104 @@ class GestureDetector:
         output_folder: str,
         video_pattern: str = "*.mp4"
     ) -> Dict[str, Dict]:
-        """
-        Process all videos in a folder.
-        
-        Args:
-            input_folder: Path to input video folder
-            output_folder: Path to output folder
-            video_pattern: Pattern to match video files
-        """
-        # Create output directories
-        os.makedirs(output_folder, exist_ok=True)
-        
-        # Get all videos
-        videos = glob.glob(os.path.join(input_folder, video_pattern))
-        results = {}
-        
-        for video_path in videos:
-            video_name = os.path.basename(video_path)
-            print(f"\nProcessing {video_name}...")
+            """
+            Process all videos in a folder.
             
-            try:
-                # Process video
-                predictions_df, stats, segments, features = self.predict_video(video_path)
+            Args:
+                input_folder: Path to input video folder
+                output_folder: Path to output folder
+                video_pattern: Pattern to match video files
+            """
+            # Create output directories
+            os.makedirs(output_folder, exist_ok=True)
+            
+            # Get all videos
+            videos = glob.glob(os.path.join(input_folder, video_pattern))
+            results = {}
+            
+            for video_path in videos:
+                video_name = os.path.basename(video_path)
+                print(f"\nProcessing {video_name}...")
                 
-                if not predictions_df.empty:
-                    # Save predictions
-                    output_pathpred = os.path.join(
-                        output_folder,
-                        f"{video_name}_predictions.csv"
-                    )
-                    predictions_df.to_csv( output_pathpred, index=False)
+                try:
+                    # Process video
+                    predictions_df, stats, segments, features = self.predict_video(video_path)
                     
-                    # save segments
-                    output_pathseg = os.path.join(
-                        output_folder,
-                        f"{video_name}_segments.csv"
-                    )
-                    segments.to_csv(output_pathseg, index=False)
+                    if not predictions_df.empty:
+                        # Save predictions
+                        output_pathpred = os.path.join(
+                            output_folder,
+                            f"{video_name}_predictions.csv"
+                        )
+                        predictions_df.to_csv(output_pathpred, index=False)
+                        
+                        # save segments
+                        output_pathseg = os.path.join(
+                            output_folder,
+                            f"{video_name}_segments.csv"
+                        )
+                        segments.to_csv(output_pathseg, index=False)
 
-                    # Save features
-                    output_pathfeat = os.path.join(
-                        output_folder,
-                        f"{video_name}_features.npy"
-                    )
-                    feature_array = np.array(features)
-                    np.save(output_pathfeat, feature_array)
+                        # Save features
+                        output_pathfeat = os.path.join(
+                            output_folder,
+                            f"{video_name}_features.npy"
+                        )
+                        feature_array = np.array(features)
+                        np.save(output_pathfeat, feature_array)
 
-                    # Labeled video generation
-                    print("Generating labeled video...")
-                    output_pathvid = os.path.join(
-                        output_folder,
-                        f"labeled_{video_name}"
-                    )
+                        # Labeled video generation
+                        print("Generating labeled video...")
+                        output_pathvid = os.path.join(
+                            output_folder,
+                            f"labeled_{video_name}"
+                        )
 
-                    label_video(
-                        video_path, 
-                        segments, 
-                        output_pathvid
-                    )
-                    print("Generating elan file...")
+                        # Get the timestamps from the prediction process
+                        _, timestamps = self.video_processor.process_video(video_path)
+                        
+                        # Then update the label_video call with timestamps
+                        label_video(
+                            video_path, 
+                            segments, 
+                            output_pathvid,
+                            valid_timestamps=timestamps
+                        )
+                        print("Generating elan file...")
 
-                    # Create ELAN file
-                    output_path = os.path.join(
-                        output_folder,
-                        f"{video_name}.eaf"
-                    )
-                    # get fps
-                    cap = cv2.VideoCapture(video_path)
-                    fps = cap.get(cv2.CAP_PROP_FPS)
-                    fps = int(fps)
-                    cap.release()
-                    # Create ELAN file
-                    create_elan_file(
-                        video_path,
-                        segments,
-                        output_path,
-                        fps=fps,
-                        include_ground_truth=False
-                    )
-    
-                    results[video_name] = {
-                        "stats": stats,
-                        "output_path": output_path
-                    }
-                    # print that were done with this video
-                    print(f"Done processing {video_name}, go look in the output folder")
-                else:
-                    results[video_name] = {"error": "No predictions generated"}
-                    
-            except Exception as e:
-                print(f"Error processing {video_name}: {str(e)}")
-                results[video_name] = {"error": str(e)}
-        
-        return results
+                        # Create ELAN file
+                        output_path = os.path.join(
+                            output_folder,
+                            f"{video_name}.eaf"
+                        )
+                        # get fps
+                        cap = cv2.VideoCapture(video_path)
+                        fps = cap.get(cv2.CAP_PROP_FPS)
+                        fps = int(fps)
+                        cap.release()
+                        # Create ELAN file
+                        create_elan_file(
+                            video_path,
+                            segments,
+                            output_path,
+                            fps=fps,
+                            include_ground_truth=False
+                        )
+
+                        results[video_name] = {
+                            "stats": stats,
+                            "output_path": output_path
+                        }
+                        # print that were done with this video
+                        print(f"Done processing {video_name}, go look in the output folder")
+                    else:
+                        results[video_name] = {"error": "No predictions generated"}
+                        
+                except Exception as e:
+                    print(f"Error processing {video_name}: {str(e)}")
+                    results[video_name] = {"error": str(e)}
+            
+            return results
         
     def retrack_gestures(
         self,
