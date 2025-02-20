@@ -55,6 +55,7 @@ class GestureDetector:
         gesture_threshold: Optional[float] = None,
         min_gap_s: Optional[float] = None,
         min_length_s: Optional[float] = None,
+        gesture_class_bias: float = 0.0,  # Added gesture_class_bias parameter
         config: Optional[Config] = None
     ):
         """Initialize detector with parameters."""
@@ -63,12 +64,13 @@ class GestureDetector:
             'motion_threshold': motion_threshold or self.config.default_motion_threshold,
             'gesture_threshold': gesture_threshold or self.config.default_gesture_threshold,
             'min_gap_s': min_gap_s or self.config.default_min_gap_s,
-            'min_length_s': min_length_s or self.config.default_min_length_s
+            'min_length_s': min_length_s or self.config.default_min_length_s,
+            'gesture_class_bias': gesture_class_bias  # Store the bias parameter
         }
         
         self.model = GestureModel(self.config)
         self.video_processor = VideoProcessor(self.config.seq_length)
-    # Add this method after __init__:
+    
     def _get_video_fps(self, video_path: str) -> int:
         """Get video FPS."""
         cap = cv2.VideoCapture(video_path)
@@ -113,17 +115,59 @@ class GestureDetector:
         # Create results DataFrame - use the actual timestamps for frames with valid skeleton data
         fps = self._get_video_fps(video_path)
         rows = []
+        gesture_class_bias = self.params['gesture_class_bias']
+        
         for i, (pred, time) in enumerate(zip(predictions, timestamps[::stride])):
             has_motion = pred[0]
             gesture_probs = pred[1:]
             
-            rows.append({
-                'time': time, 
-                'has_motion': float(has_motion),
-                'NoGesture_confidence': float(1 - has_motion),
-                'Gesture_confidence': float(gesture_probs[0]),
-                'Move_confidence': float(gesture_probs[1])
-            })
+            # Apply gesture_class_bias if bias is not 0
+            if gesture_class_bias != 0:
+                # Get the original probabilities
+                gesture_confidence = float(gesture_probs[0])
+                move_confidence = float(gesture_probs[1])
+                
+                # Only apply bias if we have motion
+                if has_motion > 0:
+                    # Calculate the bias factor based on gesture_class_bias parameter (0 to 1)
+                    # Higher gesture_class_bias increases the gesture confidence relative to move
+                    total_conf = gesture_confidence + move_confidence
+                    if total_conf > 0:  # Prevent division by zero
+                        # Redistribute probability mass based on bias
+                        # The bias increases gesture and decreases move proportionally
+                        adjustment = gesture_class_bias * move_confidence * 0.5
+                        
+                        # Adjust confidences
+                        adjusted_gesture = gesture_confidence + adjustment
+                        adjusted_move = move_confidence - adjustment
+                        
+                        # Ensure they're still valid probabilities
+                        # Just in case, normalize to make sure they sum to the original total
+                        if adjusted_gesture + adjusted_move > 0:
+                            norm_factor = total_conf / (adjusted_gesture + adjusted_move)
+                            adjusted_gesture *= norm_factor
+                            adjusted_move *= norm_factor
+                        
+                        # Update gesture probabilities
+                        gesture_confidence = adjusted_gesture
+                        move_confidence = adjusted_move
+                
+                rows.append({
+                    'time': time, 
+                    'has_motion': float(has_motion),
+                    'NoGesture_confidence': float(1 - has_motion),
+                    'Gesture_confidence': gesture_confidence,
+                    'Move_confidence': move_confidence
+                })
+            else:
+                # No bias applied
+                rows.append({
+                    'time': time, 
+                    'has_motion': float(has_motion),
+                    'NoGesture_confidence': float(1 - has_motion),
+                    'Gesture_confidence': float(gesture_probs[0]),
+                    'Move_confidence': float(gesture_probs[1])
+                })
         
         results_df = pd.DataFrame(rows)
 
@@ -153,7 +197,8 @@ class GestureDetector:
         stats = {
             'average_motion': float(results_df['has_motion'].mean()),
             'average_gesture': float(results_df['Gesture_confidence'].mean()),
-            'average_move': float(results_df['Move_confidence'].mean())
+            'average_move': float(results_df['Move_confidence'].mean()),
+            'applied_gesture_class_bias': float(gesture_class_bias)  # Include the applied bias in stats
         }
         
         return results_df, stats, segments, features
