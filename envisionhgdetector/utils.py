@@ -525,74 +525,56 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
         'right_index': 20,  # Index 20 corresponds to right index
         'right_thumb': 22  # Index 22 corresponds to right thumb
     }
+
+    ordered_keypoints = [
+        ('left_shoulder', 11),
+        ('left_elbow', 13),
+        ('left_wrist', 15),
+        ('right_shoulder', 12), 
+        ('right_elbow', 14),
+        ('right_wrist', 16)
+    ]
     
     # Initialize list to hold the extracted features
     all_features = []
     
-    # Extract basic features (shoulders, elbows, wrists)
-    for key, index in keypoint_indices.items():
+    # Extract features in consistent order
+    for key, index in ordered_keypoints:
         print(f"Debug: Extracting keypoint {key} at index {index}")
-        feature = landmarks[:, index]  # Shape (N, 3) for each joint (x, y, z)
-        
-        # Check for missing data
+        feature = landmarks[:, index]
         if np.any(np.isnan(feature)) or feature.size == 0:
             print(f"Debug: No data for keypoint {key}, skipping")
         else:
             print(f"Debug: Data for keypoint {key}: {feature}")
-            all_features.append(feature.reshape(-1, 3))  # Keep the x, y, z separate
+            all_features.append(feature.reshape(-1, 3))
+
+    # Process fingers with clear left/right separation
+    left_fingers = process_hand_fingers(landmarks, 'left', [17, 19, 21])
+    right_fingers = process_hand_fingers(landmarks, 'right', [18, 20, 22])
     
-    # Mean center left hand fingers
-    left_fingers = []
-    for key, index in left_finger_indices.items():
-        print(f"Debug: Extracting left finger keypoint {key} at index {index}")
-        feature = landmarks[:, index]
-        
-        # Check for missing data
-        if np.any(np.isnan(feature)) or feature.size == 0:
-            print(f"Debug: No data for left finger keypoint {key}, skipping")
-        else:
-            print(f"Debug: Data for left finger keypoint {key}: {feature}")
-            left_fingers.append(feature.reshape(-1, 3))  # Keep x, y, z separate
-    
-    # Mean center the left fingers if data is present
-    if left_fingers:
-        left_fingers = np.concatenate(left_fingers, axis=1)  # Shape (N, 9) for 3 fingers (3 x 3)
-        left_fingers_mean = np.mean(left_fingers, axis=0)
-        left_fingers_centered = left_fingers - left_fingers_mean  # Center the coordinates
-        all_features.append(left_fingers_centered)
-    
-    # Mean center right hand fingers
-    right_fingers = []
-    for key, index in right_finger_indices.items():
-        print(f"Debug: Extracting right finger keypoint {key} at index {index}")
-        feature = landmarks[:, index]
-        
-        # Check for missing data
-        if np.any(np.isnan(feature)) or feature.size == 0:
-            print(f"Debug: No data for right finger keypoint {key}, skipping")
-        else:
-            print(f"Debug: Data for right finger keypoint {key}: {feature}")
-            right_fingers.append(feature.reshape(-1, 3))  # Keep x, y, z separate
-    
-    # Mean center the right fingers if data is present
-    if right_fingers:
-        right_fingers = np.concatenate(right_fingers, axis=1)  # Shape (N, 9) for 3 fingers (3 x 3)
-        right_fingers_mean = np.mean(right_fingers, axis=0)
-        right_fingers_centered = right_fingers - right_fingers_mean  # Center the coordinates
-        all_features.append(right_fingers_centered)
-    
-    # Ensure the features are a consistent length
-    features = np.concatenate(all_features, axis=1)  # Shape (N, num_features)
+    if left_fingers is not None:
+        all_features.append(left_fingers)
+    if right_fingers is not None:
+        all_features.append(right_fingers)
+
+    features = np.concatenate(all_features, axis=1)
     print(f"Debug: Final feature array shape: {features.shape}")
     
-    # If features array is empty, return an empty array or handle error
-    if features.size == 0:
-        print("Debug: Features array is empty, returning empty array")
-        return np.array([])
-
-    # Return the features with shape (time_steps, num_features)
     return features
 
+def process_hand_fingers(landmarks, side, finger_indices):
+    """Helper function to process fingers for one hand"""
+    fingers = []
+    for idx in finger_indices:
+        feature = landmarks[:, idx]
+        if not (np.any(np.isnan(feature)) or feature.size == 0):
+            fingers.append(feature.reshape(-1, 3))
+    
+    if fingers:
+        fingers = np.concatenate(fingers, axis=1)
+        fingers_mean = np.mean(fingers, axis=0)
+        return fingers - fingers_mean
+    return None
 
 
 def remove_nans(features):
@@ -632,24 +614,20 @@ class ArmKinematics(NamedTuple):
     peak_heights: np.ndarray
 
 @dataclass
-
 class KinematicFeatures:
     """Data class to store comprehensive kinematic features for a gesture."""
     gesture_id: str
     video_id: str
     
+    # Which hand was more active in this specific gesture
+    active_hand: str  # 'L' or 'R'
+    
     # Spatial features
-    space_use_left: int
-    space_use_right: int
-    mcneillian_max_left: float
-    mcneillian_max_right: float
-    mcneillian_mode_left: int
-    mcneillian_mode_right: int
-    volume_both: float
-    volume_right: float
-    volume_left: float
-    max_height_right: float
-    max_height_left: float
+    space_use: int
+    mcneillian_max: float
+    mcneillian_mode: int
+    volume: float
+    max_height: float
     
     # Temporal features
     duration: float
@@ -657,48 +635,26 @@ class KinematicFeatures:
     hold_time: float
     hold_avg_duration: float
     
-    # Submovement features - Hand
-    hand_submovements_left: int
-    hand_submovements_right: int
-    hand_submovements_combined: int
-    hand_submovement_peaks_left: List[float]
-    hand_submovement_peaks_right: List[float]
-    hand_submovement_peaks_combined: List[float]
-    hand_mean_submovement_amplitude_left: float
-    hand_mean_submovement_amplitude_right: float
-    hand_mean_submovement_amplitude_combined: float
+    # Submovement features
+    hand_submovements: int
+    hand_submovement_peaks: List[float]
+    hand_mean_submovement_amplitude: float
     
-    # Submovement features - Elbow
-    elbow_submovements_left: int
-    elbow_submovements_right: int
-    elbow_submovements_combined: int
-    elbow_mean_submovement_amplitude_left: float
-    elbow_mean_submovement_amplitude_right: float
-    elbow_mean_submovement_amplitude_combined: float
+    elbow_submovements: int
+    elbow_mean_submovement_amplitude: float
     
-    # Dynamic features - Hand
-    hand_peak_velocity_right: float
-    hand_peak_velocity_left: float
-    hand_mean_velocity_right: float
-    hand_mean_velocity_left: float
-    hand_peak_acceleration_right: float
-    hand_peak_acceleration_left: float
-    hand_peak_deceleration_right: float
-    hand_peak_deceleration_left: float
-    hand_peak_jerk_right: float
-    hand_peak_jerk_left: float
+    # Dynamic features
+    hand_peak_speed: float
+    hand_mean_speed: float
+    hand_peak_acceleration: float
+    hand_peak_deceleration: float
+    hand_peak_jerk: float
     
-    # Dynamic features - Elbow
-    elbow_peak_velocity_right: float
-    elbow_peak_velocity_left: float
-    elbow_mean_velocity_right: float
-    elbow_mean_velocity_left: float
-    elbow_peak_acceleration_right: float
-    elbow_peak_acceleration_left: float
-    elbow_peak_deceleration_right: float
-    elbow_peak_deceleration_left: float
-    elbow_peak_jerk_right: float
-    elbow_peak_jerk_left: float
+    elbow_peak_speed: float
+    elbow_mean_speed: float
+    elbow_peak_acceleration: float
+    elbow_peak_deceleration: float
+    elbow_peak_jerk: float
 
 def calculate_derivatives(positions: np.ndarray, fps: float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Calculate velocity, acceleration and jerk from position data."""
@@ -810,38 +766,182 @@ def compute_limb_kinematics(positions: np.ndarray, fps: float) -> ArmKinematics:
     )
 
 def define_mcneillian_grid(df, frame):
-    """Define the grid based on a single frame, adapted for MediaPipe landmarks."""
-    # Use MidHip and Neck for body center
+    """Define the grid based on original implementation."""
     bodycent = df['Neck'][frame][1] - (df['Neck'][frame][1] - df['MidHip'][frame][1])/2
-    
-    # Use eye distance for face width (same as before)
     face_width = (df['LEye'][frame][0] - df['REye'][frame][0])*2
-    
-    # Use shoulder width instead of hip width since it's more reliable in MediaPipe
+    # Use shoulders instead of hips for more reliable body width
     body_width = df['LShoulder'][frame][0] - df['RShoulder'][frame][0]
-    
-    # Center-center boundaries (use shoulders scaled inward slightly)
-    scale_factor = 0.7  # Adjust this to tune the center-center zone
-    cc_xmin = df['RShoulder'][frame][0] + (body_width * (1-scale_factor)/2)
-    cc_xmax = df['LShoulder'][frame][0] - (body_width * (1-scale_factor)/2)
+
+    # Center-center boundaries
+    cc_xmin = df['RShoulder'][frame][0]
+    cc_xmax = df['LShoulder'][frame][0]
     cc_len = cc_xmax - cc_xmin
     cc_ymin = bodycent - cc_len/2
     cc_ymax = bodycent + cc_len/2
-    
-    # Center boundaries (use full shoulder width)
+
+    # Center boundaries
     c_xmin = df['RShoulder'][frame][0] - body_width/2
     c_xmax = df['LShoulder'][frame][0] + body_width/2
     c_len = c_xmax - c_xmin
     c_ymin = bodycent - c_len/2
     c_ymax = bodycent + c_len/2
-    
+
     # Periphery boundaries
     p_ymax = df['LEye'][frame][1] + (df['LEye'][frame][1] - df['Nose'][frame][1])
-    p_ymin = bodycent - (p_ymax - bodycent)  # symmetrical around body center
+    p_ymin = bodycent - (p_ymax - bodycent)
     p_xmin = c_xmin - face_width
     p_xmax = c_xmax + face_width
-    
+
     return cc_xmin, cc_xmax, cc_ymin, cc_ymax, c_xmin, c_xmax, c_ymin, c_ymax, p_xmin, p_xmax, p_ymin, p_ymax
+
+def get_mcneillian_mode(spaces):
+    """Convert subsection codes to main sections and calculate mode."""
+    mainspace = []
+    for space in spaces:
+        if space > 40:
+            mainspace.append(4)
+        elif space > 30:
+            mainspace.append(3)
+        else:
+            mainspace.append(space)
+    
+    return statistics.mode(mainspace)
+
+def calc_mcneillian_space(df, visibility=None, visibility_threshold=0.5):
+    """Calculate McNeillian space features using original implementation approach."""
+    Space_L = []
+    Space_R = []
+    
+    for frame in range(len(df['MidHip'])):
+        try:
+            # Get grid boundaries
+            cc_xmin, cc_xmax, cc_ymin, cc_ymax, c_xmin, c_xmax, c_ymin, c_ymax, p_xmin, p_xmax, p_ymin, p_ymax = \
+                define_mcneillian_grid(df, frame)
+            
+            # Process left hand if visible
+            if visibility is None or visibility[frame, 15] >= visibility_threshold:
+                left_hand = df['L_Hand'][frame]
+                x, y = left_hand[0], left_hand[1]
+                
+                # Assign zone with subsections
+                if cc_xmin < x < cc_xmax and cc_ymin < y < cc_ymax:
+                    Space_L.append(1)
+                elif c_xmin < x < c_xmax and c_ymin < y < c_ymax:
+                    Space_L.append(2)
+                elif p_xmin < x < p_xmax and p_ymin < y < p_ymax:
+                    # Periphery subsections
+                    if cc_xmax < x:  # Right side
+                        if cc_ymax < y:
+                            Space_L.append(31)
+                        elif cc_ymin < y:
+                            Space_L.append(32)
+                        else:
+                            Space_L.append(33)
+                    elif cc_xmin < x:  # Center
+                        if c_ymax < y:
+                            Space_L.append(38)
+                        else:
+                            Space_L.append(34)
+                    else:  # Left side
+                        if cc_ymax < y:
+                            Space_L.append(37)
+                        elif cc_ymin < y:
+                            Space_L.append(36)
+                        else:
+                            Space_L.append(35)
+                else:  # Extra-periphery subsections
+                    if c_xmax < x:  # Right side
+                        if cc_ymax < y:
+                            Space_L.append(41)
+                        elif cc_ymin < y:
+                            Space_L.append(42)
+                        else:
+                            Space_L.append(43)
+                    elif cc_xmin < x:  # Center
+                        if c_ymax < y:
+                            Space_L.append(48)
+                        else:
+                            Space_L.append(44)
+                    else:  # Left side
+                        if c_ymax < y:
+                            Space_L.append(47)
+                        elif c_ymin < y:
+                            Space_L.append(46)
+                        else:
+                            Space_L.append(45)
+            
+            # Process right hand similarly
+            if visibility is None or visibility[frame, 16] >= visibility_threshold:
+                right_hand = df['R_Hand'][frame]
+                x, y = right_hand[0], right_hand[1]
+                
+                # Same zone assignment logic for right hand
+                if cc_xmin < x < cc_xmax and cc_ymin < y < cc_ymax:
+                    Space_R.append(1)
+                elif c_xmin < x < c_xmax and c_ymin < y < c_ymax:
+                    Space_R.append(2)
+                elif p_xmin < x < p_xmax and p_ymin < y < p_ymax:
+                    if cc_xmax < x:
+                        if cc_ymax < y:
+                            Space_R.append(31)
+                        elif cc_ymin < y:
+                            Space_R.append(32)
+                        else:
+                            Space_R.append(33)
+                    elif cc_xmin < x:
+                        if c_ymax < y:
+                            Space_R.append(38)
+                        else:
+                            Space_R.append(34)
+                    else:
+                        if cc_ymax < y:
+                            Space_R.append(37)
+                        elif cc_ymin < y:
+                            Space_R.append(36)
+                        else:
+                            Space_R.append(35)
+                else:
+                    if c_xmax < x:
+                        if cc_ymax < y:
+                            Space_R.append(41)
+                        elif cc_ymin < y:
+                            Space_R.append(42)
+                        else:
+                            Space_R.append(43)
+                    elif cc_xmin < x:
+                        if c_ymax < y:
+                            Space_R.append(48)
+                        else:
+                            Space_R.append(44)
+                    else:
+                        if c_ymax < y:
+                            Space_R.append(47)
+                        elif c_ymin < y:
+                            Space_R.append(46)
+                        else:
+                            Space_R.append(45)
+                            
+        except Exception as e:
+            print(f"Error in frame {frame}: {str(e)}")
+    
+    # Ensure we have data
+    if not Space_L:
+        Space_L = [1]
+    if not Space_R:
+        Space_R = [1]
+    
+    # Calculate statistics using original method
+    space_use_L = len(set(Space_L))
+    space_use_R = len(set(Space_R))
+    
+    mcneillian_maxL = 4 if max(Space_L) > 40 else (3 if max(Space_L) > 30 else max(Space_L))
+    mcneillian_maxR = 4 if max(Space_R) > 40 else (3 if max(Space_R) > 30 else max(Space_R))
+    
+    mcneillian_modeL = get_mcneillian_mode(Space_L)
+    mcneillian_modeR = get_mcneillian_mode(Space_R)
+    
+    return (space_use_L, space_use_R, mcneillian_maxL, mcneillian_maxR, 
+            mcneillian_modeL, mcneillian_modeR)
 
 def calc_volume_size(df, hand):
     """
@@ -892,168 +992,80 @@ def calc_volume_size(df, hand):
     
     return vol
 
-
-def calc_mcneillian_space(df, hand_idx):
-    """Calculate McNeillian space features."""
-    # Initialize with empty lists for both hands
-    Space_L = []
-    Space_R = []
+def calc_vert_height(df, visibility=None, visibility_threshold=0.5):
+    """
+    Calculate vertical height separately and independently for each hand.
+    Corrected to handle coordinate system properly and normalize heights.
+    """
+    H_L = []
+    H_R = []
     
-    if hand_idx == 'B':
-        hands = ['L_Hand','R_Hand']
-    else:
-        hands = [hand_idx + '_Hand']
-    
-    # compare, at each frame, each hand to the (sub)section limits
-    for hand in hands:
-        Space = []
-        for frame in range(len(df)):
-            cc_xmin, cc_xmax, cc_ymin, cc_ymax, c_xmin, c_xmax, c_ymin, c_ymax, p_xmin, p_xmax, p_ymin, p_ymax = \
-            define_mcneillian_grid(df, frame)
+    for frame in range(len(df['MidHip'])):  # Iterate using range instead of index
+        # Get reference points for normalization
+        try:
+            # Note: MediaPipe uses y-down coordinate system, so smaller y values are higher
+            mid_hip_y = df['MidHip'][frame][1]
+            neck_y = df['Neck'][frame][1]
+            nose_y = df['Nose'][frame][1]
+            left_eye_y = df['LEye'][frame][1]
+            right_eye_y = df['REye'][frame][1]
             
-            try:
-                # Get hand position
-                hand_pos = df[hand][frame]
+            # Calculate body-scaled reference heights
+            body_height = mid_hip_y - neck_y
+            head_height = neck_y - nose_y
+            
+            # Process left hand if visible
+            if visibility is None or visibility[frame, 15] >= visibility_threshold:
+                left_hand_y = df['L_Hand'][frame][1]
                 
-                # centre-centre
-                if cc_xmin < hand_pos[0] < cc_xmax and cc_ymin < hand_pos[1] < cc_ymax:
-                    Space.append(1)
-                # centre
-                elif c_xmin < hand_pos[0] < c_xmax and c_ymin < hand_pos[1] < c_ymax:
-                    Space.append(2)
-                # periph
-                elif p_xmin < hand_pos[0] < p_xmax and p_ymin < hand_pos[1] < p_ymax:
-                    if cc_xmax < hand_pos[0]:
-                        if cc_ymax < hand_pos[1]:
-                            Space.append(31)
-                        elif cc_ymin < hand_pos[1]:
-                            Space.append(32)
-                        else:
-                            Space.append(33)
-                    elif cc_xmin < hand_pos[0]:
-                        if c_ymax < hand_pos[1]:
-                            Space.append(38)
-                        else:
-                            Space.append(34)
-                    else:
-                        if cc_ymax < hand_pos[1]:
-                            Space.append(37)
-                        elif cc_ymin < hand_pos[1]:
-                            Space.append(36)
-                        else:
-                            Space.append(35)
-                else:  # extra periphery
-                    if c_xmax < hand_pos[0]:
-                        if cc_ymax < hand_pos[1]:
-                            Space.append(41)
-                        elif cc_ymin < hand_pos[1]:
-                            Space.append(42)
-                        else:
-                            Space.append(43)
-                    elif cc_xmin < hand_pos[0]:
-                        if c_ymax < hand_pos[1]:
-                            Space.append(48)
-                        else:
-                            Space.append(44)
-                    else:
-                        if c_ymax < hand_pos[1]:
-                            Space.append(47)
-                        elif c_ymin < hand_pos[1]:
-                            Space.append(46)
-                        else:
-                            Space.append(45)
-            except:
-                # If there's any error processing a frame, append a default value
-                Space.append(1)  # Default to center-center
-                
-        if hand == 'L_Hand':
-            Space_L = Space
-        else:
-            Space_R = Space
-
-    # Add safety for empty spaces
-    if not Space_L:
-        Space_L = [1]  # Default to center-center
-    if not Space_R:
-        Space_R = [1]  # Default to center-center
-
-    # Calculate features with safety checks
-    if hand_idx == 'L' or hand_idx == 'B':
-        space_use_L = len(set(Space_L))
-        mcneillian_maxL = 4 if max(Space_L) > 40 else (3 if max(Space_L) > 30 else max(Space_L))
-        try:
-            mcneillian_modeL = statistics.mode(Space_L)
-        except:
-            mcneillian_modeL = Space_L[0]  # Use first value if mode fails
-    else:
-        space_use_L = 0
-        mcneillian_maxL = 0
-        mcneillian_modeL = 0
-
-    if hand_idx == 'R' or hand_idx == 'B':
-        space_use_R = len(set(Space_R))
-        mcneillian_maxR = 4 if max(Space_R) > 40 else (3 if max(Space_R) > 30 else max(Space_R))
-        try:
-            mcneillian_modeR = statistics.mode(Space_R)
-        except:
-            mcneillian_modeR = Space_R[0]  # Use first value if mode fails
-    else:
-        space_use_R = 0
-        mcneillian_maxR = 0
-        mcneillian_modeR = 0
-
-    return space_use_L, space_use_R, mcneillian_maxL, mcneillian_maxR, mcneillian_modeL, mcneillian_modeR
-
-def calc_vert_height(df, hand):
-    """
-    Calculate vertical height features.
-    
-    Args:
-        df: DataFrame with pose keypoints 
-        hand: Which hand to analyze ('L', 'R', or 'B' for both)
-        
-    Returns:
-        Maximum height value
-    """
-    # Vertical amplitude
-    # H: 0 = below midline;
-    #    1 = between midline and middle-upper body;
-    #    2 = above middle-upper body, but below shoulders;
-    #    3 = between shoulders nad middle of face;
-    #    4 = between middle of face and top of head;
-    #    5 = above head
-
-    H = []
-    for index, frame in df.iterrows():
-        SP_mid = ((df.loc[index, "Neck"][1] - df.loc[index, "MidHip"][1]) / 2) + df.loc[index, "MidHip"][1]
-        Mid_up = ((df.loc[index, "Nose"][1] - df.loc[index, "Neck"][1]) / 2) + df.loc[index, "Neck"][1]
-        Eye_mid = (df.loc[index, "REye"][1] + df.loc[index, "LEye"][1] / 2)  # mean of the two eyes vert height
-        Head_TP = ((df.loc[index, "Nose"][1] - Eye_mid) * 2) + df.loc[index, "Nose"][1]
-
-        if hand == "B":
-            hand_height = max([df.loc[index, "R_Hand"][1], df.loc[index, "L_Hand"][1]])
-        else:
-            hand_str = hand + "_Hand"
-            hand_height = df.loc[index][hand_str][1]
-
-        if hand_height > SP_mid:
-            if hand_height > Mid_up:
-                if hand_height > df.loc[index, "Neck"][1]:
-                    if hand_height > df.loc[index, "Nose"][1] :
-                        if hand_height > Head_TP:
-                            H.append(5)
-                        else:
-                            H.append(4)
-                    else:
-                        H.append(3)
-                else:
-                    H.append(2)
+                # Normalize height relative to body proportions
+                if left_hand_y >= mid_hip_y:  # Below hip
+                    H_L.append(0)
+                elif left_hand_y >= neck_y:  # Between hip and neck
+                    height_ratio = (mid_hip_y - left_hand_y) / body_height
+                    H_L.append(1 + height_ratio)
+                elif left_hand_y >= nose_y:  # Between neck and nose
+                    height_ratio = (neck_y - left_hand_y) / head_height
+                    H_L.append(2 + height_ratio)
+                elif left_hand_y >= left_eye_y:  # Between nose and eye
+                    height_ratio = (nose_y - left_hand_y) / (nose_y - left_eye_y)
+                    H_L.append(3 + height_ratio)
+                else:  # Above eye
+                    H_L.append(5)
             else:
-                H.append(1)
-        else:
-            H.append(0)
-    MaxHeight = max(H)
-    return MaxHeight
+                H_L.append(0)
+                
+            # Process right hand if visible
+            if visibility is None or visibility[frame, 16] >= visibility_threshold:
+                right_hand_y = df['R_Hand'][frame][1]
+                
+                # Normalize height relative to body proportions
+                if right_hand_y >= mid_hip_y:  # Below hip
+                    H_R.append(0)
+                elif right_hand_y >= neck_y:  # Between hip and neck
+                    height_ratio = (mid_hip_y - right_hand_y) / body_height
+                    H_R.append(1 + height_ratio)
+                elif right_hand_y >= nose_y:  # Between neck and nose
+                    height_ratio = (neck_y - right_hand_y) / head_height
+                    H_R.append(2 + height_ratio)
+                elif right_hand_y >= right_eye_y:  # Between nose and eye
+                    height_ratio = (nose_y - right_hand_y) / (nose_y - right_eye_y)
+                    H_R.append(3 + height_ratio)
+                else:  # Above eye
+                    H_R.append(5)
+            else:
+                H_R.append(0)
+                
+        except Exception as e:
+            print(f"Error in frame {frame}: {str(e)}")
+            H_L.append(0)
+            H_R.append(0)
+    
+    # Calculate maximum heights with proper normalization
+    max_height_L = max(H_L) if H_L else 0
+    max_height_R = max(H_R) if H_R else 0
+    
+    return max_height_L, max_height_R
 
 def find_movepauses(velocity_array):
     """
@@ -1201,182 +1213,128 @@ def compute_kinematic_features(
     video_id: str = ""
 ) -> KinematicFeatures:
     """
-    Compute comprehensive kinematic features from landmark data with visibility checks.
-    
-    Args:
-        landmarks: Numpy array of shape (frames, joints, 3) containing 3D landmark positions
-        visibility: Optional numpy array of shape (frames, joints) containing visibility scores
-        fps: Frames per second of the video
-        gesture_id: Identifier for the gesture
-        video_id: Identifier for the video
-        
-    Returns:
-        KinematicFeatures object containing all computed features
+    Compute comprehensive kinematic features for a gesture using the more active hand.
+    For each gesture, determines which hand was more active during that specific gesture.
     """
-    # Convert landmarks to DataFrame for compatibility with existing functions
+    # Convert landmarks to DataFrame format first
     df = pd.DataFrame()
-    
-    # Extract relevant joint positions
     for joint in ['L_Hand', 'R_Hand', 'LElb', 'RElb', 'LShoulder', 'RShoulder', 
                  'Neck', 'MidHip', 'LEye', 'REye', 'Nose']:
         df[joint] = [landmarks[i, joint_map[joint]] for i in range(len(landmarks))]
     
-    # Determine which hands to analyze based on visibility
-    hands_to_analyze = 'B'  # Default to both hands
+    # Analyze movement for this specific gesture
+    left_hand = landmarks[:, 15]  # Left wrist
+    right_hand = landmarks[:, 16]  # Right wrist
     
+    # Calculate total movement (speed) for each hand
+    left_speeds = np.linalg.norm(np.diff(left_hand, axis=0), axis=1)
+    right_speeds = np.linalg.norm(np.diff(right_hand, axis=0), axis=1)
+    
+    # Apply visibility masking if available
     if visibility is not None:
-        # Check if hands are visible in enough frames
         visibility_threshold = 0.5
-        min_visibility_percentage = 0.3  # Must be visible in at least 30% of frames
+        left_vis_mask = visibility[:-1, 15] >= visibility_threshold
+        right_vis_mask = visibility[:-1, 16] >= visibility_threshold
         
-        # Create DataFrame for visibility scores
-        vis_df = pd.DataFrame()
-        for joint in ['L_Hand', 'R_Hand']:
-            vis_df[joint] = [visibility[i, joint_map[joint]] for i in range(len(visibility))]
+        # Count frames where each hand is visible
+        left_visible_frames = np.sum(visibility[:, 15] >= visibility_threshold)
+        right_visible_frames = np.sum(visibility[:, 16] >= visibility_threshold)
         
-        # Calculate visibility percentages
-        left_visible_percent = np.mean(vis_df['L_Hand'] > visibility_threshold)
-        right_visible_percent = np.mean(vis_df['R_Hand'] > visibility_threshold)
+        # Apply visibility masks
+        left_speeds = left_speeds * left_vis_mask
+        right_speeds = right_speeds * right_vis_mask
         
-        # Determine which hands to analyze
-        left_is_visible = left_visible_percent > min_visibility_percentage
-        right_is_visible = right_visible_percent > min_visibility_percentage
-        
-        if left_is_visible and right_is_visible:
-            hands_to_analyze = 'B'
-        elif left_is_visible:
-            hands_to_analyze = 'L'
-        elif right_is_visible:
-            hands_to_analyze = 'R'
-        # If neither hand is sufficiently visible, keep default 'B'
-        
-        print(f"Visibility analysis: Left hand {left_visible_percent:.1%}, Right hand {right_visible_percent:.1%}")
-        print(f"Analyzing hands: {hands_to_analyze}")
-    
-    # Calculate McNeillian space features with determined hands
-    space_use_L, space_use_R, mcneillian_maxL, mcneillian_maxR, mcneillian_modeL, mcneillian_modeR = \
-        calc_mcneillian_space(df, hands_to_analyze)
-        
-    # Calculate vertical height features for appropriate hands
-    if hands_to_analyze == 'B' or hands_to_analyze == 'R':
-        max_height_R = calc_vert_height(df, "R")
+        # Normalize by number of visible frames to avoid bias
+        left_total = np.sum(left_speeds) * (len(visibility) / max(left_visible_frames, 1))
+        right_total = np.sum(right_speeds) * (len(visibility) / max(right_visible_frames, 1))
     else:
-        max_height_R = 0
+        left_total = np.sum(left_speeds)
+        right_total = np.sum(right_speeds)
+    
+    # Select the more active hand for this specific gesture
+    active_hand = 'L' if left_total > right_total else 'R'
+    print(f"Gesture {gesture_id}: {active_hand} hand showed more movement")
+    
+    # Get keys for the active hand
+    hand_key = 'L_Hand' if active_hand == 'L' else 'R_Hand'
+    elbow_key = 'LElb' if active_hand == 'L' else 'RElb'
+    joint_idx = 15 if active_hand == 'L' else 16
+    
+    # Calculate spatial features
+    mcn_space = calc_mcneillian_space(df, visibility)
+    space_use = mcn_space[0] if active_hand == 'L' else mcn_space[1]
+    mcneillian_max = mcn_space[2] if active_hand == 'L' else mcn_space[3]
+    mcneillian_mode = mcn_space[4] if active_hand == 'L' else mcn_space[5]
+    
+    # Calculate volume for active hand
+    volume = calc_volume_size(df, active_hand)
+    
+    # Calculate max height for active hand
+    max_heights = calc_vert_height(df, visibility)
+    max_height = max_heights[0] if active_hand == 'L' else max_heights[1]
+    
+    # Compute kinematics for active arm
+    hand = compute_limb_kinematics(np.array([p for p in df[hand_key]]), fps)
+    elbow = compute_limb_kinematics(np.array([p for p in df[elbow_key]]), fps)
+    
+    # Calculate hold features using only active hand
+    if active_hand == 'L':
+        hold_peaks = hand.peaks
+        other_peaks = np.array([])
+    else:
+        hold_peaks = np.array([])
+        other_peaks = hand.peaks
         
-    if hands_to_analyze == 'B' or hands_to_analyze == 'L':
-        max_height_L = calc_vert_height(df, "L")
-    else:
-        max_height_L = 0
-    
-    # Calculate volume features for appropriate hands
-    if hands_to_analyze == 'B':
-        volume_both = calc_volume_size(df, 'B')
-        volume_right = calc_volume_size(df, 'R')
-        volume_left = calc_volume_size(df, 'L')
-    elif hands_to_analyze == 'R':
-        volume_both = 0
-        volume_right = calc_volume_size(df, 'R')
-        volume_left = 0
-    elif hands_to_analyze == 'L':
-        volume_both = 0 
-        volume_right = 0
-        volume_left = calc_volume_size(df, 'L')
-    else:
-        volume_both = volume_right = volume_left = 0
-    
-    # Compute kinematics for each arm segment
-    r_hand = compute_limb_kinematics(np.array([p for p in df['R_Hand']]), fps)
-    l_hand = compute_limb_kinematics(np.array([p for p in df['L_Hand']]), fps)
-    r_elbow = compute_limb_kinematics(np.array([p for p in df['RElb']]), fps)
-    l_elbow = compute_limb_kinematics(np.array([p for p in df['LElb']]), fps)
-    
-    # Compute combined hand movement
-    combined_hand_speed = np.linalg.norm(r_hand.velocity + l_hand.velocity, axis=1)
-    combined_hand_peaks, combined_hand_heights = find_submovements(combined_hand_speed, fps)
-    
-    # Compute combined elbow movement
-    combined_elbow_speed = np.linalg.norm(r_elbow.velocity + l_elbow.velocity, axis=1)
-    combined_elbow_peaks, combined_elbow_heights = find_submovements(combined_elbow_speed, fps)
-    
-    # Calculate hold features using hand peaks and the determined hands to analyze
-    hold_count, hold_time, hold_avg = calc_holds(df, l_hand.peaks, r_hand.peaks, fps, hands_to_analyze)
+    hold_count, hold_time, hold_avg = calc_holds(
+        df, hold_peaks, other_peaks, fps, active_hand
+    )
     
     # Safe computation helpers
-    def safe_mean(arr):
-        return float(np.mean(arr)) if len(arr) > 0 else 0.0
-
-    def safe_max(arr):
-        return float(np.max(arr)) if len(arr) > 0 else 0.0
-
-    def safe_min(arr):
-        return float(np.min(arr)) if len(arr) > 0 else 0.0
-
-    def safe_norm(arr, axis=1):
-        if len(arr) > 0:
-            return np.linalg.norm(arr, axis=axis)
-        return np.zeros(1)
-
+    def safe_mean(arr): return float(np.mean(arr)) if len(arr) > 0 else 0.0
+    def safe_max(arr): return float(np.max(arr)) if len(arr) > 0 else 0.0
+    def safe_min(arr): return float(np.min(arr)) if len(arr) > 0 else 0.0
+    def safe_norm(arr, axis=1): return np.linalg.norm(arr, axis=axis) if len(arr) > 0 else np.zeros(1)
+    
     return KinematicFeatures(
         gesture_id=gesture_id,
         video_id=video_id,
-        space_use_left=space_use_L,
-        space_use_right=space_use_R,
-        mcneillian_max_left=mcneillian_maxL,
-        mcneillian_max_right=mcneillian_maxR,
-        mcneillian_mode_left=mcneillian_modeL,
-        mcneillian_mode_right=mcneillian_modeR,
-        volume_both=volume_both,
-        volume_right=volume_right,
-        volume_left=volume_left,
-        max_height_right=max_height_R,
-        max_height_left=max_height_L,
+        active_hand=active_hand,
+        
+        # Spatial features
+        space_use=space_use,
+        mcneillian_max=mcneillian_max,
+        mcneillian_mode=mcneillian_mode,
+        volume=volume,
+        max_height=max_height,
+        
+        # Temporal features
         duration=len(landmarks) / fps,
         hold_count=hold_count,
         hold_time=hold_time,
         hold_avg_duration=hold_avg,
         
         # Hand submovements
-        hand_submovements_left=len(l_hand.peaks),
-        hand_submovements_right=len(r_hand.peaks),
-        hand_submovements_combined=len(combined_hand_peaks),
-        hand_submovement_peaks_left=l_hand.peak_heights.tolist() if len(l_hand.peak_heights) > 0 else [0],
-        hand_submovement_peaks_right=r_hand.peak_heights.tolist() if len(r_hand.peak_heights) > 0 else [0],
-        hand_submovement_peaks_combined=combined_hand_heights.tolist() if len(combined_hand_heights) > 0 else [0],
-        hand_mean_submovement_amplitude_left=safe_mean(l_hand.peak_heights),
-        hand_mean_submovement_amplitude_right=safe_mean(r_hand.peak_heights),
-        hand_mean_submovement_amplitude_combined=safe_mean(combined_hand_heights),
+        hand_submovements=len(hand.peaks),
+        hand_submovement_peaks=hand.peak_heights.tolist() if len(hand.peak_heights) > 0 else [0],
+        hand_mean_submovement_amplitude=safe_mean(hand.peak_heights),
         
         # Elbow submovements
-        elbow_submovements_left=len(l_elbow.peaks),
-        elbow_submovements_right=len(r_elbow.peaks),
-        elbow_submovements_combined=len(combined_elbow_peaks),
-        elbow_mean_submovement_amplitude_left=safe_mean(l_elbow.peak_heights),
-        elbow_mean_submovement_amplitude_right=safe_mean(r_elbow.peak_heights),
-        elbow_mean_submovement_amplitude_combined=safe_mean(combined_elbow_heights),
+        elbow_submovements=len(elbow.peaks),
+        elbow_mean_submovement_amplitude=safe_mean(elbow.peak_heights),
         
         # Hand dynamics
-        hand_peak_velocity_right=safe_max(safe_norm(r_hand.velocity)),
-        hand_peak_velocity_left=safe_max(safe_norm(l_hand.velocity)),
-        hand_mean_velocity_right=safe_mean(safe_norm(r_hand.velocity)),
-        hand_mean_velocity_left=safe_mean(safe_norm(l_hand.velocity)),
-        hand_peak_acceleration_right=safe_max(safe_norm(r_hand.acceleration)),
-        hand_peak_acceleration_left=safe_max(safe_norm(l_hand.acceleration)),
-        hand_peak_deceleration_right=safe_min(safe_norm(r_hand.acceleration)),
-        hand_peak_deceleration_left=safe_min(safe_norm(l_hand.acceleration)),
-        hand_peak_jerk_right=safe_max(safe_norm(r_hand.jerk)),
-        hand_peak_jerk_left=safe_max(safe_norm(l_hand.jerk)),
+        hand_peak_speed=safe_max(hand.speed),          # Changed from velocity to speed
+        hand_mean_speed=safe_mean(hand.speed),         # Changed from velocity to speed
+        hand_peak_acceleration=safe_max(safe_norm(hand.acceleration)),
+        hand_peak_deceleration=safe_min(safe_norm(hand.acceleration)),
+        hand_peak_jerk=safe_max(safe_norm(hand.jerk)),
         
         # Elbow dynamics
-        elbow_peak_velocity_right=safe_max(safe_norm(r_elbow.velocity)),
-        elbow_peak_velocity_left=safe_max(safe_norm(l_elbow.velocity)),
-        elbow_mean_velocity_right=safe_mean(safe_norm(r_elbow.velocity)),
-        elbow_mean_velocity_left=safe_mean(safe_norm(l_elbow.velocity)),
-        elbow_peak_acceleration_right=safe_max(safe_norm(r_elbow.acceleration)),
-        elbow_peak_acceleration_left=safe_max(safe_norm(l_elbow.acceleration)),
-        elbow_peak_deceleration_right=safe_min(safe_norm(r_elbow.acceleration)),
-        elbow_peak_deceleration_left=safe_min(safe_norm(l_elbow.acceleration)),
-        elbow_peak_jerk_right=safe_max(safe_norm(r_elbow.jerk)),
-        elbow_peak_jerk_left=safe_max(safe_norm(l_elbow.jerk))
+        elbow_peak_speed=safe_max(elbow.speed),        # Changed from velocity to speed
+        elbow_mean_speed=safe_mean(elbow.speed),       # Changed from velocity to speed
+        elbow_peak_acceleration=safe_max(safe_norm(elbow.acceleration)),
+        elbow_peak_deceleration=safe_min(safe_norm(elbow.acceleration)),
+        elbow_peak_jerk=safe_max(safe_norm(elbow.jerk))
     )
 
 def compute_gesture_kinematics_dtw(
@@ -1455,53 +1413,32 @@ def compute_gesture_kinematics_dtw(
     features_df = pd.DataFrame([{
         'gesture_id': f.gesture_id,
         'video_id': f.video_id,
-        'space_use_left': f.space_use_left,
-        'space_use_right': f.space_use_right,
-        'mcneillian_max_left': f.mcneillian_max_left,
-        'mcneillian_max_right': f.mcneillian_max_right,
-        'mcneillian_mode_left': f.mcneillian_mode_left,
-        'mcneillian_mode_right': f.mcneillian_mode_right,
-        'volume_both': f.volume_both,
-        'volume_right': f.volume_right,
-        'volume_left': f.volume_left,
-        'max_height_right': f.max_height_right,
-        'max_height_left': f.max_height_left,
+        'active_hand': f.active_hand,
+        'space_use': f.space_use,
+        'mcneillian_max': f.mcneillian_max,
+        'mcneillian_mode': f.mcneillian_mode,
+        'volume': f.volume,
+        'max_height': f.max_height,
         'duration': f.duration,
         'hold_count': f.hold_count,
         'hold_time': f.hold_time,
         'hold_avg_duration': f.hold_avg_duration,
-        'hand_submovements_left': f.hand_submovements_left,
-        'hand_submovements_right': f.hand_submovements_right,
-        'hand_submovements_combined': f.hand_submovements_combined,
-        'hand_mean_submovement_amplitude_left': f.hand_mean_submovement_amplitude_left,
-        'hand_mean_submovement_amplitude_right': f.hand_mean_submovement_amplitude_right,
-        'hand_mean_submovement_amplitude_combined': f.hand_mean_submovement_amplitude_combined,
-        'elbow_submovements_left': f.elbow_submovements_left,
-        'elbow_submovements_right': f.elbow_submovements_right,
-        'elbow_submovements_combined': f.elbow_submovements_combined,
-        'elbow_mean_submovement_amplitude_left': f.elbow_mean_submovement_amplitude_left,
-        'elbow_mean_submovement_amplitude_right': f.elbow_mean_submovement_amplitude_right,
-        'elbow_mean_submovement_amplitude_combined': f.elbow_mean_submovement_amplitude_combined,
-        'hand_peak_velocity_right': f.hand_peak_velocity_right,
-        'hand_peak_velocity_left': f.hand_peak_velocity_left,
-        'hand_mean_velocity_right': f.hand_mean_velocity_right,
-        'hand_mean_velocity_left': f.hand_mean_velocity_left,
-        'hand_peak_acceleration_right': f.hand_peak_acceleration_right,
-        'hand_peak_acceleration_left': f.hand_peak_acceleration_left,
-        'hand_peak_deceleration_right': f.hand_peak_deceleration_right,
-        'hand_peak_deceleration_left': f.hand_peak_deceleration_left,
-        'hand_peak_jerk_right': f.hand_peak_jerk_right,
-        'hand_peak_jerk_left': f.hand_peak_jerk_left,
-        'elbow_peak_velocity_right': f.elbow_peak_velocity_right,
-        'elbow_peak_velocity_left': f.elbow_peak_velocity_left,
-        'elbow_mean_velocity_right': f.elbow_mean_velocity_right,
-        'elbow_mean_velocity_left': f.elbow_mean_velocity_left,
-        'elbow_peak_acceleration_right': f.elbow_peak_acceleration_right,
-        'elbow_peak_acceleration_left': f.elbow_peak_acceleration_left,
-        'elbow_peak_deceleration_right': f.elbow_peak_deceleration_right,
-        'elbow_peak_deceleration_left': f.elbow_peak_deceleration_left,
-        'elbow_peak_jerk_right': f.elbow_peak_jerk_right,
-        'elbow_peak_jerk_left': f.elbow_peak_jerk_left
+        'hand_submovements': f.hand_submovements,
+        'hand_submovement_peak_max': max(f.hand_submovement_peaks) if f.hand_submovement_peaks else 0,
+        'hand_submovement_peak_mean': sum(f.hand_submovement_peaks)/len(f.hand_submovement_peaks) if f.hand_submovement_peaks else 0,
+        'hand_mean_submovement_amplitude': f.hand_mean_submovement_amplitude,
+        'elbow_submovements': f.elbow_submovements,
+        'elbow_mean_submovement_amplitude': f.elbow_mean_submovement_amplitude,
+        'hand_peak_speed': f.hand_peak_speed,
+        'hand_mean_speed': f.hand_mean_speed,
+        'hand_peak_acceleration': f.hand_peak_acceleration,
+        'hand_peak_deceleration': f.hand_peak_deceleration,
+        'hand_peak_jerk': f.hand_peak_jerk,
+        'elbow_peak_speed': f.elbow_peak_speed,
+        'elbow_mean_speed': f.elbow_mean_speed,
+        'elbow_peak_acceleration': f.elbow_peak_acceleration,
+        'elbow_peak_deceleration': f.elbow_peak_deceleration,
+        'elbow_peak_jerk': f.elbow_peak_jerk
     } for f in kinematic_features])
     
     # Save results

@@ -43,8 +43,9 @@ from envisionhgdetector import GestureDetector
 detector = GestureDetector(
     motion_threshold=0.9,    # Sensitivity to motion
     gesture_threshold=0.5,   # Confidence threshold for gestures
-    min_gap_s=0.1,          # Minimum gap between gestures
-    min_length_s=0.1        # Minimum gesture duration
+    min_gap_s=0.1,           # Minimum gap between gestures
+    min_length_s=0.1,        # Minimum gesture duration
+    gesture_class_bias=0.5   # How much do you want to increase likelihood of classification to gesture (versus self-adaptor "move" label)
 )
 
 # Process videos
@@ -147,7 +148,7 @@ The package builds on previous work in gesture detection, particularly focused o
 
 If you use this package, please cite:
 
-Pouw, W., Yung, B., Shaikh, S., Trujillo, J., de Melo, G., Owoyele, B. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 0.0.5.0) [Computer software]. https://pypi.org/project/envisionhgdetector/
+Pouw, W., Yung, B., Shaikh, S., Trujillo, J., Rueda-Toicen, A., de Melo, G., Owoyele, B. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 0.0.5.0) [Computer software]. https://pypi.org/project/envisionhgdetector/
 
 ### Additional Citations
 
