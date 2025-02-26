@@ -41,11 +41,11 @@ from envisionhgdetector import GestureDetector
 
 # Initialize detector
 detector = GestureDetector(
-    motion_threshold=0.9,    # Sensitivity to motion
-    gesture_threshold=0.5,   # Confidence threshold for gestures
+    motion_threshold=0.8,    # Sensitivity to motion
+    gesture_threshold=0.3,   # Confidence threshold for gestures
     min_gap_s=0.1,           # Minimum gap between gestures
     min_length_s=0.1,        # Minimum gesture duration
-    gesture_class_bias=0.5   # How much do you want to increase likelihood of classification to gesture (versus self-adaptor "move" label)
+    gesture_class_bias=0.1   # How much do you want to increase likelihood of classification to gesture (versus self-adaptor "move" label)
 )
 
 # Process videos
