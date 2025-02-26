@@ -23,7 +23,7 @@ class Config:
     def __post_init__(self):
         """Setup paths after initialization."""
         # Using importlib.resources (Python 3.9+)
-        self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250224_103340.h5'))
+        self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250225_235938.h5'))
         
         # Or using pkg_resources (older Python versions)
         # self.weights_path = resource_filename('envisionhgdetector', 'model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5')

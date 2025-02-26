@@ -15,4 +15,4 @@ envisionhgdetector.egg-info/dependency_links.txt
 envisionhgdetector.egg-info/requires.txt
 envisionhgdetector.egg-info/top_level.txt
 envisionhgdetector/dashboard/app.py
-envisionhgdetector/model/model_weights_20250224_103340.h5
+envisionhgdetector/model/model_weights_20250225_235938.h5
