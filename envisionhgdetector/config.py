@@ -12,7 +12,7 @@ class Config:
     undefined_gesture_label: str = "Undefined"
     stationary_label: str = "NoGesture"
     seq_length: int = 25  # Window size for classification
-    num_original_features: int = 29  # Number of input features
+    num_original_features: int = 62  # Number of input features
     
     # Default thresholds (can be overridden in detector)
     default_motion_threshold: float = 0.7

@@ -16,7 +16,8 @@ class EnhancedPreprocessing(layers.Layer):
         drop_prob: float = 0.03,                              # Lower drop probability
         noise_stddev: float = 0.01,                           # Lower noise for normalized features
         scale_range: Tuple[float, float] = (0.98, 1.02),      # Smaller scale range
-        mask_max_size: int = 2                                # Shorter mask length
+        mask_max_size: int = 2,                               # Shorter mask length
+        original_feature_dim: int = 29                        # Dimension of original features
     ) -> None:
         super(EnhancedPreprocessing, self).__init__(name="enhanced_preprocessing")
         self.time_warp_range = time_warp_range
@@ -26,6 +27,7 @@ class EnhancedPreprocessing(layers.Layer):
         self.noise_stddev = noise_stddev
         self.scale_range = scale_range
         self.mask_max_size = mask_max_size
+        self.original_feature_dim = original_feature_dim
 
     def time_warp(self, features: tf.Tensor) -> tf.Tensor:
         """Apply random temporal warping."""
@@ -97,10 +99,22 @@ class EnhancedPreprocessing(layers.Layer):
         return features_std, t_deriv_std, t_deriv_std_2
 
     def normalize_features(self, features: tf.Tensor) -> tf.Tensor:
-        """Apply feature normalization."""
-        mean = tf.reduce_mean(features, axis=-1, keepdims=True)
-        std = tf.math.reduce_std(features, axis=-1, keepdims=True) + 1e-8
-        return (features - mean) / std
+        """Apply feature normalization only to original features.
+        
+        Args:
+            features: Input tensor of shape [batch_size, sequence_length, feature_dim]
+        """
+        # Split features into original and derived
+        original_features = features[:, :, :self.original_feature_dim]
+        derived_features = features[:, :, self.original_feature_dim:]
+        
+        # Normalize only the original features
+        mean = tf.reduce_mean(original_features, axis=-1, keepdims=True)
+        std = tf.math.reduce_std(original_features, axis=-1, keepdims=True) + 1e-8
+        normalized_original = (original_features - mean) / std
+        
+        # Concatenate back
+        return tf.concat([normalized_original, derived_features], axis=-1)
 
     def call(
         self, 
@@ -110,10 +124,17 @@ class EnhancedPreprocessing(layers.Layer):
     ) -> tf.Tensor:
         features = x
         
-        # Center the features
-        features = features - tf.reduce_mean(features, axis=-2, keepdims=True)
+        # Split features for centering
+        original_features = features[:, :, :self.original_feature_dim]
+        derived_features = features[:, :, self.original_feature_dim:]
         
-        # Compute derivatives and statistics
+        # Center only the original features
+        centered_original = original_features - tf.reduce_mean(original_features, axis=-2, keepdims=True)
+        
+        # Recombine features
+        features = tf.concat([centered_original, derived_features], axis=-1)
+        
+        # Compute derivatives and statistics on ALL features
         t_deriv, t_deriv_2 = self.compute_derivatives(features)
         features_std, t_deriv_std, t_deriv_std_2 = self.compute_statistics(
             features, t_deriv, t_deriv_2
@@ -130,19 +151,19 @@ class EnhancedPreprocessing(layers.Layer):
         ], axis=-1)
         
         if training:
-            # Apply augmentations
+            # Apply augmentations to ALL features
             features = self.time_warp(features)
             features = self.add_position_jitter(features)
             features = self.random_frame_drop(features)
             
-            # Add noise
+            # Add noise to ALL features
             features = features + tf.random.normal(
                 tf.shape(features), 
                 mean=0.0, 
                 stddev=self.noise_stddev
             )
             
-            # Random scaling
+            # Random scaling for ALL features
             scale = tf.random.uniform(
                 [], 
                 self.scale_range[0], 
@@ -151,10 +172,10 @@ class EnhancedPreprocessing(layers.Layer):
             )
             features = features * scale
             
-            # Apply time masking
+            # Apply time masking to ALL features
             features = self.time_masking(features)
         
-        # Final normalization
+        # Final normalization - only normalize the original features
         features = self.normalize_features(features)
         
         return features
