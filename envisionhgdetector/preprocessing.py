@@ -197,11 +197,6 @@ markersbody = [
     'RIGHT_HEEL', 'LEFT_FOOT_INDEX', 'RIGHT_FOOT_INDEX'
 ]
 
-class VideoSegment(Enum):
-    """Video segment selection for processing."""
-    BEGINNING = auto()
-    LAST = auto()
-
 class Feature(Enum):
     """Enumeration of features to extract."""
     rot_x = auto()
@@ -234,6 +229,11 @@ class Feature(Enum):
     left_index_finger_nose_norm_dist = auto()
     right_index_finger_nose_norm_dist = auto()
 
+class VideoSegment(Enum):
+    BEGINNING = "beginning"
+    MIDDLE = "middle"
+    END = "end"
+    LAST = "last"
 
 def video_to_landmarks(
     video_path: Optional[Union[int, str]],
@@ -243,8 +243,25 @@ def video_to_landmarks(
     drop_consecutive_duplicates: bool = False
 ) -> List[List[float]]:
     """
-    Extract landmarks from video frames.
-    [Previous docstring remains the same...]
+    Extract landmarks from video frames, ensuring a maximum of 25 frames per second.
+    If the video has a higher frame rate, frames are skipped to maintain this rate.
+
+    Args:
+        video_path: Path to the video file or camera index (0 for default camera).
+        max_num_frames: Maximum number of frames to process. If None, all frames are processed
+                        (subject to the 1/25 second constraint).
+        video_segment: Which part of the video to process ('beginning', 'middle', 'end', 'last').
+                       'last' takes the last max_num_frames.
+        end_padding: If True and the number of extracted frames is less than max_num_frames,
+                     the last frame's landmarks are repeated to pad the output.
+        drop_consecutive_duplicates: If True, frames with very similar landmark features
+                                     to the previous frame are skipped.
+
+    Returns:
+        A tuple containing:
+            - A list of lists, where each inner list contains the flattened landmark features
+              for a single frame.
+            - A list of timestamps (in seconds) corresponding to the extracted frames.
     """
     assert video_segment in VideoSegment
     video_path = video_path if video_path else 0
@@ -253,9 +270,14 @@ def video_to_landmarks(
     prev_features: List[float] = []
     landmarks: List[List[float]] = []
     cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    frame_interval = max(1, round(fps / 25)) if fps > 0 else 1  # Skip frames if FPS > 25
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     pbar = tqdm(total=total_frames, desc="Processing frames")
-    frame_timestamps = []  # Add this
+    frame_timestamps = []  # Store actual timestamps of processed frames
+    frame_number = 0
+    processed_frame_count = 0
+
     with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
         while cap.isOpened():
             ret, bgr_frame = cap.read()
@@ -263,20 +285,29 @@ def video_to_landmarks(
                 if video_path == 0:
                     continue
                 break
-            current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0  # Get actual timestamp
-            if max_num_frames and video_segment == VideoSegment.BEGINNING \
-                    and valid_frame_count >= max_num_frames:
+
+            if frame_number % frame_interval == 0:
+                processed_frame_count += 1
+
+            if frame_number % frame_interval != 0:
+                pbar.update(1)
+                frame_number += 1
+                continue
+
+            #current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0  # Get actual timestamp
+
+            if max_num_frames and video_segment == VideoSegment.BEGINNING and valid_frame_count >= max_num_frames:
                 break
 
             frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
             resultsh = holistic.process(frame)
-            
+
             h, w, _ = frame.shape
             face_3d = []
             face_2d = []
 
             if resultsh.face_landmarks and resultsh.pose_landmarks:
-                frame_timestamps.append(current_time)  # Store actual timestamp
+                frame_timestamps.append(processed_frame_count / 25.0)  # Store actual timestamp
                 # Head rotation calculation
                 for idx, lm in enumerate(resultsh.face_landmarks.landmark):
                     if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
@@ -289,12 +320,12 @@ def video_to_landmarks(
 
                 face_2d = np.array(face_2d, dtype=np.float64)
                 face_3d = np.array(face_3d, dtype=np.float64)
-                
+
                 # Camera matrix
                 focal_length = 1 * w
                 cam_matrix = np.array([
-                    [focal_length, 0, h / 2],
-                    [0, focal_length, w / 2],
+                    [focal_length, 0, w / 2],
+                    [0, focal_length, h / 2],
                     [0, 0, 1]
                 ])
 
@@ -305,107 +336,105 @@ def video_to_landmarks(
                 # Get rotation
                 rmat, jac = cv2.Rodrigues(rot_vec)
                 angles, mtxR, mtxQ, Qx, Qy, Qz = cv2.RQDecomp3x3(rmat)
-                
+
                 # Get rotation degrees
-                xrot = angles[0] * w  # up/down
-                yrot = angles[1] * h  # left/right
-                zrot = angles[2] * 3000  # tilt
-                
+                xrot = angles[0] * 360
+                yrot = angles[1] * 360
+                zrot = angles[2] * 360
+
                 # Get nose coordinates
                 nose_x = nose_3d[0]
                 nose_y = nose_3d[1]
                 nose_z = nose_3d[2]
 
                 # Get normalized distance from chin to top head
+                chin, top_head = None, None
                 for idx, lm in enumerate(resultsh.face_landmarks.landmark):
-                    if idx == 152 or idx == 10:
+                    if idx == 152:
                         chin = (lm.x * w, lm.y * h)
                     if idx == 10:
                         top_head = (lm.x * w, lm.y * h)
-                norm_dist = np.linalg.norm(np.array(chin) - np.array(top_head))
+                norm_dist = np.linalg.norm(np.array(chin) - np.array(top_head)) if chin is not None and top_head is not None else 1.0
 
                 # Get left brow and eye distance
+                left_inner_eye, left_brow = None, None
                 for idx, lm in enumerate(resultsh.face_landmarks.landmark):
-                    if idx == 133 or idx == 33:
+                    if idx == 33:
                         left_inner_eye = (lm.x * w, lm.y * h)
                     if idx == 225:
                         left_brow = (lm.x * w, lm.y * h)
-                left_brow_left_eye_norm_dist = np.linalg.norm(np.array(left_inner_eye) - np.array(left_brow))
+                left_brow_left_eye_norm_dist = np.linalg.norm(np.array(left_inner_eye) - np.array(left_brow)) / norm_dist if left_inner_eye is not None and left_brow is not None else 0.0
 
                 # Get right brow and eye distance
+                right_inner_eye, right_brow = None, None
                 for idx, lm in enumerate(resultsh.face_landmarks.landmark):
-                    if idx == 362 or idx == 263:
+                    if idx == 263:
                         right_inner_eye = (lm.x * w, lm.y * h)
-                    if idx == 225:
+                    if idx == 295:  # Corrected index for right brow
                         right_brow = (lm.x * w, lm.y * h)
-                right_brow_right_eye_norm_dist = np.linalg.norm(np.array(right_inner_eye) - np.array(right_brow))
+                right_brow_right_eye_norm_dist = np.linalg.norm(np.array(right_inner_eye) - np.array(right_brow)) / norm_dist if right_inner_eye is not None and right_brow is not None else 0.0
 
                 # Get mouth corners distance
+                left_mouth, right_mouth = None, None
                 for idx, lm in enumerate(resultsh.face_landmarks.landmark):
-                    if idx == 87:
+                    if idx == 61:  # Corrected index for left mouth corner
                         left_mouth = (lm.x * w, lm.y * h)
-                    if idx == 308:
+                    if idx == 291:  # Corrected index for right mouth corner
                         right_mouth = (lm.x * w, lm.y * h)
-                mouth_corners_norm_dist = np.linalg.norm(np.array(left_mouth) - np.array(right_mouth))
+                mouth_corners_norm_dist = np.linalg.norm(np.array(left_mouth) - np.array(right_mouth)) / norm_dist if left_mouth is not None and right_mouth is not None else 0.0
 
                 # Get mouth aperture distance
+                upper_lip, lower_lip = None, None
                 for idx, lm in enumerate(resultsh.face_landmarks.landmark):
                     if idx == 13:
                         upper_lip = (lm.x * w, lm.y * h)
                     if idx == 14:
                         lower_lip = (lm.x * w, lm.y * h)
-                mouth_apperture_norm_dist = np.linalg.norm(np.array(upper_lip) - np.array(lower_lip))
+                mouth_apperture_norm_dist = np.linalg.norm(np.array(upper_lip) - np.array(lower_lip)) / norm_dist if upper_lip is not None and lower_lip is not None else 0.0
 
                 # Get body landmarks
+                body_landmarks = {}
                 for idx, lm in enumerate(resultsh.pose_landmarks.landmark):
-                    if idx == markersbody.index('LEFT_INDEX'):
-                        left_index = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('RIGHT_INDEX'):
-                        right_index = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('LEFT_THUMB'):
-                        left_thumb = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('RIGHT_THUMB'):
-                        right_thumb = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('LEFT_PINKY'):
-                        left_pinky = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('RIGHT_PINKY'):
-                        right_pinky = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('LEFT_WRIST'):
-                        left_wrist = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('RIGHT_WRIST'):
-                        right_wrist = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('LEFT_ELBOW'):
-                        left_elbow = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('RIGHT_ELBOW'):
-                        right_elbow = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('LEFT_SHOULDER'):
-                        left_shoulder = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('RIGHT_SHOULDER'):
-                        right_shoulder = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('LEFT_EAR'):
-                        left_ear = (lm.x * w, lm.y * h)
-                    if idx == markersbody.index('RIGHT_EAR'):
-                        right_ear = (lm.x * w, lm.y * h)
+                    if markersbody[idx] in ['LEFT_INDEX', 'RIGHT_INDEX', 'LEFT_THUMB', 'RIGHT_THUMB',
+                                             'LEFT_PINKY', 'RIGHT_PINKY', 'LEFT_WRIST', 'RIGHT_WRIST',
+                                             'LEFT_ELBOW', 'RIGHT_ELBOW', 'LEFT_SHOULDER', 'RIGHT_SHOULDER',
+                                             'LEFT_EAR', 'RIGHT_EAR']:
+                        body_landmarks[markersbody[idx]] = (lm.x * w, lm.y * h)
 
                 # Calculate normalized distances
-                left_right_wrist_norm_dist = np.linalg.norm(np.array(left_wrist) - np.array(right_wrist)) / norm_dist
-                left_right_elbow_norm_dist = np.linalg.norm(np.array(left_elbow) - np.array(right_elbow)) / norm_dist
-                left_elbow_midpoint_shoulder_norm_dist = np.linalg.norm(np.array(left_elbow) - np.array(left_shoulder)) / norm_dist
-                right_elbow_midpoint_shoulder_norm_dist = np.linalg.norm(np.array(right_elbow) - np.array(right_shoulder)) / norm_dist
-                left_wrist_midpoint_shoulder_norm_dist = np.linalg.norm(np.array(left_wrist) - np.array(left_shoulder)) / norm_dist
-                right_wrist_midpoint_shoulder_norm_dist = np.linalg.norm(np.array(right_wrist) - np.array(right_shoulder)) / norm_dist
-                left_shoulder_left_ear_norm_dist = np.linalg.norm(np.array(left_shoulder) - np.array(left_ear)) / norm_dist
-                right_shoulder_right_ear_norm_dist = np.linalg.norm(np.array(right_shoulder) - np.array(right_ear)) / norm_dist
-                left_thumb_left_index_norm_dist = np.linalg.norm(np.array(left_thumb) - np.array(left_index)) / norm_dist
-                right_thumb_right_index_norm_dist = np.linalg.norm(np.array(right_thumb) - np.array(right_index)) / norm_dist
-                left_thumb_left_pinky_norm_dist = np.linalg.norm(np.array(left_thumb) - np.array(left_pinky)) / norm_dist
-                right_thumb_right_pinky_norm_dist = np.linalg.norm(np.array(right_thumb) - np.array(right_pinky)) / norm_dist
-                x_left_wrist_x_left_elbow_norm_dist = (left_wrist[0] - left_elbow[0]) / norm_dist
-                x_right_wrist_x_right_elbow_norm_dist = (right_wrist[0] - right_elbow[0]) / norm_dist
-                y_left_wrist_y_left_elbow_norm_dist = (left_wrist[1] - left_elbow[1]) / norm_dist
-                y_right_wrist_y_right_elbow_norm_dist = (right_wrist[1] - right_elbow[1]) / norm_dist
-                left_index_finger_nose_norm_dist = np.linalg.norm(np.array(left_index) - np.array(nose_2d)) / norm_dist
-                right_index_finger_nose_norm_dist = np.linalg.norm(np.array(right_index) - np.array(nose_2d)) / norm_dist
+                left_wrist = body_landmarks.get('LEFT_WRIST')
+                right_wrist = body_landmarks.get('RIGHT_WRIST')
+                left_elbow = body_landmarks.get('LEFT_ELBOW')
+                right_elbow = body_landmarks.get('RIGHT_ELBOW')
+                left_shoulder = body_landmarks.get('LEFT_SHOULDER')
+                right_shoulder = body_landmarks.get('RIGHT_SHOULDER')
+                left_ear = body_landmarks.get('LEFT_EAR')
+                right_ear = body_landmarks.get('RIGHT_EAR')
+                left_thumb = body_landmarks.get('LEFT_THUMB')
+                left_index_finger = body_landmarks.get('LEFT_INDEX')
+                left_pinky = body_landmarks.get('LEFT_PINKY')
+                right_thumb = body_landmarks.get('RIGHT_THUMB')
+                right_index_finger = body_landmarks.get('RIGHT_INDEX')
+                right_pinky = body_landmarks.get('RIGHT_PINKY')
+
+                left_right_wrist_norm_dist = np.linalg.norm(np.array(left_wrist) - np.array(right_wrist)) / norm_dist if left_wrist is not None and right_wrist is not None else 0.0
+                left_right_elbow_norm_dist = np.linalg.norm(np.array(left_elbow) - np.array(right_elbow)) / norm_dist if left_elbow is not None and right_elbow is not None else 0.0
+                left_elbow_midpoint_shoulder_norm_dist = np.linalg.norm(np.array(left_elbow) - np.array(left_shoulder)) / norm_dist if left_elbow is not None and left_shoulder is not None else 0.0
+                right_elbow_midpoint_shoulder_norm_dist = np.linalg.norm(np.array(right_elbow) - np.array(right_shoulder)) / norm_dist if right_elbow is not None and right_shoulder is not None else 0.0
+                left_wrist_midpoint_shoulder_norm_dist = np.linalg.norm(np.array(left_wrist) - np.array(left_shoulder)) / norm_dist if left_wrist is not None and left_shoulder is not None else 0.0
+                right_wrist_midpoint_shoulder_norm_dist = np.linalg.norm(np.array(right_wrist) - np.array(right_shoulder)) / norm_dist if right_wrist is not None and right_shoulder is not None else 0.0
+                left_shoulder_left_ear_norm_dist = np.linalg.norm(np.array(left_shoulder) - np.array(left_ear)) / norm_dist if left_shoulder is not None and left_ear is not None else 0.0
+                right_shoulder_right_ear_norm_dist = np.linalg.norm(np.array(right_shoulder) - np.array(right_ear)) / norm_dist if right_shoulder is not None and right_ear is not None else 0.0
+                left_thumb_left_index_norm_dist = np.linalg.norm(np.array(left_thumb) - np.array(left_index_finger)) / norm_dist if left_thumb is not None and left_index_finger is not None else 0.0
+                right_thumb_right_index_norm_dist = np.linalg.norm(np.array(right_thumb) - np.array(right_index_finger)) / norm_dist if right_thumb is not None and right_index_finger is not None else 0.0
+                left_thumb_left_pinky_norm_dist = np.linalg.norm(np.array(left_thumb) - np.array(left_pinky)) / norm_dist if left_thumb is not None and left_pinky is not None else 0.0
+                right_thumb_right_pinky_norm_dist = np.linalg.norm(np.array(right_thumb) - np.array(right_pinky)) / norm_dist if right_thumb is not None and right_pinky is not None else 0.0
+                x_left_wrist_x_left_elbow_norm_dist = (left_wrist[0] - left_elbow[0]) / norm_dist if left_wrist is not None and left_elbow is not None else 0.0
+                x_right_wrist_x_right_elbow_norm_dist = (right_wrist[0] - right_elbow[0]) / norm_dist if right_wrist is not None and right_elbow is not None else 0.0
+                y_left_wrist_y_left_elbow_norm_dist = (left_wrist[1] - left_elbow[1]) / norm_dist if left_wrist is not None and left_elbow is not None else 0.0
+                y_right_wrist_y_right_elbow_norm_dist = (right_wrist[1] - right_elbow[1]) / norm_dist if right_wrist is not None and right_elbow is not None else 0.0
+                left_index_finger_nose_norm_dist = np.linalg.norm(np.array(left_index_finger) - np.array(nose_2d)) / norm_dist if left_index_finger is not None and nose_2d is not None else 0.0
+                right_index_finger_nose_norm_dist = np.linalg.norm(np.array(right_index_finger) - np.array(nose_2d)) / norm_dist if right_index_finger is not None and nose_2d is not None else 0.0
 
                 # Collect all features in order
                 features = [
