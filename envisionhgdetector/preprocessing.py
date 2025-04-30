@@ -233,40 +233,6 @@ class Feature(Enum):
     y_right_wrist_y_right_elbow_norm_dist = auto()
     left_index_finger_nose_norm_dist = auto()
     right_index_finger_nose_norm_dist = auto()
-    # world landmark additions for upper limb
-    left_shoulderwlx = auto()
-    left_shoulderwly = auto()
-    left_shoulderwlz = auto()
-    right_shoulderwlx = auto()
-    right_shoulderwly = auto()
-    right_shoulderwlz = auto()
-    left_elbowwlx = auto()
-    left_elbowwly = auto()
-    left_elbowwlz = auto()
-    right_elbowwlx = auto()
-    right_elbowwly = auto()
-    right_elbowwlz = auto()
-    left_wristwlx = auto()
-    left_wristwly = auto()
-    left_wristwlz = auto()
-    right_wristwlx = auto()
-    right_wristwly = auto()
-    right_wristwlz = auto()
-    left_thumbwlx = auto()
-    left_thumbwly = auto()
-    left_thumbwlz = auto()
-    right_thumbwlx = auto()
-    right_thumbwly = auto()
-    right_thumbwlz = auto()
-    left_indexwlx = auto()
-    left_indexwly = auto()
-    left_indexwlz = auto()
-    right_indexwlx = auto()
-    right_indexwly = auto()
-    right_indexwlz = auto()
-    nose_wl_x = auto()
-    nose_wl_y = auto()
-    nose_wl_z = auto()
 
 
 def video_to_landmarks(
@@ -274,22 +240,11 @@ def video_to_landmarks(
     max_num_frames: Optional[int] = None,
     video_segment: VideoSegment = VideoSegment.BEGINNING,
     end_padding: bool = True,
-    drop_consecutive_duplicates: bool = False,
-    target_fps: int = 25  # Target frame rate
-) -> Tuple[List[List[float]], List[float]]:
+    drop_consecutive_duplicates: bool = False
+) -> List[List[float]]:
     """
-    Extract landmarks from video frames at a target frame rate.
-    
-    Args:
-        video_path: Path to the video file or camera index.
-        max_num_frames: Maximum number of frames to process.
-        video_segment: Which segment of the video to process.
-        end_padding: Whether to pad the end of the video if it has fewer frames than max_num_frames.
-        drop_consecutive_duplicates: Whether to drop consecutive duplicate frames.
-        target_fps: Target frame rate for processing.
-        
-    Returns:
-        Tuple of (landmarks, frame_timestamps)
+    Extract landmarks from video frames.
+    [Previous docstring remains the same...]
     """
     assert video_segment in VideoSegment
     video_path = video_path if video_path else 0
@@ -297,31 +252,21 @@ def video_to_landmarks(
     valid_frame_count = 0
     prev_features: List[float] = []
     landmarks: List[List[float]] = []
-    frame_timestamps: List[float] = []
-    
     cap = cv2.VideoCapture(video_path)
-    original_fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = total_frames / original_fps
-    
-    # Calculate the frame interval based on the original and target FPS
-    frame_interval = int(round(original_fps / target_fps))
-    
-    pbar = tqdm(total=int(duration * target_fps), desc="Processing frames")
-    
+    pbar = tqdm(total=total_frames, desc="Processing frames")
+    frame_timestamps = []  # Add this
     with mp_holistic.Holistic(min_detection_confidence=0.5, min_tracking_confidence=0.5) as holistic:
-        frame_index = 0
         while cap.isOpened():
             ret, bgr_frame = cap.read()
             if not ret:
+                if video_path == 0:
+                    continue
                 break
-                
-            # Only process frames at the target FPS
-            if frame_index % frame_interval == 0:
-                current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
-                if max_num_frames and video_segment == VideoSegment.BEGINNING \
-                        and valid_frame_count >= max_num_frames:
-                    break
+            current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0  # Get actual timestamp
+            if max_num_frames and video_segment == VideoSegment.BEGINNING \
+                    and valid_frame_count >= max_num_frames:
+                break
 
             frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
             resultsh = holistic.process(frame)
@@ -461,42 +406,7 @@ def video_to_landmarks(
                 y_right_wrist_y_right_elbow_norm_dist = (right_wrist[1] - right_elbow[1]) / norm_dist
                 left_index_finger_nose_norm_dist = np.linalg.norm(np.array(left_index) - np.array(nose_2d)) / norm_dist
                 right_index_finger_nose_norm_dist = np.linalg.norm(np.array(right_index) - np.array(nose_2d)) / norm_dist
-                
-                # collect the worldlandmarks too
-                left_shoulderwlx = resultsh.pose_world_landmarks.landmark[11].x
-                left_shoulderwly = resultsh.pose_world_landmarks.landmark[11].y
-                left_shoulderwlz = resultsh.pose_world_landmarks.landmark[11].z
-                right_shoulderwlx = resultsh.pose_world_landmarks.landmark[12].x
-                right_shoulderwly = resultsh.pose_world_landmarks.landmark[12].y
-                right_shoulderwlz = resultsh.pose_world_landmarks.landmark[12].z
-                left_elbowwlx = resultsh.pose_world_landmarks.landmark[13].x
-                left_elbowwly = resultsh.pose_world_landmarks.landmark[13].y
-                left_elbowwlz = resultsh.pose_world_landmarks.landmark[13].z
-                right_elbowwlx = resultsh.pose_world_landmarks.landmark[14].x
-                right_elbowwly = resultsh.pose_world_landmarks.landmark[14].y
-                right_elbowwlz = resultsh.pose_world_landmarks.landmark[14].z
-                left_wristwlx = resultsh.pose_world_landmarks.landmark[15].x
-                left_wristwly = resultsh.pose_world_landmarks.landmark[15].y
-                left_wristwlz = resultsh.pose_world_landmarks.landmark[15].z
-                right_wristwlx = resultsh.pose_world_landmarks.landmark[16].x
-                right_wristwly = resultsh.pose_world_landmarks.landmark[16].y
-                right_wristwlz = resultsh.pose_world_landmarks.landmark[16].z
-                left_thumbwlx = resultsh.pose_world_landmarks.landmark[17].x
-                left_thumbwly = resultsh.pose_world_landmarks.landmark[17].y
-                left_thumbwlz = resultsh.pose_world_landmarks.landmark[17].z
-                right_thumbwlx = resultsh.pose_world_landmarks.landmark[18].x
-                right_thumbwly = resultsh.pose_world_landmarks.landmark[18].y
-                right_thumbwlz = resultsh.pose_world_landmarks.landmark[18].z
-                left_indexwlx = resultsh.pose_world_landmarks.landmark[19].x
-                left_indexwly = resultsh.pose_world_landmarks.landmark[19].y
-                left_indexwlz = resultsh.pose_world_landmarks.landmark[19].z
-                right_indexwlx = resultsh.pose_world_landmarks.landmark[20].x
-                right_indexwly = resultsh.pose_world_landmarks.landmark[20].y
-                right_indexwlz = resultsh.pose_world_landmarks.landmark[20].z
-                nose_wl_x = resultsh.pose_world_landmarks.landmark[0].x
-                nose_wl_y = resultsh.pose_world_landmarks.landmark[0].y
-                nose_wl_z = resultsh.pose_world_landmarks.landmark[0].z
-                
+
                 # Collect all features in order
                 features = [
                     xrot, yrot, zrot,
@@ -523,19 +433,7 @@ def video_to_landmarks(
                     y_left_wrist_y_left_elbow_norm_dist,
                     y_right_wrist_y_right_elbow_norm_dist,
                     left_index_finger_nose_norm_dist,
-                    right_index_finger_nose_norm_dist,
-                    # world landmarks
-                    left_shoulderwlx, left_shoulderwly, left_shoulderwlz,
-                    right_shoulderwlx, right_shoulderwly, right_shoulderwlz,
-                    left_elbowwlx, left_elbowwly, left_elbowwlz,
-                    right_elbowwlx, right_elbowwly, right_elbowwlz,
-                    left_wristwlx, left_wristwly, left_wristwlz,
-                    right_wristwlx, right_wristwly, right_wristwlz,
-                    left_thumbwlx, left_thumbwly, left_thumbwlz,
-                    right_thumbwlx, right_thumbwly, right_thumbwlz,
-                    left_indexwlx, left_indexwly, left_indexwlz,
-                    right_indexwlx, right_indexwly, right_indexwlz,
-                    nose_wl_x, nose_wl_y, nose_wl_z
+                    right_index_finger_nose_norm_dist
                 ]
 
                 if drop_consecutive_duplicates and prev_features and np.array_equal(

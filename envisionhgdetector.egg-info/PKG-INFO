@@ -1,4 +1,4 @@
-Metadata-Version: 2.2
+Metadata-Version: 2.4
 Name: envisionhgdetector
 Version: 1.0.0.1
 Summary: Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.
@@ -36,6 +36,7 @@ Dynamic: classifier
 Dynamic: description
 Dynamic: description-content-type
 Dynamic: home-page
+Dynamic: license-file
 Dynamic: requires-dist
 Dynamic: requires-python
 Dynamic: summary

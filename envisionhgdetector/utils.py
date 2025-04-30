@@ -23,6 +23,7 @@ from scipy.spatial.distance import euclidean
 from typing import Dict, List, Optional, Tuple, NamedTuple
 from dataclasses import dataclass
 import statistics
+from tqdm import tqdm
 
 def create_segments(
     annotations: pd.DataFrame,
@@ -239,10 +240,15 @@ def create_elan_file(
         f.write(header + footer)
 
 def label_video(
-    video_path: str, 
-    segments: pd.DataFrame, 
+    video_path: str,
+    segments: pd.DataFrame,
     output_path: str,
-    valid_timestamps: Optional[List[float]] = None
+    predictions_df: Optional[pd.DataFrame] = None,
+    valid_timestamps: Optional[List[float]] = None,
+    motion_threshold: float = None,
+    gesture_threshold: float = None,
+    window_duration: float = 10.0,
+    target_fps: float = 25.0  # Add target_fps parameter
 ) -> None:
     """
     Label a video with predicted gestures based on segments
@@ -253,16 +259,21 @@ def label_video(
             (must have columns: start_time, end_time, label)
         output_path: Path to save labeled video
         valid_timestamps: List of timestamps where skeleton was detected
+        predictions_df: DataFrame with confidence values over time (optional)
+        motion_threshold: Threshold for motion detection
+        gesture_threshold: Threshold for gesture classification
+        window_duration: Duration of the moving window in seconds
     """
     # Open video
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     # Create VideoWriter object
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    out = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
     
     # Color mapping for labels
     color_map = {
@@ -271,51 +282,267 @@ def label_video(
         'Move': (255, 94, 98)            # Soft coral red
     }
     
+    # Fixed y-axis parameters for absolute scale
+    y_min = 0.0  # Minimum confidence value
+    y_max = 1.0  # Maximum confidence value (fixed scale from 0 to 1)
+    
+    # Determine graph dimensions
+    graph_width = int(width * 0.3)   # 30% of video width
+    graph_height = int(height * 0.2) # 20% of video height
+    graph_margin = 10  # Margin from top-right corner
+
+    # add predictions if present
+    has_predictions = predictions_df is not None and not predictions_df.empty
+    
+    if has_predictions:
+        # Ensure the time column exists
+        if 'time' not in predictions_df.columns:
+            has_predictions = False
+            print("Warning: predictions_df doesn't have a 'time' column, skipping confidence graph")
+            
+    if has_predictions:
+        # Get confidence data
+        times = predictions_df['time'].values
+        gesture_conf = predictions_df['Gesture_confidence'].values if 'Gesture_confidence' in predictions_df.columns else None
+        move_conf = predictions_df['Move_confidence'].values if 'Move_confidence' in predictions_df.columns else None
+        motion_conf = predictions_df['has_motion'].values if 'has_motion' in predictions_df.columns else None
+        
+        # Print statistics for debugging
+        if gesture_conf is not None:
+            print(f"Gesture confidence stats: min={gesture_conf.min():.4f}, max={gesture_conf.max():.4f}, mean={gesture_conf.mean():.4f}")
+        if move_conf is not None:
+            print(f"Move confidence stats: min={move_conf.min():.4f}, max={move_conf.max():.4f}, mean={move_conf.mean():.4f}")
+        if motion_conf is not None:
+            print(f"Motion confidence stats: min={motion_conf.min():.4f}, max={motion_conf.max():.4f}, mean={motion_conf.mean():.4f}")
+    
     # Prepare segment lookup
     def get_label_at_time(time: float) -> str:
+        # Check if segments DataFrame is empty
+        if segments.empty:
+            return 'NoGesture'
+            
         matching_segments = segments[
             (segments['start_time'] <= time) & 
             (segments['end_time'] >= time)
         ]
         return matching_segments['label'].iloc[0] if len(matching_segments) > 0 else 'NoGesture'
     
+    # TQDM
+    progress_bar = tqdm(total=total_frames, desc="Labeling video", unit="frames")
+
     frame_idx = 0
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-            
-        # Get actual timestamp from the video
-        current_time = cap.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+
+        # Get target timestamp (at 25 fps)
+        current_time = frame_idx / target_fps  # Use target_fps
         
-        # Check if this frame is close to a valid timestamp
-        is_valid_frame = True
-        if valid_timestamps:
-            # Consider a frame valid if it's within a small threshold of any valid timestamp
-            threshold = 1.0 / (2 * fps)  # Half frame duration
-            is_valid_frame = any(abs(current_time - t) < threshold for t in valid_timestamps)
+        # Get the label at current time
+        try:
+            current_label = get_label_at_time(current_time)
+        except Exception as e:
+            print(f"Error getting label at time {current_time}: {str(e)}")
+            current_label = 'NoGesture'  # Default to NoGesture if lookup fails
         
-        if is_valid_frame:
-            # Get label for this time
-            label = get_label_at_time(current_time)
+        # Add text label to frame
+        cv2.putText(
+            frame, 
+            current_label, 
+            (10, 30), 
+            cv2.FONT_HERSHEY_SIMPLEX, 
+            1, 
+            color_map.get(current_label, (255, 255, 255)), 
+            2
+        )
+        
+        # Add moving window confidence graph if predictions are available
+        if has_predictions:
+            # Create a blank sub-image for the graph with black semi-transparent background
+            graph_pos_x = width - graph_width - graph_margin
+            graph_pos_y = graph_margin
             
-            # Add text label to frame
+            # Draw background with semi-transparency
+            overlay = frame.copy()
+            cv2.rectangle(overlay, 
+                         (graph_pos_x - 35, graph_pos_y - 5), 
+                         (graph_pos_x + graph_width + 5, graph_pos_y + graph_height + 25), 
+                         (0, 0, 0), 
+                         -1)
+            frame = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
+            
+            # First, calculate the min and max available timestamps
+            min_time = min(times) if len(times) > 0 else 0
+            max_time = max(times) if len(times) > 0 else current_time + window_duration
+
+            # For beginning of video
+            if current_time < min_time + (window_duration * 0.2):
+                window_start = min_time
+                window_end = min(max_time, min_time + window_duration)
+            # For end of video
+            elif current_time > max_time - (window_duration * 0.2):
+                window_end = max_time
+                window_start = max(min_time, max_time - window_duration)
+            # For middle of video (standard sliding window)
+            else:
+                window_start = max(min_time, current_time - (window_duration * 0.8))  # Show 80% before current time
+                window_end = min(max_time, window_start + window_duration)
+
+            # Add a safeguard to ensure we always have some window to display
+            if window_end <= window_start:
+                window_start = max(0, current_time - (window_duration * 0.5))
+                window_end = window_start + window_duration
+            
+            # Add title with timestamp info
             cv2.putText(
-                frame, 
-                label, 
-                (10, 30), 
-                cv2.FONT_HERSHEY_SIMPLEX, 
-                1, 
-                color_map.get(label, (255, 255, 255)), 
-                2
+                frame,
+                f"Confidence: {window_start:.1f}s - {window_end:.1f}s",
+                (graph_pos_x, graph_pos_y - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (255, 255, 255),
+                1
             )
+            
+            # Draw axes
+            cv2.line(frame, 
+                    (graph_pos_x, graph_pos_y + graph_height), 
+                    (graph_pos_x + graph_width, graph_pos_y + graph_height), 
+                    (255, 255, 255), 1)  # X-axis
+            cv2.line(frame, 
+                    (graph_pos_x, graph_pos_y), 
+                    (graph_pos_x, graph_pos_y + graph_height), 
+                    (255, 255, 255), 1)  # Y-axis
+            
+            # Add Y-axis ticks and grid lines
+            tick_positions = [0.0, 0.25, 0.5, 0.75, 1.0]
+            for tick in tick_positions:
+                tick_y = graph_pos_y + graph_height - int(tick * graph_height)
+                # Draw tick mark
+                cv2.line(frame, 
+                        (graph_pos_x - 3, tick_y), 
+                        (graph_pos_x, tick_y), 
+                        (180, 180, 180), 1)
+                # Add tick label
+                cv2.putText(frame, f"{tick:.1f}", 
+                          (graph_pos_x - 25, tick_y + 4), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 180, 180), 1)
+                          
+                # Add light grid line (optional)
+                cv2.line(frame, 
+                        (graph_pos_x, tick_y), 
+                        (graph_pos_x + graph_width, tick_y), 
+                        (50, 50, 50), 1, cv2.LINE_AA)
+            
+            # Draw threshold lines
+            # Motion threshold (white dashed line)
+            if motion_threshold is not None:
+                motion_y = graph_pos_y + graph_height - int(motion_threshold * graph_height)
+                for x in range(graph_pos_x, graph_pos_x + graph_width, 8):
+                    cv2.line(frame, (x, motion_y), (x+4, motion_y), (200, 200, 200), 1)
+                
+                # Add threshold labels
+                cv2.putText(frame, f"M:{motion_threshold:.1f}", 
+                          (graph_pos_x + graph_width + 2, motion_y + 4), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.35, (200, 200, 200), 1)
+            
+            # Gesture threshold (teal/coral dashed line)
+            if gesture_threshold is not None:
+                gesture_y = graph_pos_y + graph_height - int(gesture_threshold * graph_height)
+                for x in range(graph_pos_x, graph_pos_x + graph_width, 8):
+                    cv2.line(frame, (x, gesture_y), (x+4, gesture_y), (128, 150, 150), 1)
+                
+                # Add threshold labels
+                cv2.putText(frame, f"G:{gesture_threshold:.1f}", 
+                          (graph_pos_x + graph_width + 2, gesture_y + 4), 
+                          cv2.FONT_HERSHEY_SIMPLEX, 0.35, (128, 150, 150), 1)
+            
+            # Find indices within the time window
+            mask = (times >= window_start) & (times <= window_end)
+            if np.any(mask):
+                window_times = times[mask]
+                
+                # Plot lines in the window
+                # Using absolute Y-axis scaling
+                if gesture_conf is not None:
+                    window_gesture = gesture_conf[mask]
+                    prev_point = None
+                    
+                    for i, (t, conf) in enumerate(zip(window_times, window_gesture)):
+                        # Map time to x-coordinate (relative to window)
+                        x = graph_pos_x + int(((t - window_start) / window_duration) * graph_width)
+                        # Use absolute y-axis scaling
+                        conf_clamped = max(min(conf, y_max), y_min)  # Clamp to [y_min, y_max]
+                        y = graph_pos_y + graph_height - int((conf_clamped - y_min) / (y_max - y_min) * graph_height)
+                        
+                        if prev_point:
+                            cv2.line(frame, prev_point, (x, y), (0, 204, 204), 1, cv2.LINE_AA)
+                        prev_point = (x, y)
+                
+                if move_conf is not None:
+                    window_move = move_conf[mask]
+                    prev_point = None
+                    
+                    for i, (t, conf) in enumerate(zip(window_times, window_move)):
+                        # Map time to x-coordinate (relative to window)
+                        x = graph_pos_x + int(((t - window_start) / window_duration) * graph_width)
+                        # Use absolute y-axis scaling
+                        conf_clamped = max(min(conf, y_max), y_min)  # Clamp to [y_min, y_max]
+                        y = graph_pos_y + graph_height - int((conf_clamped - y_min) / (y_max - y_min) * graph_height)
+                        
+                        if prev_point:
+                            cv2.line(frame, prev_point, (x, y), (255, 94, 98), 1, cv2.LINE_AA)
+                        prev_point = (x, y)
+                
+                if motion_conf is not None:
+                    window_motion = motion_conf[mask]
+                    prev_point = None
+                    
+                    for i, (t, conf) in enumerate(zip(window_times, window_motion)):
+                        # Map time to x-coordinate (relative to window)
+                        x = graph_pos_x + int(((t - window_start) / window_duration) * graph_width)
+                        # Use absolute y-axis scaling
+                        conf_clamped = max(min(conf, y_max), y_min)  # Clamp to [y_min, y_max]
+                        y = graph_pos_y + graph_height - int((conf_clamped - y_min) / (y_max - y_min) * graph_height)
+                        
+                        if prev_point:
+                            cv2.line(frame, prev_point, (x, y), (200, 200, 200), 1, cv2.LINE_AA)
+                        prev_point = (x, y)
+            
+            # Add current time indicator (vertical line)
+            x_current = graph_pos_x + int(((current_time - window_start) / window_duration) * graph_width)
+            if graph_pos_x <= x_current <= graph_pos_x + graph_width:
+                cv2.line(frame, 
+                        (x_current, graph_pos_y), 
+                        (x_current, graph_pos_y + graph_height), 
+                        (255, 255, 100), 2)  # Yellow vertical line
+            
+            # Add legend
+            legend_y = graph_pos_y + graph_height + 15
+            cv2.putText(frame, "G", (graph_pos_x + 5, legend_y), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 204, 204), 1)
+            cv2.putText(frame, "M", (graph_pos_x + 25, legend_y), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 94, 98), 1)
+            cv2.putText(frame, "Motion", (graph_pos_x + 45, legend_y), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+            
+            # Valid timestamps are available but not displayed as requested
         
-        out.write(frame)
+        out.write(frame
+                  )
         frame_idx += 1
+        # Update progress
+        progress_bar.update(1)
+
+    # Close progress tracking
+    progress_bar.close()
     
     # Release video objects
     cap.release()
     out.release()
+    
+    print(f"Video with moving window confidence graph saved to {output_path}")
 
 # a function that allows you to cut the videos by segments
 def cut_video_by_segments(
@@ -436,17 +663,24 @@ def cut_video_by_segments(
 def create_sliding_windows(
     features: List[List[float]],
     seq_length: int,
-    stride: int = 1
+    stride: int = 1,
+    input_fps: Optional[float] = None,  # Add input_fps parameter
+    target_fps: float = 25.0             # Target FPS
 ) -> np.ndarray:
     """Create sliding windows from feature sequence."""
+
     if len(features) < seq_length:
         return np.array([])
-        
+
+    if input_fps is not None and input_fps != target_fps:
+        frame_skip = int(input_fps / target_fps)
+        stride = max(1, frame_skip)  # Ensure stride is at least 1
+
     windows = []
     for i in range(0, len(features) - seq_length + 1, stride):
         window = features[i:i + seq_length]
-        windows.append(window)
-    
+        if len(window) == seq_length:
+            windows.append(window)
     return np.array(windows)
 
 

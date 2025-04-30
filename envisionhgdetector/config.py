@@ -12,7 +12,7 @@ class Config:
     undefined_gesture_label: str = "Undefined"
     stationary_label: str = "NoGesture"
     seq_length: int = 25  # Window size for classification
-    num_original_features: int = 62  # Number of input features
+    num_original_features: int = 29  # Number of input features
     
     # Default thresholds (can be overridden in detector)
     default_motion_threshold: float = 0.7
@@ -23,7 +23,7 @@ class Config:
     def __post_init__(self):
         """Setup paths after initialization."""
         # Using importlib.resources (Python 3.9+)
-        self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250225_235938.h5'))
+        self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250224_103340.h5'))
         
         # Or using pkg_resources (older Python versions)
         # self.weights_path = resource_filename('envisionhgdetector', 'model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5')
@@ -47,7 +47,7 @@ EnvisionHGDetector: Hand Gesture Detection Package
 from .config import Config
 from .detector import GestureDetector
 
-__version__ = "1.0.0.1"
+__version__ = "1.0.0.0"
 __author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele"
 __email__ = "wim.pouw@donders.ru.nl"
 

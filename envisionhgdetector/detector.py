@@ -70,7 +70,17 @@ class GestureDetector:
         
         self.model = GestureModel(self.config)
         self.video_processor = VideoProcessor(self.config.seq_length)
+        self.target_fps = 25.0 # Define this once.
     
+    def _create_windows(self, features: List[List[float]], seq_length: int, stride: int) -> np.ndarray:
+        """Creates sliding windows from feature sequences."""
+        windows = []
+        if len(features) < seq_length:
+            return np.array([])
+        for i in range(0, len(features) - seq_length + 1, stride):
+            windows.append(features[i:i + seq_length])
+        return np.array(windows)
+
     def _get_video_fps(self, video_path: str) -> int:
         """Get video FPS."""
         cap = cv2.VideoCapture(video_path)
@@ -99,16 +109,11 @@ class GestureDetector:
         if not features:
             return pd.DataFrame(), {"error": "No features detected"}, pd.DataFrame(), np.array([])
         
-        # Create windows
-        windows = create_sliding_windows(
-            features,
-            self.config.seq_length,
-            stride
-        )
+        windows = self._create_windows(features, self.config.seq_length, stride)
         
         if len(windows) == 0:
             return pd.DataFrame(), {"error": "No valid windows created"}, pd.DataFrame(), np.array([])
-            
+
         # Get predictions
         predictions = self.model.predict(windows)
         
@@ -121,8 +126,8 @@ class GestureDetector:
             has_motion = pred[0]
             gesture_probs = pred[1:]
             
-            # Apply gesture_class_bias if bias is not 0
-            if gesture_class_bias != 0:
+            # Make sure bias is exactly 0.0 when not explicitly set
+            if gesture_class_bias is not None and abs(gesture_class_bias) >= 1e-9:
                 # Get the original probabilities
                 gesture_confidence = float(gesture_probs[0])
                 move_confidence = float(gesture_probs[1])
@@ -201,7 +206,7 @@ class GestureDetector:
             'applied_gesture_class_bias': float(gesture_class_bias)  # Include the applied bias in stats
         }
         
-        return results_df, stats, segments, features
+        return results_df, stats, segments, features, timestamps
     
     def process_folder(
         self,
@@ -230,7 +235,8 @@ class GestureDetector:
                 
                 try:
                     # Process video
-                    predictions_df, stats, segments, features = self.predict_video(video_path)
+                    print("Extracting features and model inferencing...")
+                    predictions_df, stats, segments, features, timestamps = self.predict_video(video_path)
                     
                     if not predictions_df.empty:
                         # Save predictions
@@ -261,16 +267,17 @@ class GestureDetector:
                             output_folder,
                             f"labeled_{video_name}"
                         )
-
-                        # Get the timestamps from the prediction process
-                        _, timestamps = self.video_processor.process_video(video_path)
-                        
+ 
                         # Then update the label_video call with timestamps
                         label_video(
                             video_path, 
                             segments, 
                             output_pathvid,
-                            valid_timestamps=timestamps
+                            predictions_df,
+                            valid_timestamps=timestamps,
+                            motion_threshold=self.params['motion_threshold'],
+                            gesture_threshold=self.params['gesture_threshold'],
+                            target_fps=25.0
                         )
                         print("Generating elan file...")
 
