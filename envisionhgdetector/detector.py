@@ -105,7 +105,7 @@ class GestureDetector:
         """
         # Extract features and timestamps
         features, timestamps = self.video_processor.process_video(video_path)
-        
+    
         if not features:
             return pd.DataFrame(), {"error": "No features detected"}, pd.DataFrame(), np.array([])
         
@@ -123,6 +123,7 @@ class GestureDetector:
         gesture_class_bias = self.params['gesture_class_bias']
         
         for i, (pred, time) in enumerate(zip(predictions, timestamps[::stride])):
+            # the time is actually the middle of the window so we add an offset of 0.5 seconds
             has_motion = pred[0]
             gesture_probs = pred[1:]
             
@@ -156,9 +157,9 @@ class GestureDetector:
                         # Update gesture probabilities
                         gesture_confidence = adjusted_gesture
                         move_confidence = adjusted_move
-                
+
                 rows.append({
-                    'time': time, 
+                    'time': time+((self.config.seq_length / 2) / self.target_fps),  # we take the middle of the window
                     'has_motion': float(has_motion),
                     'NoGesture_confidence': float(1 - has_motion),
                     'Gesture_confidence': gesture_confidence,
@@ -167,7 +168,7 @@ class GestureDetector:
             else:
                 # No bias applied
                 rows.append({
-                    'time': time, 
+                    'time': time+((self.config.seq_length / 2) / self.target_fps),  # Adjust time to the middle of the window
                     'has_motion': float(has_motion),
                     'NoGesture_confidence': float(1 - has_motion),
                     'Gesture_confidence': float(gesture_probs[0]),

@@ -303,6 +303,7 @@ def label_video(
     if has_predictions:
         # Get confidence data
         times = predictions_df['time'].values
+        predictions_start_time = times.min() if len(times) > 0 else None
         gesture_conf = predictions_df['Gesture_confidence'].values if 'Gesture_confidence' in predictions_df.columns else None
         move_conf = predictions_df['Move_confidence'].values if 'Move_confidence' in predictions_df.columns else None
         motion_conf = predictions_df['has_motion'].values if 'has_motion' in predictions_df.columns else None
@@ -314,7 +315,8 @@ def label_video(
             print(f"Move confidence stats: min={move_conf.min():.4f}, max={move_conf.max():.4f}, mean={move_conf.mean():.4f}")
         if motion_conf is not None:
             print(f"Motion confidence stats: min={motion_conf.min():.4f}, max={motion_conf.max():.4f}, mean={motion_conf.mean():.4f}")
-    
+        
+        
     # Prepare segment lookup
     def get_label_at_time(time: float) -> str:
         # Check if segments DataFrame is empty
@@ -358,7 +360,7 @@ def label_video(
         )
         
         # Add moving window confidence graph if predictions are available
-        if has_predictions:
+        if has_predictions and predictions_start_time is not None and current_time >= predictions_start_time:
             # Create a blank sub-image for the graph with black semi-transparent background
             graph_pos_x = width - graph_width - graph_margin
             graph_pos_y = graph_margin
