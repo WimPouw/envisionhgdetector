@@ -1,4 +1,4 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.1
 Name: envisionhgdetector
 Version: 1.0.0.2
 Summary: Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.
@@ -30,16 +30,6 @@ Requires-Dist: plotly==5.5.0
 Requires-Dist: dash-bootstrap-components>=1.4.0
 Requires-Dist: werkzeug==2.0.3
 Requires-Dist: ipython>=8.0.0
-Dynamic: author
-Dynamic: author-email
-Dynamic: classifier
-Dynamic: description
-Dynamic: description-content-type
-Dynamic: home-page
-Dynamic: license-file
-Dynamic: requires-dist
-Dynamic: requires-python
-Dynamic: summary
 
 # EnvisionHGDetector: Hand Gesture Detection Using Convolutional Neural Networks
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
