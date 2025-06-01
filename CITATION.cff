@@ -1,4 +1,4 @@
-cff-version: 1.0.0.2
+cff-version: 1.0.0.3
 message: "If you use this software, please cite it as below."
 authors:
 - family-names: "Pouw"
@@ -17,6 +17,6 @@ authors:
 - family-names: "Owoyele"
   given-names: "Babajide"
 title: "EnvisionHGdetector: Skeleton-based ConvNet Co-speech Gesture Detection With Kinematic Analyses and Visualizations"
-version: 1.0.0.2
+version: 1.0.0.3
 date-released: 12-8-2024
 url: "https://pypi.org/project/envisionhgdetector/"
