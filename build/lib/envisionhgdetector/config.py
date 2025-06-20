@@ -47,7 +47,7 @@ EnvisionHGDetector: Hand Gesture Detection Package
 from .config import Config
 from .detector import GestureDetector
 
-__version__ = "1.0.0.3"
+__version__ = "1.0.0.5"
 __author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele"
 __email__ = "wim.pouw@donders.ru.nl"
 

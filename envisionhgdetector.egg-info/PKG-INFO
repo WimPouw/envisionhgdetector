@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envisionhgdetector
-Version: 1.0.0.3
+Version: 1.0.0.5
 Summary: Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.
 Home-page: https://github.com/wimpouw/envisionhgdetector
 Author: Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele
@@ -14,9 +14,10 @@ Requires-Python: >=3.7
 Description-Content-Type: text/markdown
 License-File: LICENSE
 Requires-Dist: moviepy==2.1.1
+Requires-Dist: protobuf<4,>=3.11
 Requires-Dist: numpy<2.0.0,>=1.21.0
 Requires-Dist: opencv-python>=4.7.0.72
-Requires-Dist: tensorflow-cpu<3.0.0,>=2.12.0
+Requires-Dist: tensorflow-cpu==2.15.1
 Requires-Dist: mediapipe==0.10.7
 Requires-Dist: pandas<2.0.0,>=1.5.0
 Requires-Dist: pytest>=7.0.0
