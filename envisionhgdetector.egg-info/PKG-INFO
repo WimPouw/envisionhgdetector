@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envisionhgdetector
-Version: 2.0.0.1
+Version: 2.0.0.8
 Summary: Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.
 Home-page: https://github.com/wimpouw/envisionhgdetector
 Author: Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele
@@ -45,17 +45,20 @@ A Python package for detecting and classifying hand gestures using MediaPipe Hol
 </div>
 
 ## Info
-This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a convolutional neural network (CNN). We plan to update this package with better predicting network in the near future, and we plan to also make an evaluation report so that it is clear how it performs for several types of videos. For now, feel free to experiment. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by rates will be much superior to this gesture coder.
+Please go to [envisionbox.org](www.envisionbox.org) for notebook tutorials on how to use this package. This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a convolutional neural network (CNN). We plan to update this package with better predicting network in the near future, and we plan to also make an evaluation report so that it is clear how it performs for several types of videos. For now, feel free to experiment. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by rates will be much superior to this gesture coder.
 
 The package performs:
 
 * Feature extraction using MediaPipe Holistic (hand, body, and face features)
-* Post-hoc gesture detection using a pre-trained CNN model, that I trained on SAGA, TEDM3D dataset, and the zhubo, open gesture annotated datasets.
+* Post-hoc gesture detection using a pre-trained CNN model or LIGHTGBM model, that we trained on SAGA, SAGA+, ECOLANG, TEDM3D dataset, and the zhubo, open gesture annotated datasets.
+* Real-time Webcam Detection: Live gesture detection with configurable parameters
 * Automatic annotation of videos with gesture classifications
-* Output generation in CSV format and ELAN-compatible files, and video labeled
+* Output generation in CSV format and ELAN files, and video labeled
+* Kinematic analysis: DTW distance matrices and gesture similarity visualization
+* Interactive dashboard: Explore gesture spaces and kinematic features
 
 Currently, the detector can identify:
-- Just a general hand gesture, ("Gesture")
+- Just a general hand gesture, ("Gesture" vs. "NoGesture")
 - Movement patterns ("Move"; this is only trained on SAGA, because these also annotated movements that were not gestures, like nose scratching); it will therefore be an unreliable category perhaps
 
 ## Installation
@@ -74,63 +77,82 @@ Note: This package is CPU-only for wider compatibility and ease of use.
 
 ## Quick Start
 
+### Batch Video Processing
 ```python
 from envisionhgdetector import GestureDetector
 
-# Initialize detector
+# Initialize detector with model selection
 detector = GestureDetector(
-    motion_threshold=0.8,    # Sensitivity to motion
-    gesture_threshold=0.5,   # Confidence threshold for gestures
-    min_gap_s=0.1,           # Minimum gap between gestures
-    min_length_s=0.1,        # Minimum gesture duration
-    gesture_class_bias=0.0   # How much do you want to increase likelihood of classification to gesture (versus self-adaptor "move" label)
+    model_type="lightgbm",      # "cnn" or "lightgbm"  
+    motion_threshold=0.5,       # CNN only: sensitivity to motion
+    gesture_threshold=0.6,      # Confidence threshold for gestures
+    min_gap_s=0.3,             # Minimum gap between gestures (post-hoc)
+    min_length_s=0.5,          # Minimum gesture duration (post-hoc)
+    gesture_class_bias=0.0     # CNN only: bias toward gesture vs move
 )
 
-# Process videos
+# Process multiple videos
 results = detector.process_folder(
     input_folder="path/to/videos",
     output_folder="path/to/output"
 )
+```
 
-# additional processing of videos to segmented videos cut by gesture event
+### Real-time Webcam Detection
+```python
+from envisionhgdetector import RealtimeGestureDetector
+
+# Initialize real-time detector
+detector = RealtimeGestureDetector(
+    confidence_threshold=0.2,   # Applied during detection
+    min_gap_s=0.3,             # Applied post-hoc
+    min_length_s=0.5           # Applied post-hoc
+)
+
+# Process webcam feed
+raw_results, segments = detector.process_webcam(
+    duration=None,              # Unlimited (press 'q' to quit)
+    save_video=True,           # Save annotated video
+    apply_post_processing=True  # Apply segment refinement
+)
+
+# Analyze previous sessions
+detector.load_and_analyze_session("output_realtime/session_20240621_143022/")
+```
+
+### Advanced Processing
+```python
 from envisionhgdetector import utils
-segments = utils.cut_video_by_segments(outputfolder)
+import os
 
-# retrack the videos with metric pose world landmarks
-# Step 3: Create paths
-gesture_segments_folder = os.path.join(outputfolder, "gesture_segments")
-retracked_folder = os.path.join(outputfolder, "retracked")
-analysis_folder = os.path.join(outputfolder, "analysis")
+# Step 1: Cut videos by detected segments
+segments = utils.cut_video_by_segments(output_folder)
 
-print(f"\nLooking for segments in: {gesture_segments_folder}")
-if os.path.exists(gesture_segments_folder):
-    segment_files = [f for f in os.listdir(gesture_segments_folder) if f.endswith('.mp4')]
-    print(f"Found {len(segment_files)} segment files")
-else:
-    print("Gesture segments folder not found!")
+# Step 2: Set up analysis folders
+gesture_segments_folder = os.path.join(output_folder, "gesture_segments")
+retracked_folder = os.path.join(output_folder, "retracked")
+analysis_folder = os.path.join(output_folder, "analysis")
 
 # Step 3: Retrack gestures with world landmarks
-print("\nStep 4: Retracking gestures...")
 tracking_results = detector.retrack_gestures(
     input_folder=gesture_segments_folder,
     output_folder=retracked_folder
 )
-print(f"Tracking results: {tracking_results}")
 
-# Compute DTW distance matrix and kinematic features
+# Step 4: Compute DTW distances and kinematic features
 analysis_results = detector.analyze_dtw_kinematics(
-        landmarks_folder=tracking_results["landmarks_folder"],
-        output_folder=analysis_folder
-    )
-print(f"Analysis results: {analysis_results}")
+    landmarks_folder=tracking_results["landmarks_folder"],
+    output_folder=analysis_folder
+)
 
-# Create dashboard (then launched in python, python app.py [in a seperate teriminal])
+# Step 5: Create interactive dashboard
 detector.prepare_gesture_dashboard(
     data_folder=analysis_folder
-    )
+)
+# Then run: python app.py (in output folder)
 ```
 
-## Features
+## Features CNN
 
 The detector uses 29 features extracted from MediaPipe Holistic, including:
 - Head rotations
@@ -138,7 +160,104 @@ The detector uses 29 features extracted from MediaPipe Holistic, including:
 - Body landmark distances
 - Normalized feature metrics
 
+## LightGBM Model (69 features):
+- Key joint positions (shoulders, elbows, wrists)
+- Velocities
+- Movement ranges and patterns
+- Index Thumb Middle Finger Distances and Positions
+
 ## Output
+
+The detector generates comprehensive output in organized folder structures depending on the processing mode:
+
+### Batch Video Processing Output
+
+When processing videos with `GestureDetector.process_folder()`, the following files are generated for each video:
+
+1. **Prediction Data**
+   - `video_name_predictions.csv` - Frame-by-frame predictions with confidence scores
+   - `video_name_segments.csv` - Refined gesture segments after post-processing
+   - `video_name_features.npy` - Extracted feature arrays for further analysis
+
+2. **Annotation Files**
+   - `video_name.eaf` - ELAN annotation file with time-aligned segments
+   - Useful for manual verification, research, and integration with ELAN software
+
+3. **Visual Output**
+   - `labeled_video_name.mp4` - Processed video with gesture annotations and confidence graphs
+   - Shows real-time detection results with temporal confidence visualization
+
+### Advanced Analysis Pipeline Output
+
+When using the complete analysis pipeline, additional structured outputs are created:
+
+4. **Gesture Segments** (`/gesture_segments/`)
+   - Individual video clips for each detected gesture
+   - Organized by source video with timing information
+   - Format: `video_segment_N_Gesture_start_end.mp4`
+
+5. **Retracked Data** (`/retracked/`)
+   - `tracked_videos/` - Videos with MediaPipe world landmark visualization
+   - `*_world_landmarks.npy` - 3D world coordinate arrays for each gesture
+   - `*_visibility.npy` - Landmark visibility scores
+
+6. **Kinematic Analysis** (`/analysis/`)
+   - `dtw_distances.csv` - Dynamic Time Warping distance matrix between all gestures
+   - `kinematic_features.csv` - Comprehensive kinematic metrics per gesture
+     - Number of submovements, peak speeds, accelerations
+     - Spatial features (McNeillian space usage, volume, height)
+     - Temporal features (duration, holds, gesture rate)
+   - `gesture_visualization.csv` - UMAP projection of DTW distances for dashboard
+
+7. **Interactive Dashboard** (`/app.py`)
+   - Web application for exploring gesture similarity space
+   - Click gestures to view videos and kinematic features
+   - Visualizes gesture relationships and feature distributions
+
+### Real-time Webcam Processing Output
+
+When using `RealtimeGestureDetector.process_webcam()`, outputs are organized in timestamped session folders:
+
+**Session Structure** (`/output_realtime/session_YYYYMMDD_HHMMSS/`):
+
+1. **Raw Detection Data**
+   - `raw_frame_results.csv` - Frame-by-frame detection results during recording
+   - Contains gesture names, confidence scores, and timestamps
+
+2. **Processed Segments**
+   - `gesture_segments.csv` - Refined segments after applying gap and length filters
+   - `gesture_segments.eaf` - ELAN annotation file for the session
+
+3. **Session Recording**
+   - `webcam_session.mp4` - Annotated video of the entire session
+   - Shows real-time detection with overlay information
+
+4. **Session Metadata**
+   - `session_summary.json` - Complete session parameters and statistics
+   - Includes detection settings, processing results, and performance metrics
+
+### File Format Details
+
+**CSV Prediction Files** contain:
+- `time` - Timestamp in seconds
+- `has_motion` - Motion detection confidence
+- `Gesture_confidence` - Gesture classification confidence  
+- `Move_confidence` - Movement classification confidence
+- `label` - Final classification after thresholding
+
+**Segment Files** contain:
+- `start_time`, `end_time` - Segment boundaries in seconds
+- `duration` - Segment length
+- `label` - Gesture classification
+- `labelid` - Unique segment identifier
+
+**Kinematic Features** include:
+- Spatial metrics: gesture space usage, volume, height
+- Temporal metrics: duration, holds, submovement counts
+- Dynamic metrics: peak speeds, accelerations, jerk values
+- Shape descriptors: DTW distances, movement patterns
+
+All outputs are designed for integration with research workflows, ELAN annotation software, and further analysis pipelines.
 
 The detector generates three types of output in your specified output folder:
 

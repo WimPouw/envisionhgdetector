@@ -5,6 +5,7 @@ requirements.txt
 setup.py
 envisionhgdetector/__init__.py
 envisionhgdetector/config.py
+envisionhgdetector/demo_webcam_realtime.py
 envisionhgdetector/detector.py
 envisionhgdetector/model.py
 envisionhgdetector/model_cnn.py
