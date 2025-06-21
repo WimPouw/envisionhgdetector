@@ -6,7 +6,7 @@ Supports both CNN and LightGBM models for gesture detection.
 from .config import Config
 from .detector import GestureDetector, RealtimeGestureDetector
 
-__version__ = "2.0.0.0"
+__version__ = "2.0.0.1"
 __author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele"
 __email__ = "wim.pouw@donders.ru.nl"
 

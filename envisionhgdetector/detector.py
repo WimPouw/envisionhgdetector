@@ -650,24 +650,29 @@ class GestureDetector:
             print(f"Error preparing dashboard: {str(e)}")
             raise
 
-
 class RealtimeGestureDetector:
     """
     Real-time gesture detection class (LightGBM only).
-    Provides webcam processing and real-time inference capabilities.
+    Provides webcam processing and real-time inference capabilities with post-processing.
     """
     
     def __init__(
         self,
         confidence_threshold: float = 0.2,
+        min_gap_s: float = 0.3,          # NEW: Minimum gap between segments
+        min_length_s: float = 0.5,       # NEW: Minimum segment length
         config: Optional[Config] = None
     ):
-        """Initialize real-time detector with LightGBM model."""
+        """Initialize real-time detector with LightGBM model and refinement parameters."""
         self.config = config or Config()
         
         # Force LightGBM model
         self.model = LightGBMGestureModel(self.config)
         self.confidence_threshold = confidence_threshold
+        
+        # NEW: Post-processing parameters
+        self.min_gap_s = min_gap_s
+        self.min_length_s = min_length_s
         
         # Set confidence threshold on model if supported
         if hasattr(self.model, 'set_confidence_threshold'):
@@ -675,6 +680,8 @@ class RealtimeGestureDetector:
         
         print(f"Initialized real-time LightGBM detector")
         print(f"Confidence threshold: {confidence_threshold}")
+        print(f"Min gap between gestures: {min_gap_s}s")
+        print(f"Min gesture length: {min_length_s}s")
         print(f"Advanced features: {'ENABLED' if self.model.includes_fingers else 'DISABLED'}")
     
     def process_webcam(
@@ -682,27 +689,35 @@ class RealtimeGestureDetector:
         duration: Optional[float] = None,
         camera_index: int = 0,
         show_display: bool = True,
-        save_video: bool = False,
-        output_csv: Optional[str] = None
-    ) -> pd.DataFrame:
+        save_video: bool = True,          # Changed default to True
+        apply_post_processing: bool = True # NEW: Enable post-processing by default
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:  # NEW: Return both raw and processed results
         """
-        Process webcam feed in real-time.
+        Process webcam feed in real-time with post-processing.
         
         Args:
             duration: Maximum duration in seconds (None = unlimited)
             camera_index: Camera device index
             show_display: Whether to show real-time display
             save_video: Whether to save annotated video
-            output_csv: Path to save results CSV
+            apply_post_processing: Whether to apply segment refinement
             
         Returns:
-            DataFrame with frame-by-frame predictions
+            Tuple of (raw_results_df, segments_df)
         """
-        print(f"Starting real-time webcam processing...")
+        print(f"🚀 Starting real-time webcam processing...")
         if duration:
-            print(f"Duration: {duration} seconds")
+            print(f"⏱️  Duration: {duration} seconds")
         else:
-            print("Duration: Unlimited (press 'q' to quit)")
+            print("⏱️  Duration: Unlimited (press 'q' to quit)")
+        
+        # NEW: Create output folder structure
+        timestamp = time.strftime('%Y%m%d_%H%M%S')
+        output_base = "output_realtime"
+        session_folder = os.path.join(output_base, f"session_{timestamp}")
+        os.makedirs(session_folder, exist_ok=True)
+        
+        print(f"📁 Output folder: {session_folder}")
         
         cap = cv2.VideoCapture(camera_index)
         if not cap.isOpened():
@@ -718,15 +733,15 @@ class RealtimeGestureDetector:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cap.get(cv2.CAP_PROP_FPS)
         
-        print(f"Camera: {width}x{height} at {fps:.1f}fps")
+        print(f"📹 Camera: {width}x{height} at {fps:.1f}fps")
         
         # Setup video writer if requested
         writer = None
         if save_video:
-            output_video_path = f"realtime_webcam_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+            output_video_path = os.path.join(session_folder, f"webcam_session.mp4")
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             writer = cv2.VideoWriter(output_video_path, fourcc, 20.0, (width, height))
-            print(f"Saving video to: {output_video_path}")
+            print(f"🎬 Saving video to: {output_video_path}")
         
         # Reset model state
         self.model.key_joints_buffer.clear()
@@ -738,13 +753,22 @@ class RealtimeGestureDetector:
         frame_count = 0
         start_time = time.time()
         
-        print("Controls: q=quit, spacebar=status, +/-=adjust threshold")
+        print("\n🎮 Controls:")
+        print("  - Q: Quit session")
+        print("  - SPACE: Show current status")
+        print("  - +/=: Increase confidence threshold")  
+        print("  - -: Decrease confidence threshold")
+        print("  - G: Increase min gap between gestures")
+        print("  - F: Decrease min gap between gestures")
+        print("  - L: Increase min gesture length")
+        print("  - K: Decrease min gesture length")
+        print()
         
         try:
             while True:
                 ret, frame = cap.read()
                 if not ret:
-                    print("Failed to read frame from camera")
+                    print("⚠️  Failed to read frame from camera")
                     continue
                 
                 current_time = time.time() - start_time
@@ -778,7 +802,8 @@ class RealtimeGestureDetector:
                     'timestamp': current_time,
                     'gesture': gesture_name,
                     'confidence': confidence,
-                    'threshold': self.confidence_threshold
+                    'threshold': self.confidence_threshold,
+                    'raw_gesture': gesture_name  # Store for analysis
                 })
                 
                 # Display on frame
@@ -796,28 +821,50 @@ class RealtimeGestureDetector:
                     cv2.putText(display_frame, f"Time: {current_time:.1f}s", 
                               (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                     
+                    # NEW: Show post-processing parameters
+                    cv2.putText(display_frame, f"Gap: {self.min_gap_s:.1f}s", 
+                              (10, 190), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                    cv2.putText(display_frame, f"MinLen: {self.min_length_s:.1f}s", 
+                              (10, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+                    
                     # Save frame if requested
                     if writer:
                         writer.write(display_frame)
                     
                     cv2.imshow('Real-time Gesture Detection', display_frame)
                     
-                    # Handle keyboard input
+                    # IMPROVED: Handle keyboard input with better key detection
                     key = cv2.waitKey(1) & 0xFF
-                    if key == ord('q'):
+                    
+                    if key == ord('q') or key == ord('Q'):
+                        print("🛑 Quit requested")
                         break
                     elif key == ord(' '):  # Status
-                        print(f"Current: {gesture_name} ({confidence:.3f}), Threshold: {self.confidence_threshold:.2f}")
+                        print(f"📊 Current: {gesture_name} ({confidence:.3f})")
+                        print(f"🎯 Threshold: {self.confidence_threshold:.2f}")
+                        print(f"⏳ Gap: {self.min_gap_s:.1f}s, MinLen: {self.min_length_s:.1f}s")
                     elif key == ord('=') or key == ord('+'):  # Increase threshold
                         self.confidence_threshold = min(1.0, self.confidence_threshold + 0.05)
                         if hasattr(self.model, 'set_confidence_threshold'):
                             self.model.set_confidence_threshold(self.confidence_threshold)
-                        print(f"Threshold increased to {self.confidence_threshold:.2f}")
-                    elif key == ord('-'):  # Decrease threshold
+                        print(f"🔼 Threshold increased to {self.confidence_threshold:.2f}")
+                    elif key == ord('-') or key == ord('_'):  # Decrease threshold
                         self.confidence_threshold = max(0.0, self.confidence_threshold - 0.05)
                         if hasattr(self.model, 'set_confidence_threshold'):
                             self.model.set_confidence_threshold(self.confidence_threshold)
-                        print(f"Threshold decreased to {self.confidence_threshold:.2f}")
+                        print(f"🔽 Threshold decreased to {self.confidence_threshold:.2f}")
+                    elif key == ord('g') or key == ord('G'):  # Increase gap
+                        self.min_gap_s = min(2.0, self.min_gap_s + 0.1)
+                        print(f"📏 Min gap increased to {self.min_gap_s:.1f}s")
+                    elif key == ord('f') or key == ord('F'):  # Decrease gap
+                        self.min_gap_s = max(0.1, self.min_gap_s - 0.1)
+                        print(f"📏 Min gap decreased to {self.min_gap_s:.1f}s")
+                    elif key == ord('l') or key == ord('L'):  # Increase length
+                        self.min_length_s = min(3.0, self.min_length_s + 0.1)
+                        print(f"📐 Min length increased to {self.min_length_s:.1f}s")
+                    elif key == ord('k') or key == ord('K'):  # Decrease length
+                        self.min_length_s = max(0.1, self.min_length_s - 0.1)
+                        print(f"📐 Min length decreased to {self.min_length_s:.1f}s")
                 
                 frame_count += 1
                 
@@ -826,10 +873,10 @@ class RealtimeGestureDetector:
                     runtime_mins = current_time / 60.0
                     gesture_frames = len([r for r in frame_results if r['gesture'] != 'NoGesture'])
                     gesture_percentage = (gesture_frames / len(frame_results)) * 100 if frame_results else 0
-                    print(f"Status: {runtime_mins:.1f}m runtime, {frame_count} frames, {gesture_percentage:.1f}% gestures")
+                    print(f"📈 Status: {runtime_mins:.1f}m runtime, {frame_count} frames, {gesture_percentage:.1f}% gestures")
         
         except KeyboardInterrupt:
-            print("\nInterrupted by user")
+            print("\n⚠️  Interrupted by user")
         finally:
             cap.release()
             if writer:
@@ -837,26 +884,149 @@ class RealtimeGestureDetector:
             if show_display:
                 cv2.destroyAllWindows()
         
-        # Save results
-        df = pd.DataFrame(frame_results)
-        if output_csv and not df.empty:
-            df.to_csv(output_csv, index=False)
-            print(f"Results saved to: {output_csv}")
+        # Convert to DataFrame
+        raw_df = pd.DataFrame(frame_results)
+        
+        if raw_df.empty:
+            print("⚠️  No data recorded")
+            return pd.DataFrame(), pd.DataFrame()
+        
+        # Save raw results
+        raw_csv_path = os.path.join(session_folder, "raw_frame_results.csv")
+        raw_df.to_csv(raw_csv_path, index=False)
+        print(f"💾 Raw results saved to: {raw_csv_path}")
+        
+        # NEW: Apply post-processing if requested
+        segments_df = pd.DataFrame()
+        if apply_post_processing:
+            print("🔄 Applying post-processing...")
+            
+            # Create CNN-compatible format for segment creation
+            processed_df = raw_df.copy()
+            processed_df['has_motion'] = (processed_df['gesture'] != 'NoGesture').astype(float)
+            processed_df['NoGesture_confidence'] = 1.0 - processed_df['has_motion']
+            processed_df['Gesture_confidence'] = processed_df['confidence'] * processed_df['has_motion']
+            processed_df['Move_confidence'] = 0.0  # Real-time doesn't distinguish move vs gesture
+            
+            # Create labels based on gesture detection
+            processed_df['label'] = processed_df['gesture'].apply(
+                lambda x: 'Gesture' if x != 'NoGesture' else 'NoGesture'
+            )
+            
+            # Apply the same segment creation logic as batch processing
+            from .utils import create_segments
+            segments_df = create_segments(
+                processed_df,
+                label_column='label',
+                min_gap_s=self.min_gap_s,
+                min_length_s=self.min_length_s
+            )
+            
+            if not segments_df.empty:
+                # Save processed segments
+                segments_csv_path = os.path.join(session_folder, "gesture_segments.csv")
+                segments_df.to_csv(segments_csv_path, index=False)
+                print(f"✅ Processed segments saved to: {segments_csv_path}")
+                
+                # Print segment summary
+                total_segments = len(segments_df)
+                total_gesture_time = segments_df['duration'].sum()
+                avg_segment_length = segments_df['duration'].mean()
+                
+                print(f"📊 Post-processing Results:")
+                print(f"   • Total segments: {total_segments}")
+                print(f"   • Total gesture time: {total_gesture_time:.1f}s")
+                print(f"   • Average segment length: {avg_segment_length:.1f}s")
+                print(f"   • Gestures per minute: {total_segments / (raw_df['timestamp'].max() / 60):.1f}")
+            else:
+                print("ℹ️  No gesture segments found after post-processing")
+        
+        # Save session summary
+        self._save_session_summary(session_folder, raw_df, segments_df)
         
         total_time = time.time() - start_time
-        print(f"\nReal-time session completed:")
-        print(f"Processed {frame_count} frames in {total_time:.1f}s")
-        print(f"Average FPS: {frame_count/total_time:.1f}")
+        print(f"\n🎉 Real-time session completed:")
+        print(f"   • Processed {frame_count} frames in {total_time:.1f}s")
+        print(f"   • Average FPS: {frame_count/total_time:.1f}")
+        print(f"   • Session folder: {session_folder}")
         
-        if not df.empty:
-            gesture_frames = len(df[df['gesture'] != 'NoGesture'])
-            print(f"Gestures detected: {gesture_frames} frames ({gesture_frames/len(df)*100:.1f}%)")
+        if not raw_df.empty:
+            gesture_frames = len(raw_df[raw_df['gesture'] != 'NoGesture'])
+            print(f"   • Raw gestures detected: {gesture_frames} frames ({gesture_frames/len(raw_df)*100:.1f}%)")
         
-        return df
+        return raw_df, segments_df
+    
+    def _save_session_summary(self, session_folder: str, raw_df: pd.DataFrame, segments_df: pd.DataFrame):
+        """Save a summary of the session parameters and results."""
+        summary = {
+            'session_info': {
+                'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
+                'total_frames': len(raw_df),
+                'duration_seconds': raw_df['timestamp'].max() if not raw_df.empty else 0,
+                'average_fps': len(raw_df) / raw_df['timestamp'].max() if not raw_df.empty and raw_df['timestamp'].max() > 0 else 0
+            },
+            'parameters': {
+                'confidence_threshold': self.confidence_threshold,
+                'min_gap_s': self.min_gap_s,
+                'min_length_s': self.min_length_s,
+                'model_type': 'LightGBM',
+                'advanced_features': self.model.includes_fingers
+            },
+            'results': {
+                'raw_gesture_frames': len(raw_df[raw_df['gesture'] != 'NoGesture']) if not raw_df.empty else 0,
+                'raw_gesture_percentage': (len(raw_df[raw_df['gesture'] != 'NoGesture']) / len(raw_df) * 100) if not raw_df.empty else 0,
+                'processed_segments': len(segments_df) if not segments_df.empty else 0,
+                'total_gesture_time': segments_df['duration'].sum() if not segments_df.empty else 0,
+                'average_segment_duration': segments_df['duration'].mean() if not segments_df.empty else 0
+            }
+        }
+        
+        summary_path = os.path.join(session_folder, "session_summary.json")
+        with open(summary_path, 'w') as f:
+            json.dump(summary, f, indent=2)
+        
+        print(f"📄 Session summary saved to: {summary_path}")
     
     def set_confidence_threshold(self, threshold: float):
         """Update confidence threshold."""
         self.confidence_threshold = max(0.0, min(1.0, threshold))
         if hasattr(self.model, 'set_confidence_threshold'):
             self.model.set_confidence_threshold(self.confidence_threshold)
-        print(f"Confidence threshold updated to: {self.confidence_threshold}")
+        print(f"🎯 Confidence threshold updated to: {self.confidence_threshold}")
+    
+    def set_refinement_parameters(self, min_gap_s: float = None, min_length_s: float = None):
+        """Update post-processing refinement parameters."""
+        if min_gap_s is not None:
+            self.min_gap_s = max(0.1, min(2.0, min_gap_s))
+            print(f"📏 Min gap updated to: {self.min_gap_s}s")
+        
+        if min_length_s is not None:
+            self.min_length_s = max(0.1, min(3.0, min_length_s))
+            print(f"📐 Min length updated to: {self.min_length_s}s")
+    
+    def load_and_analyze_session(self, session_folder: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        """Load and analyze a previous session."""
+        raw_csv = os.path.join(session_folder, "raw_frame_results.csv")
+        segments_csv = os.path.join(session_folder, "gesture_segments.csv")
+        summary_json = os.path.join(session_folder, "session_summary.json")
+        
+        raw_df = pd.DataFrame()
+        segments_df = pd.DataFrame()
+        
+        if os.path.exists(raw_csv):
+            raw_df = pd.read_csv(raw_csv)
+            print(f"✅ Loaded raw results: {len(raw_df)} frames")
+        
+        if os.path.exists(segments_csv):
+            segments_df = pd.read_csv(segments_csv)
+            print(f"✅ Loaded segments: {len(segments_df)} segments")
+        
+        if os.path.exists(summary_json):
+            with open(summary_json, 'r') as f:
+                summary = json.load(f)
+            print(f"✅ Session summary:")
+            print(f"   Duration: {summary['session_info']['duration_seconds']:.1f}s")
+            print(f"   Parameters: threshold={summary['parameters']['confidence_threshold']:.2f}")
+            print(f"   Results: {summary['results']['processed_segments']} segments")
+        
+        return raw_df, segments_df
