@@ -1,7 +1,10 @@
+# envisionhgdetector/config.py
+
 from dataclasses import dataclass
 from typing import Tuple
 from importlib.resources import files  # if using Python 3.9+
 # or from pkg_resources import resource_filename  # for older Python versions
+import os
 
 @dataclass
 class Config:
@@ -22,11 +25,70 @@ class Config:
     
     def __post_init__(self):
         """Setup paths after initialization."""
-        # Using importlib.resources (Python 3.9+)
-        self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250224_103340.h5'))
+        # CNN model weights path
+        try:
+            # Using importlib.resources (Python 3.9+)
+            self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250224_103340.h5'))
+        except:
+            # Fallback for older Python versions or if file doesn't exist
+            try:
+                # Or using pkg_resources (older Python versions)
+                # self.weights_path = resource_filename('envisionhgdetector', 'model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5')
+                self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250224_103340.h5'))
+            except:
+                # Final fallback - check if file exists in expected locations
+                possible_paths = [
+                    os.path.join(os.path.dirname(__file__), 'model', 'model_weights_20250224_103340.h5'),
+                    'model_weights_20250224_103340.h5'
+                ]
+                self.weights_path = None
+                for path in possible_paths:
+                    if os.path.exists(path):
+                        self.weights_path = path
+                        break
         
-        # Or using pkg_resources (older Python versions)
-        # self.weights_path = resource_filename('envisionhgdetector', 'model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5')
+        # LightGBM model weights path
+        try:
+            # Using importlib.resources (Python 3.9+)
+            self.lightgbm_weights_path = str(files('envisionhgdetector').joinpath('model/lightgbm_gesture_model_v1.pkl'))
+            # Check if file actually exists
+            if not os.path.exists(self.lightgbm_weights_path):
+                self.lightgbm_weights_path = None
+        except:
+            # Fallback - check if file exists in expected locations
+            possible_paths = [
+                os.path.join(os.path.dirname(__file__), 'model', 'lightgbm_gesture_model_v1.pkl'),
+                'lightgbm_gesture_model_v1.pkl'
+            ]
+            self.lightgbm_weights_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    self.lightgbm_weights_path = path
+                    break
+    
+    def get_model_path(self, model_type: str):
+        """Get the appropriate model path based on model type."""
+        if model_type.lower() == "lightgbm":
+            return self.lightgbm_weights_path
+        elif model_type.lower() == "cnn":
+            return self.weights_path
+        else:
+            raise ValueError(f"Unknown model type: {model_type}")
+    
+    def is_model_available(self, model_type: str) -> bool:
+        """Check if a model is available."""
+        path = self.get_model_path(model_type)
+        return path is not None and os.path.exists(path)
+    
+    @property
+    def available_models(self):
+        """Get list of available models."""
+        models = []
+        if self.is_model_available("cnn"):
+            models.append("cnn")
+        if self.is_model_available("lightgbm"):
+            models.append("lightgbm")
+        return models
     
     @property
     def default_thresholds(self):
@@ -37,53 +99,3 @@ class Config:
             'min_gap_s': self.default_min_gap_s,
             'min_length_s': self.default_min_length_s
         }
-
-# envisionhgdetector/envisionhgdetector/__init__.py
-
-"""
-EnvisionHGDetector: Hand Gesture Detection Package
-"""
-
-from .config import Config
-from .detector import GestureDetector
-
-__version__ = "1.0.0.5"
-__author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele"
-__email__ = "wim.pouw@donders.ru.nl"
-
-# Make key classes available at package level
-__all__ = ['Config', 'GestureDetector']
-
-# Example usage in docstring
-__doc__ = """
-EnvisionHGDetector is a package for detecting hand gestures in videos.
-
-Basic usage:
-    from envisionhgdetector import GestureDetector
-    
-    detector = GestureDetector()
-    results = detector.process_folder(
-        video_folder="path/to/videos",
-        output_folder="path/to/output"
-    )
-    
-    from envisionhgdetector import utils
-    segments = utils.cut_video_by_segments(outputfolder)
-
-    gesture_segments_folder = os.path.join(outputfolder, "gesture_segments")
-    retracked_folder = os.path.join(outputfolder, "retracked")
-    analysis_folder = os.path.join(outputfolder, "analysis")
-    tracking_results = detector.retrack_gestures(
-    input_folder=gesture_segments_folder,
-    output_folder=retracked_folder
-    )
-
-    analysis_results = detector.analyze_dtw_kinematics(
-        landmarks_folder=tracking_results["landmarks_folder"],
-        output_folder=analysis_folder
-    )
-
-    detector.prepare_gesture_dashboard(
-    data_folder=analysis_folder
-    )
-"""

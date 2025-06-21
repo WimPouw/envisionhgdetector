@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: envisionhgdetector
-Version: 1.0.0.5
+Version: 2.0.0.0
 Summary: Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.
 Home-page: https://github.com/wimpouw/envisionhgdetector
 Author: Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele
@@ -31,8 +31,12 @@ Requires-Dist: plotly==5.5.0
 Requires-Dist: dash-bootstrap-components>=1.4.0
 Requires-Dist: werkzeug==2.0.3
 Requires-Dist: ipython>=8.0.0
+Requires-Dist: lightgbm>=3.3.0
+Requires-Dist: scikit-learn>=1.0.0
+Requires-Dist: matplotlib>=3.5.0
+Requires-Dist: seaborn>=0.11.0
 
-# EnvisionHGDetector: Hand Gesture Detection Using Convolutional Neural Networks
+# EnvisionHGDetector: Co-speech Hand Gesture Detection Python Package
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
 <div align="center">Wim Pouw (wim.pouw@donders.ru.nl), Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele</div>
 

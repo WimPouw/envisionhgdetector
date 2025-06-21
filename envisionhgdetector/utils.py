@@ -937,23 +937,68 @@ def find_submovements(speed_profile: np.ndarray, fps: float) -> Tuple[np.ndarray
     Returns:
         Tuple of (peaks indices, peak heights)
     """
-    # Apply Savitzky-Golay smoothing
+    # Handle very short sequences
+    if len(speed_profile) < 3:
+        # For very short sequences, just return the maximum as a peak
+        if len(speed_profile) > 0:
+            max_idx = np.argmax(speed_profile)
+            return np.array([max_idx]), np.array([speed_profile[max_idx]])
+        else:
+            return np.array([0]), np.array([0])
+    
+    # Apply Savitzky-Golay smoothing with proper parameter handling
     if len(speed_profile) >= 15:
+        # Use standard parameters for longer sequences
         smoothed = signal.savgol_filter(speed_profile, 15, 5)
     else:
-        window = len(speed_profile) - 1 if len(speed_profile) % 2 == 0 else len(speed_profile)
-        smoothed = signal.savgol_filter(speed_profile, window, 5)
+        # For shorter sequences, adjust window and polyorder appropriately
+        window = len(speed_profile)
+        
+        # Ensure window is odd
+        if window % 2 == 0:
+            window = window - 1
+        
+        # Ensure minimum window size
+        if window < 3:
+            window = 3
+        
+        # Adjust polyorder to be less than window_length
+        # polyorder must be < window_length, so max polyorder = window - 1
+        polyorder = min(5, window - 1)
+        
+        # Ensure polyorder is at least 1
+        polyorder = max(1, polyorder)
+        
+        # Additional safety check: if window is too small, use simple smoothing
+        if window < 5 or polyorder < 1:
+            # For very short sequences, use simple moving average instead
+            if len(speed_profile) >= 3:
+                smoothed = np.convolve(speed_profile, np.ones(3)/3, mode='same')
+            else:
+                smoothed = speed_profile.copy()
+        else:
+            try:
+                smoothed = signal.savgol_filter(speed_profile, window, polyorder)
+            except ValueError:
+                # Fallback to simple moving average if savgol still fails
+                smoothed = np.convolve(speed_profile, np.ones(3)/3, mode='same')
     
     # Find peaks with prominence and distance constraints
     peaks, properties = signal.find_peaks(
         smoothed,
-        distance=5,  # Minimum distance between peaks (in frames)
+        distance=max(1, int(5 * fps / 25)),  # Scale distance with fps
         height=0,  # Include height to get peak heights
-        prominence=0.1  # Add minimum prominence to avoid noise
+        prominence=max(0.01, np.std(smoothed) * 0.1)  # Adaptive prominence based on signal variability
     )
     
     # Get peak heights from the smoothed signal
-    peak_heights = smoothed[peaks] if len(peaks) > 0 else np.array([0])  # Return [0] instead of empty array
+    peak_heights = smoothed[peaks] if len(peaks) > 0 else np.array([0])
+    
+    # If no peaks found, use the maximum value as a peak
+    if len(peaks) == 0:
+        max_idx = np.argmax(smoothed)
+        peaks = np.array([max_idx])
+        peak_heights = np.array([smoothed[max_idx]])
     
     return peaks, peak_heights
 
