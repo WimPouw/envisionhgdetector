@@ -264,25 +264,26 @@ class GestureDetector:
                 gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
                 gesture_name = self.model.standardize_gesture_name(gesture_name)
                 
-                # Convert LightGBM output to CNN-compatible format
+                # Convert LightGBM output to align witht he CNN format
                 if gesture_name == "NOGESTURE":
-                    has_motion = 0.0
-                    gesture_conf = 0.0
+                    gesture_conf = 1-confidence # gesture confidence is the 1-no gesture confidence                   
+                    nogesture_conf = confidence # no gesture confidence is the confidence of the no gesture class
                     move_conf = 0.0
                 else:
-                    has_motion = confidence  # Use prediction confidence as motion indicator
                     # Distribute confidence based on gesture type
                     if "move" in gesture_name.lower() or "MOVE" in gesture_name:
                         gesture_conf = 0.0
                         move_conf = confidence
-                    else:
+                        nogesture_conf = 1-confidence
+                    else: #then its a a gesture
                         gesture_conf = confidence
                         move_conf = 0.0
+                        nogesture_conf = 1-confidence
                 
                 predictions.append({
                     'time': timestamp,
-                    'has_motion': has_motion,
-                    'NoGesture_confidence': 1.0 - has_motion,
+                    'has_motion': gesture_conf,
+                    'NoGesture_confidence': nogesture_conf,
                     'Gesture_confidence': gesture_conf,
                     'Move_confidence': move_conf
                 })
