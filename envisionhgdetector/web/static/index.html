@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EnvisionHG - Gesture Detection</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Inter',sans-serif;background:#f5f5f5;color:#000;line-height:1.5;font-size:14px}
+    .app{display:flex;flex-direction:column;min-height:100vh}
+    .header{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;background:#fff;border-bottom:1px solid #e5e5e5}
+    .logo{font-size:18px;font-weight:700;display:flex;align-items:center;gap:10px}
+    .nav{display:flex;gap:2px}
+    .nav a{padding:8px 16px;color:#666;text-decoration:none;font-size:13px;font-weight:500;cursor:pointer}
+    .nav a:hover{background:#f5f5f5}
+    .nav a.active{background:#000;color:#fff}
+    .main{display:flex;flex:1;overflow:hidden}
+    .sidebar{width:320px;background:#fafafa;border-right:1px solid #e5e5e5;padding:20px;overflow-y:auto}
+    .content{flex:1;padding:24px;overflow-y:auto}
+    .section{margin-bottom:24px}
+    .section-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+    .card{background:#fff;border:1px solid #e5e5e5;margin-bottom:16px}
+    .card-header{padding:12px 16px;border-bottom:1px solid #e5e5e5;font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .card-body{padding:16px}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;border:2px solid #000;background:#fff;color:#000;transition:all .15s}
+    .btn:hover{background:#000;color:#fff}
+    .btn:disabled{opacity:.4;cursor:not-allowed;background:#fff;color:#000}
+    .btn-primary{background:#000;color:#fff}
+    .btn-primary:hover{background:#333}
+    .btn-sm{padding:6px 12px;font-size:12px}
+    .btn-success{border-color:#16a34a;color:#16a34a}
+    .btn-success:hover{background:#16a34a;color:#fff}
+    .tag{display:inline-flex;padding:3px 8px;font-size:10px;font-weight:600;background:#000;color:#fff}
+    .tag-success{background:#16a34a}
+    .tag-warning{background:#ea580c}
+    .tag-info{background:#2563eb}
+    .input,.select{width:100%;padding:10px 12px;font-size:13px;border:2px solid #e5e5e5;font-family:inherit;background:#fff}
+    .input:focus,.select:focus{outline:none;border-color:#000}
+    .flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-8{gap:8px}.gap-12{gap:12px}.gap-16{gap:16px}.flex-1{flex:1}
+    .text-sm{font-size:13px}.text-xs{font-size:11px}.text-gray{color:#666}.text-center{text-align:center}
+    .mb-8{margin-bottom:8px}.mb-12{margin-bottom:12px}.mb-16{margin-bottom:16px}.mb-24{margin-bottom:24px}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+    .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+    .stat-box{text-align:center;padding:16px;background:#fff;border:1px solid #e5e5e5}
+    .stat-val{font-size:24px;font-weight:300}
+    .stat-label{font-size:10px;color:#666;text-transform:uppercase;letter-spacing:.5px}
+    h1{font-size:24px;font-weight:300}
+    h1 span{font-weight:600}
+
+    /* Upload Zone */
+    .upload-zone{border:2px dashed #ccc;padding:40px;text-align:center;cursor:pointer;transition:all .2s;background:#fafafa}
+    .upload-zone:hover,.upload-zone.dragover{border-color:#000;background:#f0f0f0}
+    .upload-zone i{font-size:32px;color:#999;margin-bottom:12px}
+    .upload-zone.has-file{border-style:solid;border-color:#16a34a;background:#f0fdf4}
+    .upload-zone.has-file i{color:#16a34a}
+
+    /* Video Preview */
+    .video-container{background:#000;aspect-ratio:16/9;position:relative;overflow:hidden}
+    .video-container video{width:100%;height:100%;object-fit:contain}
+    .video-placeholder{display:flex;align-items:center;justify-content:center;height:100%;color:#666;flex-direction:column;gap:8px}
+
+    /* Progress */
+    .progress-container{background:#fff;border:1px solid #e5e5e5;padding:20px;margin-bottom:16px}
+    .progress-bar{height:8px;background:#e5e5e5;border-radius:4px;overflow:hidden;margin:12px 0}
+    .progress-fill{height:100%;background:#000;transition:width .3s;border-radius:4px}
+    .progress-steps{display:flex;justify-content:space-between;margin-top:16px}
+    .progress-step{display:flex;align-items:center;gap:6px;font-size:11px;color:#999}
+    .progress-step.active{color:#000;font-weight:600}
+    .progress-step.done{color:#16a34a}
+    .progress-step .step-icon{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px}
+    .progress-step.done .step-icon{background:#16a34a;border-color:#16a34a;color:#fff}
+    .progress-step.active .step-icon{background:#000;border-color:#000;color:#fff}
+
+    /* Timeline */
+    .timeline{background:#1a1a1a;padding:12px;border-radius:4px;margin-top:12px}
+    .timeline-track{height:40px;background:#333;border-radius:4px;position:relative;overflow:hidden}
+    .timeline-segment{position:absolute;height:100%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;cursor:pointer;transition:opacity .2s}
+    .timeline-segment:hover{opacity:.8}
+    .timeline-ruler{display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:#666}
+
+    /* Results Table */
+    .results-table{width:100%;border-collapse:collapse;font-size:13px}
+    .results-table th,.results-table td{padding:10px 12px;text-align:left;border-bottom:1px solid #e5e5e5}
+    .results-table th{background:#fafafa;font-weight:600;font-size:11px;text-transform:uppercase;color:#666}
+    .results-table tr:hover{background:#fafafa}
+    .results-table .gesture-color{width:12px;height:12px;border-radius:2px;display:inline-block;margin-right:8px}
+
+    /* Model Selection */
+    .model-option{border:2px solid #e5e5e5;padding:16px;cursor:pointer;transition:all .15s;background:#fff}
+    .model-option:hover{border-color:#999}
+    .model-option.selected{border-color:#000;background:#fafafa}
+    .model-option .model-icon{width:40px;height:40px;background:#f0f0f0;display:flex;align-items:center;justify-content:center;margin-bottom:8px;font-size:18px}
+    .model-option.selected .model-icon{background:#000;color:#fff}
+
+    /* Slider */
+    .slider-container{margin-bottom:16px}
+    .slider-header{display:flex;justify-content:space-between;margin-bottom:6px}
+    .slider-value{font-weight:600;background:#000;color:#fff;padding:2px 8px;font-size:11px}
+    input[type="range"]{width:100%;height:6px;-webkit-appearance:none;background:#e5e5e5;border-radius:3px;outline:none}
+    input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;background:#000;border-radius:50%;cursor:pointer}
+
+    /* Export Options */
+    .export-option{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #e5e5e5;margin-bottom:8px;cursor:pointer;transition:all .15s}
+    .export-option:hover{border-color:#000;background:#fafafa}
+    .export-option i{font-size:20px;color:#666;width:24px}
+
+    /* Status Badge */
+    .status{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-size:11px;font-weight:600;border-radius:20px}
+    .status-idle{background:#f0f0f0;color:#666}
+    .status-processing{background:#fef3c7;color:#92400e}
+    .status-done{background:#dcfce7;color:#166534}
+    .status-error{background:#fee2e2;color:#991b1b}
+
+    .pulse{animation:pulse 2s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+    /* Screen Management */
+    .screen{display:none}
+    .screen.active{display:block}
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="flex items-center gap-12">
+      <div class="logo"><i class="fas fa-hand-paper"></i> EnvisionHG</div>
+      <div class="nav">
+        <a class="active" data-screen="upload">Upload</a>
+        <a data-screen="process">Process</a>
+        <a data-screen="results">Results</a>
+        <a data-screen="export">Export</a>
+      </div>
+    </div>
+    <div class="flex items-center gap-12">
+      <span class="status status-idle" id="globalStatus"><i class="fas fa-circle"></i> Ready</span>
+      <button class="btn btn-primary btn-sm" id="runBtn" disabled><i class="fas fa-play"></i> Run Detection</button>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+      <!-- File Info -->
+      <div class="section">
+        <div class="section-title"><i class="fas fa-file-video"></i> Current File</div>
+        <div id="fileInfo" class="card">
+          <div class="card-body text-center text-gray">
+            <i class="fas fa-upload" style="font-size:24px;margin-bottom:8px;display:block"></i>
+            No file selected
+          </div>
+        </div>
+      </div>
+
+      <!-- Model Selection -->
+      <div class="section">
+        <div class="section-title"><i class="fas fa-brain"></i> Model</div>
+        <div class="grid-2" style="gap:8px">
+          <div class="model-option selected" data-model="cnn" onclick="selectModel('cnn')">
+            <div class="model-icon"><i class="fas fa-network-wired"></i></div>
+            <div style="font-weight:600;font-size:13px">CNN</div>
+            <div class="text-xs text-gray">Deep Learning</div>
+          </div>
+          <div class="model-option" data-model="lightgbm" onclick="selectModel('lightgbm')">
+            <div class="model-icon"><i class="fas fa-tree"></i></div>
+            <div style="font-weight:600;font-size:13px">LightGBM</div>
+            <div class="text-xs text-gray">Gradient Boost</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Thresholds -->
+      <div class="section">
+        <div class="section-title"><i class="fas fa-sliders-h"></i> Thresholds</div>
+        <div class="slider-container">
+          <div class="slider-header">
+            <span class="text-sm">Motion Threshold</span>
+            <span class="slider-value" id="motionVal">0.30</span>
+          </div>
+          <input type="range" id="motionThreshold" min="0" max="100" value="30" oninput="updateSlider('motion',this.value)">
+          <div class="flex justify-between text-xs text-gray"><span>Sensitive</span><span>Strict</span></div>
+        </div>
+        <div class="slider-container">
+          <div class="slider-header">
+            <span class="text-sm">Gesture Threshold</span>
+            <span class="slider-value" id="gestureVal">0.50</span>
+          </div>
+          <input type="range" id="gestureThreshold" min="0" max="100" value="50" oninput="updateSlider('gesture',this.value)">
+          <div class="flex justify-between text-xs text-gray"><span>More Detections</span><span>High Confidence</span></div>
+        </div>
+        <div class="slider-container">
+          <div class="slider-header">
+            <span class="text-sm">Min Duration (frames)</span>
+            <span class="slider-value" id="durationVal">15</span>
+          </div>
+          <input type="range" id="minDuration" min="5" max="60" value="15" oninput="updateSlider('duration',this.value)">
+          <div class="flex justify-between text-xs text-gray"><span>5</span><span>60</span></div>
+        </div>
+      </div>
+
+      <!-- Quick Stats -->
+      <div class="section">
+        <div class="section-title"><i class="fas fa-chart-bar"></i> Detection Stats</div>
+        <div class="grid-2" style="gap:8px">
+          <div class="stat-box"><div class="stat-val" id="statSegments">-</div><div class="stat-label">Segments</div></div>
+          <div class="stat-box"><div class="stat-val" id="statGestures">-</div><div class="stat-label">Gestures</div></div>
+          <div class="stat-box"><div class="stat-val" id="statDuration">-</div><div class="stat-label">Duration</div></div>
+          <div class="stat-box"><div class="stat-val" id="statFPS">-</div><div class="stat-label">FPS</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Upload Screen -->
+      <div class="screen active" id="screen-upload">
+        <div class="flex justify-between items-center mb-16">
+          <div>
+            <h1>Upload <span>Video</span></h1>
+            <p class="text-sm text-gray">Select a video file to analyze for gesture detection</p>
+          </div>
+        </div>
+
+        <div class="card mb-24">
+          <div class="card-body">
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+              <i class="fas fa-cloud-upload-alt"></i>
+              <div style="font-weight:600;margin-bottom:4px">Drop video here or click to browse</div>
+              <div class="text-sm text-gray">Supports MP4, AVI, MOV (max 500MB)</div>
+              <input type="file" id="fileInput" accept="video/*" style="display:none" onchange="handleFileSelect(this)">
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><i class="fas fa-play-circle"></i> Video Preview</div>
+          <div class="card-body" style="padding:0">
+            <div class="video-container">
+              <div class="video-placeholder" id="videoPlaceholder">
+                <i class="fas fa-film" style="font-size:48px"></i>
+                <span>No video loaded</span>
+              </div>
+              <video id="videoPreview" style="display:none" controls></video>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Process Screen -->
+      <div class="screen" id="screen-process">
+        <div class="flex justify-between items-center mb-16">
+          <div>
+            <h1>Processing <span>Pipeline</span></h1>
+            <p class="text-sm text-gray">Configure and run the gesture detection pipeline</p>
+          </div>
+          <button class="btn btn-primary" id="startProcessBtn" onclick="startProcessing()">
+            <i class="fas fa-play"></i> Start Processing
+          </button>
+        </div>
+
+        <div class="progress-container" id="progressContainer">
+          <div class="flex justify-between items-center">
+            <span style="font-weight:600" id="progressLabel">Ready to process</span>
+            <span class="text-sm text-gray" id="progressPercent">0%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" id="progressFill" style="width:0%"></div>
+          </div>
+          <div class="progress-steps">
+            <div class="progress-step" id="step1"><span class="step-icon">1</span> Load Video</div>
+            <div class="progress-step" id="step2"><span class="step-icon">2</span> Extract Frames</div>
+            <div class="progress-step" id="step3"><span class="step-icon">3</span> Pose Detection</div>
+            <div class="progress-step" id="step4"><span class="step-icon">4</span> Classify Gestures</div>
+            <div class="progress-step" id="step5"><span class="step-icon">5</span> Export Results</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header"><i class="fas fa-cog"></i> Pipeline Configuration</div>
+            <div class="card-body">
+              <div class="mb-12">
+                <label class="text-sm text-gray">Selected Model</label>
+                <div style="font-weight:600;font-size:16px" id="configModel">CNN (Deep Learning)</div>
+              </div>
+              <div class="mb-12">
+                <label class="text-sm text-gray">Motion Threshold</label>
+                <div style="font-weight:600" id="configMotion">0.30</div>
+              </div>
+              <div class="mb-12">
+                <label class="text-sm text-gray">Gesture Threshold</label>
+                <div style="font-weight:600" id="configGesture">0.50</div>
+              </div>
+              <div>
+                <label class="text-sm text-gray">Min Duration</label>
+                <div style="font-weight:600" id="configDuration">15 frames</div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><i class="fas fa-terminal"></i> Processing Log</div>
+            <div class="card-body" style="background:#1a1a1a;color:#0f0;font-family:monospace;font-size:12px;height:200px;overflow-y:auto" id="processLog">
+              <div>[System] Ready for processing...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results Screen -->
+      <div class="screen" id="screen-results">
+        <div class="flex justify-between items-center mb-16">
+          <div>
+            <h1>Detection <span>Results</span></h1>
+            <p class="text-sm text-gray">Review detected gesture segments and classifications</p>
+          </div>
+          <div class="flex gap-8">
+            <button class="btn btn-sm" onclick="showScreen('export')"><i class="fas fa-download"></i> Export</button>
+          </div>
+        </div>
+
+        <div class="card mb-16">
+          <div class="card-header">
+            <span><i class="fas fa-video"></i> Labeled Video Preview</span>
+            <div class="flex gap-8">
+              <button class="btn btn-sm" onclick="playSegment('prev')"><i class="fas fa-step-backward"></i></button>
+              <button class="btn btn-sm" onclick="playSegment('next')"><i class="fas fa-step-forward"></i></button>
+            </div>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div class="video-container">
+              <video id="resultsVideo" controls style="width:100%;height:100%"></video>
+            </div>
+            <div class="timeline">
+              <div class="timeline-track" id="timelineTrack"></div>
+              <div class="timeline-ruler" id="timelineRuler"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span><i class="fas fa-list"></i> Detected Segments</span>
+            <span class="text-sm text-gray" id="segmentCount">0 segments</span>
+          </div>
+          <div class="card-body" style="padding:0;max-height:300px;overflow-y:auto">
+            <table class="results-table" id="resultsTable">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Gesture</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Duration</th>
+                  <th>Confidence</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export Screen -->
+      <div class="screen" id="screen-export">
+        <div class="flex justify-between items-center mb-16">
+          <div>
+            <h1>Export <span>Results</span></h1>
+            <p class="text-sm text-gray">Download detection results in various formats</p>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-header"><i class="fas fa-file-export"></i> Export Formats</div>
+            <div class="card-body">
+              <div class="export-option" onclick="exportData('csv')">
+                <i class="fas fa-file-csv"></i>
+                <div class="flex-1">
+                  <div style="font-weight:600">CSV File</div>
+                  <div class="text-xs text-gray">Spreadsheet compatible format</div>
+                </div>
+                <button class="btn btn-sm btn-success"><i class="fas fa-download"></i></button>
+              </div>
+              <div class="export-option" onclick="exportData('elan')">
+                <i class="fas fa-file-code"></i>
+                <div class="flex-1">
+                  <div style="font-weight:600">ELAN File (.eaf)</div>
+                  <div class="text-xs text-gray">Linguistic annotation format</div>
+                </div>
+                <button class="btn btn-sm btn-success"><i class="fas fa-download"></i></button>
+              </div>
+              <div class="export-option" onclick="exportData('json')">
+                <i class="fas fa-file-alt"></i>
+                <div class="flex-1">
+                  <div style="font-weight:600">JSON File</div>
+                  <div class="text-xs text-gray">Structured data format</div>
+                </div>
+                <button class="btn btn-sm btn-success"><i class="fas fa-download"></i></button>
+              </div>
+              <div class="export-option" onclick="exportData('video')">
+                <i class="fas fa-film"></i>
+                <div class="flex-1">
+                  <div style="font-weight:600">Labeled Video</div>
+                  <div class="text-xs text-gray">Video with gesture overlays</div>
+                </div>
+                <button class="btn btn-sm btn-success"><i class="fas fa-download"></i></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><i class="fas fa-info-circle"></i> Export Summary</div>
+            <div class="card-body">
+              <div class="mb-12 flex justify-between"><span class="text-gray">File Name</span><span style="font-weight:600" id="exportFileName">-</span></div>
+              <div class="mb-12 flex justify-between"><span class="text-gray">Total Segments</span><span style="font-weight:600" id="exportSegments">-</span></div>
+              <div class="mb-12 flex justify-between"><span class="text-gray">Video Duration</span><span style="font-weight:600" id="exportDuration">-</span></div>
+              <div class="mb-12 flex justify-between"><span class="text-gray">Model Used</span><span style="font-weight:600" id="exportModel">-</span></div>
+              <div class="mb-12 flex justify-between"><span class="text-gray">Processing Date</span><span style="font-weight:600" id="exportDate">-</span></div>
+              <hr style="margin:16px 0;border:none;border-top:1px solid #e5e5e5">
+              <div class="flex justify-between items-center">
+                <span class="text-gray">Include metadata</span>
+                <input type="checkbox" id="includeMetadata" checked>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-header"><i class="fas fa-eye"></i> Preview (CSV)</div>
+          <div class="card-body" style="background:#1a1a1a;color:#fff;font-family:monospace;font-size:11px;max-height:200px;overflow:auto;white-space:pre" id="exportPreview">
+No results yet. Process a video first.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// API Base URL
+const API_URL = '';
+
+// State
+let state = {
+  file: null,
+  jobId: null,
+  model: 'cnn',
+  motionThreshold: 0.30,
+  gestureThreshold: 0.50,
+  minDuration: 15,
+  processing: false,
+  results: [],
+  videoUrl: null
+};
+
+const gestureColors = {
+  'Gesture': '#2563eb',
+  'Move': '#16a34a',
+  'NoGesture': '#666666'
+};
+
+// Navigation
+document.querySelectorAll('.nav a').forEach(a => {
+  a.onclick = () => showScreen(a.dataset.screen);
+});
+
+function showScreen(screen) {
+  document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('active', a.dataset.screen === screen));
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === `screen-${screen}`));
+}
+
+// File Upload
+const uploadZone = document.getElementById('uploadZone');
+uploadZone.ondragover = e => { e.preventDefault(); uploadZone.classList.add('dragover'); };
+uploadZone.ondragleave = () => uploadZone.classList.remove('dragover');
+uploadZone.ondrop = e => { e.preventDefault(); uploadZone.classList.remove('dragover'); handleFile(e.dataTransfer.files[0]); };
+
+function handleFileSelect(input) {
+  if(input.files[0]) handleFile(input.files[0]);
+}
+
+async function handleFile(file) {
+  if(!file.type.startsWith('video/')) {
+    alert('Please select a video file');
+    return;
+  }
+
+  state.file = file;
+  state.videoUrl = URL.createObjectURL(file);
+
+  // Show preview locally first
+  uploadZone.classList.add('has-file');
+  uploadZone.innerHTML = `<i class="fas fa-spinner fa-spin"></i><div style="font-weight:600">Uploading ${file.name}...</div><div class="text-sm text-gray">${(file.size/1024/1024).toFixed(1)} MB</div>`;
+
+  // Upload to server
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await fetch(`${API_URL}/api/upload`, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Upload failed');
+    }
+
+    const data = await response.json();
+    state.jobId = data.job_id;
+
+    uploadZone.innerHTML = `<i class="fas fa-check-circle"></i><div style="font-weight:600">${file.name}</div><div class="text-sm text-gray">${(file.size/1024/1024).toFixed(1)} MB - Uploaded</div>`;
+    log(`File uploaded successfully. Job ID: ${state.jobId}`);
+
+  } catch (error) {
+    uploadZone.classList.remove('has-file');
+    uploadZone.innerHTML = `<i class="fas fa-exclamation-circle" style="color:#dc2626"></i><div style="font-weight:600;color:#dc2626">Upload Failed</div><div class="text-sm text-gray">${error.message}</div>`;
+    return;
+  }
+
+  // Show video preview
+  const video = document.getElementById('videoPreview');
+  video.src = state.videoUrl;
+  video.style.display = 'block';
+  document.getElementById('videoPlaceholder').style.display = 'none';
+
+  video.onloadedmetadata = () => {
+    document.getElementById('statDuration').textContent = formatTime(video.duration);
+    document.getElementById('statFPS').textContent = '30';
+    updateFileInfo();
+  };
+
+  document.getElementById('runBtn').disabled = false;
+  document.getElementById('startProcessBtn').disabled = false;
+}
+
+function updateFileInfo() {
+  if(!state.file) return;
+  const video = document.getElementById('videoPreview');
+  document.getElementById('fileInfo').innerHTML = `
+    <div class="card-body">
+      <div class="mb-8" style="font-weight:600;word-break:break-all">${state.file.name}</div>
+      <div class="text-xs text-gray mb-8">${(state.file.size/1024/1024).toFixed(1)} MB - ${formatTime(video.duration)}</div>
+      <span class="tag tag-success">Uploaded</span>
+    </div>
+  `;
+}
+
+// Model Selection
+function selectModel(model) {
+  state.model = model;
+  document.querySelectorAll('.model-option').forEach(el => el.classList.toggle('selected', el.dataset.model === model));
+  document.getElementById('configModel').textContent = model === 'cnn' ? 'CNN (Deep Learning)' : 'LightGBM (Gradient Boost)';
+}
+
+// Sliders
+function updateSlider(type, value) {
+  if(type === 'motion') {
+    state.motionThreshold = value / 100;
+    document.getElementById('motionVal').textContent = state.motionThreshold.toFixed(2);
+    document.getElementById('configMotion').textContent = state.motionThreshold.toFixed(2);
+  } else if(type === 'gesture') {
+    state.gestureThreshold = value / 100;
+    document.getElementById('gestureVal').textContent = state.gestureThreshold.toFixed(2);
+    document.getElementById('configGesture').textContent = state.gestureThreshold.toFixed(2);
+  } else if(type === 'duration') {
+    state.minDuration = parseInt(value);
+    document.getElementById('durationVal').textContent = value;
+    document.getElementById('configDuration').textContent = value + ' frames';
+  }
+}
+
+// Processing
+async function startProcessing() {
+  if(!state.jobId || state.processing) return;
+
+  state.processing = true;
+  showScreen('process');
+  updateStatus('processing', 'Processing...');
+
+  // Reset progress UI
+  const steps = ['step1','step2','step3','step4','step5'];
+  steps.forEach(s => {
+    document.getElementById(s).classList.remove('active', 'done');
+    document.getElementById(s).querySelector('.step-icon').innerHTML = s.slice(-1);
+  });
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressPercent').textContent = '0%';
+
+  log('Starting processing...');
+  log(`Model: ${state.model}, Motion: ${state.motionThreshold}, Gesture: ${state.gestureThreshold}`);
+
+  try {
+    // Start processing on server
+    const response = await fetch(`${API_URL}/api/process/${state.jobId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: state.model,
+        motion_threshold: state.motionThreshold,
+        gesture_threshold: state.gestureThreshold,
+        min_duration: state.minDuration
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Processing failed');
+    }
+
+    // Poll for status
+    await pollStatus();
+
+  } catch (error) {
+    log(`ERROR: ${error.message}`);
+    updateStatus('error', 'Error');
+    state.processing = false;
+    return;
+  }
+}
+
+async function pollStatus() {
+  const stepMap = {
+    'loading': 1,
+    'configuring': 2,
+    'processing': 3,
+    'finalizing': 4,
+    'complete': 5
+  };
+
+  const stepLabels = {
+    'loading': 'Loading video...',
+    'configuring': 'Configuring model...',
+    'processing': 'Detecting gestures...',
+    'finalizing': 'Generating results...',
+    'complete': 'Complete!'
+  };
+
+  while (state.processing) {
+    try {
+      const response = await fetch(`${API_URL}/api/status/${state.jobId}`);
+      const status = await response.json();
+
+      // Update progress
+      document.getElementById('progressFill').style.width = status.progress + '%';
+      document.getElementById('progressPercent').textContent = status.progress + '%';
+      document.getElementById('progressLabel').textContent = stepLabels[status.step] || status.step;
+
+      // Update step indicators
+      const currentStep = stepMap[status.step] || 0;
+      for (let i = 1; i <= 5; i++) {
+        const stepEl = document.getElementById(`step${i}`);
+        stepEl.classList.remove('active', 'done');
+        if (i < currentStep) {
+          stepEl.classList.add('done');
+          stepEl.querySelector('.step-icon').innerHTML = '<i class="fas fa-check"></i>';
+        } else if (i === currentStep) {
+          stepEl.classList.add('active');
+        }
+      }
+
+      log(stepLabels[status.step] || `Step: ${status.step}`);
+
+      if (status.status === 'complete') {
+        await loadResults();
+        state.processing = false;
+        updateStatus('done', 'Complete');
+        setTimeout(() => showScreen('results'), 500);
+        break;
+      }
+
+      if (status.status === 'error') {
+        throw new Error(status.error || 'Processing failed');
+      }
+
+      await sleep(1000);
+
+    } catch (error) {
+      log(`ERROR: ${error.message}`);
+      state.processing = false;
+      updateStatus('error', 'Error');
+      break;
+    }
+  }
+}
+
+async function loadResults() {
+  try {
+    const response = await fetch(`${API_URL}/api/results/${state.jobId}`);
+    const results = await response.json();
+
+    state.results = results.segments.map((seg, idx) => ({
+      ...seg,
+      id: seg.id || idx + 1,
+      color: gestureColors[seg.gesture] || '#666'
+    }));
+
+    document.getElementById('statSegments').textContent = state.results.length;
+    document.getElementById('statGestures').textContent = [...new Set(state.results.map(r => r.gesture))].length;
+    document.getElementById('statFPS').textContent = results.fps || 30;
+
+    log(`Processing complete! Found ${state.results.length} segments.`);
+
+    renderResults();
+    renderTimeline();
+    updateExportInfo();
+
+    // Load labeled video if available
+    document.getElementById('resultsVideo').src = `${API_URL}/api/labeled-video/${state.jobId}`;
+
+  } catch (error) {
+    log(`Error loading results: ${error.message}`);
+  }
+}
+
+function renderResults() {
+  const tbody = document.getElementById('resultsBody');
+  tbody.innerHTML = state.results.map(r => `
+    <tr>
+      <td>${r.id}</td>
+      <td><span class="gesture-color" style="background:${r.color}"></span>${r.gesture}</td>
+      <td>${formatTime(r.startTime)}</td>
+      <td>${formatTime(r.endTime)}</td>
+      <td>${((r.endTime - r.startTime) * 1000).toFixed(0)}ms</td>
+      <td><span class="tag ${r.confidence > 0.9 ? 'tag-success' : r.confidence > 0.8 ? 'tag-info' : 'tag-warning'}">${(r.confidence * 100).toFixed(0)}%</span></td>
+      <td><button class="btn btn-sm" onclick="jumpToSegment(${r.id})"><i class="fas fa-play"></i></button></td>
+    </tr>
+  `).join('');
+  document.getElementById('segmentCount').textContent = state.results.length + ' segments';
+}
+
+function renderTimeline() {
+  const video = document.getElementById('videoPreview');
+  const duration = video.duration || 30;
+  const track = document.getElementById('timelineTrack');
+
+  track.innerHTML = state.results.map(r => {
+    const left = (r.startTime / duration * 100).toFixed(1);
+    const width = Math.max(((r.endTime - r.startTime) / duration * 100), 1).toFixed(1);
+    return `<div class="timeline-segment" style="left:${left}%;width:${width}%;background:${r.color}" onclick="jumpToSegment(${r.id})" title="${r.gesture}">${r.gesture.charAt(0)}</div>`;
+  }).join('');
+
+  const ruler = document.getElementById('timelineRuler');
+  ruler.innerHTML = [0, 0.25, 0.5, 0.75, 1].map(t => `<span>${formatTime(t * duration)}</span>`).join('');
+}
+
+function jumpToSegment(id) {
+  const segment = state.results.find(r => r.id === id);
+  if(segment) {
+    const video = document.getElementById('resultsVideo');
+    video.currentTime = segment.startTime;
+    video.play();
+  }
+}
+
+// Export
+function updateExportInfo() {
+  const video = document.getElementById('videoPreview');
+  document.getElementById('exportFileName').textContent = state.file?.name || '-';
+  document.getElementById('exportSegments').textContent = state.results.length;
+  document.getElementById('exportDuration').textContent = formatTime(video.duration);
+  document.getElementById('exportModel').textContent = state.model.toUpperCase();
+  document.getElementById('exportDate').textContent = new Date().toLocaleDateString();
+
+  // Update preview
+  if (state.results.length > 0) {
+    let preview = 'segment_id,gesture_type,start_frame,end_frame,start_time,end_time,confidence,duration_ms\n';
+    preview += state.results.slice(0, 5).map(r =>
+      `${r.id},${r.gesture.toLowerCase()},${r.startFrame},${r.endFrame},${r.startTime.toFixed(3)},${r.endTime.toFixed(3)},${r.confidence},${((r.endTime-r.startTime)*1000).toFixed(0)}`
+    ).join('\n');
+    if (state.results.length > 5) preview += '\n...';
+    document.getElementById('exportPreview').textContent = preview;
+  }
+}
+
+async function exportData(format) {
+  if(!state.results.length || !state.jobId) {
+    alert('No results to export');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/api/export/${state.jobId}/${format}`);
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Export failed');
+    }
+
+    // Download file
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+
+    const extensions = { csv: 'csv', json: 'json', elan: 'eaf', video: 'mp4' };
+    a.download = `gestures.${extensions[format] || format}`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    log(`Exported ${format.toUpperCase()} file`);
+
+  } catch (error) {
+    alert(`Export failed: ${error.message}`);
+  }
+}
+
+// Utilities
+function formatTime(s) {
+  if(!s && s !== 0) return '-';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  const ms = Math.floor((s % 1) * 100);
+  return `${m}:${sec.toString().padStart(2,'0')}.${ms.toString().padStart(2,'0')}`;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function log(msg) {
+  const el = document.getElementById('processLog');
+  el.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateStatus(type, text) {
+  const el = document.getElementById('globalStatus');
+  el.className = 'status status-' + type;
+  el.innerHTML = `<i class="fas fa-circle ${type==='processing'?'pulse':''}"></i> ${text}`;
+}
+
+// Run button
+document.getElementById('runBtn').onclick = () => {
+  showScreen('process');
+  startProcessing();
+};
+</script>
+</body>
+</html>

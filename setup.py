@@ -32,6 +32,11 @@ setup(
     install_requires=required,
     include_package_data=True,
     package_data={
-        'envisionhgdetector': ['model/*.h5'],
+        'envisionhgdetector': ['model/*.h5', 'web/static/*'],
+    },
+    entry_points={
+        'console_scripts': [
+            'envisionhg-web=envisionhgdetector.web.cli:main',
+        ],
     },
 )
