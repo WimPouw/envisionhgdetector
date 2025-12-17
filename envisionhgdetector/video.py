@@ -1,0 +1,501 @@
+# envisionhgdetector/video.py
+"""
+Video processing utilities for gesture detection.
+Handles video labeling, segmentation, and file operations.
+"""
+
+import os
+import glob
+from typing import Dict, List, Optional
+
+import cv2
+import numpy as np
+import pandas as pd
+from moviepy.video.io.VideoFileClip import VideoFileClip
+from tqdm import tqdm
+
+
+def label_video(
+    video_path: str,
+    segments: pd.DataFrame,
+    output_path: str,
+    predictions_df: Optional[pd.DataFrame] = None,
+    valid_timestamps: Optional[List[float]] = None,
+    motion_threshold: Optional[float] = None,
+    gesture_threshold: Optional[float] = None,
+    window_duration: float = 10.0,
+    target_fps: float = 25.0
+) -> None:
+    """
+    Label a video with predicted gestures based on segments.
+    Creates output at target_fps regardless of input fps.
+
+    Args:
+        video_path: Path to input video file
+        segments: DataFrame with segment information (start_time, end_time, label)
+        output_path: Path to save labeled video
+        predictions_df: Optional DataFrame with frame-by-frame predictions for overlay
+        valid_timestamps: Optional list of valid timestamps
+        motion_threshold: Motion threshold for display (optional)
+        gesture_threshold: Gesture threshold for display (optional)
+        window_duration: Duration of confidence graph window in seconds
+        target_fps: Output video frame rate
+    """
+    # Open video
+    cap = cv2.VideoCapture(video_path)
+    input_fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    video_duration = total_frames / input_fps
+
+    # Create VideoWriter object at target FPS
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
+
+    # Color mapping for labels
+    color_map = {
+        'NoGesture': (50, 50, 50),      # Dark gray
+        'Gesture': (0, 204, 204),        # Vibrant teal
+        'Move': (255, 94, 98)            # Soft coral red
+    }
+
+    # Fixed y-axis parameters for absolute scale
+    y_min = 0.0
+    y_max = 1.0
+
+    # Determine graph dimensions
+    graph_width = int(width * 0.3)
+    graph_height = int(height * 0.2)
+    graph_margin = 10
+
+    # Check if we have predictions
+    has_predictions = predictions_df is not None and not predictions_df.empty
+
+    if has_predictions:
+        # Ensure time column exists
+        if 'time' not in predictions_df.columns:
+            has_predictions = False
+            print("Warning: predictions_df doesn't have a 'time' column")
+
+    if has_predictions:
+        # Get confidence data
+        times = predictions_df['time'].values
+        predictions_start_time = times.min() if len(times) > 0 else None
+        gesture_conf = predictions_df['Gesture_confidence'].values if 'Gesture_confidence' in predictions_df.columns else None
+        move_conf = predictions_df['Move_confidence'].values if 'Move_confidence' in predictions_df.columns else None
+        motion_conf = predictions_df['has_motion'].values if 'has_motion' in predictions_df.columns else None
+
+    # Prepare segment lookup
+    def get_label_at_time(time: float) -> str:
+        if segments.empty:
+            return 'NoGesture'
+
+        matching_segments = segments[
+            (segments['start_time'] <= time) &
+            (segments['end_time'] >= time)
+        ]
+        return matching_segments['label'].iloc[0] if len(matching_segments) > 0 else 'NoGesture'
+
+    # Calculate total output frames at target FPS
+    output_frames = int(video_duration * target_fps)
+
+    progress_bar = tqdm(total=output_frames, desc="Labeling video", unit="frames")
+
+    # Process frames at the target rate
+    for output_frame_idx in range(output_frames):
+        # Calculate which input frame to read
+        output_time = output_frame_idx / target_fps
+        input_frame_idx = int(output_time * input_fps)
+
+        # Ensure we don't exceed video bounds
+        if input_frame_idx >= total_frames:
+            break
+
+        # Seek to the correct frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, input_frame_idx)
+        ret, frame = cap.read()
+
+        if not ret:
+            break
+
+        # Get the label at current time
+        try:
+            current_label = get_label_at_time(output_time)
+        except Exception as e:
+            print(f"Error getting label at time {output_time}: {str(e)}")
+            current_label = 'NoGesture'
+
+        # Add text label to frame
+        cv2.putText(
+            frame,
+            current_label,
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            color_map.get(current_label, (255, 255, 255)),
+            2
+        )
+
+        # Add moving window confidence graph if predictions are available
+        if has_predictions and predictions_start_time is not None and output_time >= predictions_start_time:
+            _draw_confidence_graph(
+                frame, predictions_df, output_time, times,
+                gesture_conf, move_conf, motion_conf,
+                motion_threshold, gesture_threshold,
+                graph_width, graph_height, graph_margin,
+                width, window_duration, y_min, y_max
+            )
+
+        out.write(frame)
+        progress_bar.update(1)
+
+    progress_bar.close()
+    cap.release()
+    out.release()
+
+    print(f"Video labeled at {target_fps}fps saved to {output_path}")
+
+
+def _draw_confidence_graph(
+    frame: np.ndarray,
+    predictions_df: pd.DataFrame,
+    output_time: float,
+    times: np.ndarray,
+    gesture_conf: Optional[np.ndarray],
+    move_conf: Optional[np.ndarray],
+    motion_conf: Optional[np.ndarray],
+    motion_threshold: Optional[float],
+    gesture_threshold: Optional[float],
+    graph_width: int,
+    graph_height: int,
+    graph_margin: int,
+    frame_width: int,
+    window_duration: float,
+    y_min: float,
+    y_max: float
+) -> None:
+    """Draw confidence graph overlay on video frame."""
+    graph_pos_x = frame_width - graph_width - graph_margin
+    graph_pos_y = graph_margin
+
+    # Draw background with semi-transparency
+    overlay = frame.copy()
+    cv2.rectangle(overlay,
+                 (graph_pos_x - 35, graph_pos_y - 5),
+                 (graph_pos_x + graph_width + 5, graph_pos_y + graph_height + 25),
+                 (0, 0, 0),
+                 -1)
+    frame[:] = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
+
+    # Calculate window bounds
+    min_time = min(times) if len(times) > 0 else 0
+    max_time = max(times) if len(times) > 0 else output_time + window_duration
+
+    # For beginning of video
+    if output_time < min_time + (window_duration * 0.2):
+        window_start = min_time
+        window_end = min(max_time, min_time + window_duration)
+    # For end of video
+    elif output_time > max_time - (window_duration * 0.2):
+        window_end = max_time
+        window_start = max(min_time, max_time - window_duration)
+    # For middle of video (standard sliding window)
+    else:
+        window_start = max(min_time, output_time - (window_duration * 0.8))
+        window_end = min(max_time, window_start + window_duration)
+
+    # Add a safeguard
+    if window_end <= window_start:
+        window_start = max(0, output_time - (window_duration * 0.5))
+        window_end = window_start + window_duration
+
+    # Add title with timestamp info
+    cv2.putText(
+        frame,
+        f"Confidence: {window_start:.1f}s - {window_end:.1f}s",
+        (graph_pos_x, graph_pos_y - 5),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.4,
+        (255, 255, 255),
+        1
+    )
+
+    # Draw axes
+    cv2.line(frame,
+            (graph_pos_x, graph_pos_y + graph_height),
+            (graph_pos_x + graph_width, graph_pos_y + graph_height),
+            (255, 255, 255), 1)  # X-axis
+    cv2.line(frame,
+            (graph_pos_x, graph_pos_y),
+            (graph_pos_x, graph_pos_y + graph_height),
+            (255, 255, 255), 1)  # Y-axis
+
+    # Add Y-axis ticks and grid lines
+    tick_positions = [0.0, 0.25, 0.5, 0.75, 1.0]
+    for tick in tick_positions:
+        tick_y = graph_pos_y + graph_height - int(tick * graph_height)
+        cv2.line(frame,
+                (graph_pos_x - 3, tick_y),
+                (graph_pos_x, tick_y),
+                (180, 180, 180), 1)
+        cv2.putText(frame, f"{tick:.1f}",
+                  (graph_pos_x - 25, tick_y + 4),
+                  cv2.FONT_HERSHEY_SIMPLEX, 0.35, (180, 180, 180), 1)
+        cv2.line(frame,
+                (graph_pos_x, tick_y),
+                (graph_pos_x + graph_width, tick_y),
+                (50, 50, 50), 1, cv2.LINE_AA)
+
+    # Draw threshold lines
+    if motion_threshold is not None:
+        motion_y = graph_pos_y + graph_height - int(motion_threshold * graph_height)
+        for x in range(graph_pos_x, graph_pos_x + graph_width, 8):
+            cv2.line(frame, (x, motion_y), (x+4, motion_y), (200, 200, 200), 1)
+        cv2.putText(frame, f"M:{motion_threshold:.1f}",
+                  (graph_pos_x + graph_width + 2, motion_y + 4),
+                  cv2.FONT_HERSHEY_SIMPLEX, 0.35, (200, 200, 200), 1)
+
+    if gesture_threshold is not None:
+        gesture_y = graph_pos_y + graph_height - int(gesture_threshold * graph_height)
+        for x in range(graph_pos_x, graph_pos_x + graph_width, 8):
+            cv2.line(frame, (x, gesture_y), (x+4, gesture_y), (128, 150, 150), 1)
+        cv2.putText(frame, f"G:{gesture_threshold:.1f}",
+                  (graph_pos_x + graph_width + 2, gesture_y + 4),
+                  cv2.FONT_HERSHEY_SIMPLEX, 0.35, (128, 150, 150), 1)
+
+    # Find indices within the time window
+    mask = (times >= window_start) & (times <= window_end)
+    if np.any(mask):
+        window_times = times[mask]
+
+        # Plot confidence lines
+        if gesture_conf is not None:
+            _plot_confidence_line(frame, window_times, gesture_conf[mask],
+                                 window_start, window_duration, graph_pos_x,
+                                 graph_pos_y, graph_width, graph_height,
+                                 y_min, y_max, (0, 204, 204))
+
+        if move_conf is not None:
+            _plot_confidence_line(frame, window_times, move_conf[mask],
+                                 window_start, window_duration, graph_pos_x,
+                                 graph_pos_y, graph_width, graph_height,
+                                 y_min, y_max, (255, 94, 98))
+
+        if motion_conf is not None:
+            _plot_confidence_line(frame, window_times, motion_conf[mask],
+                                 window_start, window_duration, graph_pos_x,
+                                 graph_pos_y, graph_width, graph_height,
+                                 y_min, y_max, (200, 200, 200))
+
+    # Add current time indicator
+    x_current = graph_pos_x + int(((output_time - window_start) / window_duration) * graph_width)
+    if graph_pos_x <= x_current <= graph_pos_x + graph_width:
+        cv2.line(frame,
+                (x_current, graph_pos_y),
+                (x_current, graph_pos_y + graph_height),
+                (255, 255, 100), 2)
+
+    # Add legend
+    legend_y = graph_pos_y + graph_height + 15
+    cv2.putText(frame, "G", (graph_pos_x + 5, legend_y),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 204, 204), 1)
+    cv2.putText(frame, "M", (graph_pos_x + 25, legend_y),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 94, 98), 1)
+    cv2.putText(frame, "Motion", (graph_pos_x + 45, legend_y),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+
+
+def _plot_confidence_line(
+    frame: np.ndarray,
+    window_times: np.ndarray,
+    conf_values: np.ndarray,
+    window_start: float,
+    window_duration: float,
+    graph_pos_x: int,
+    graph_pos_y: int,
+    graph_width: int,
+    graph_height: int,
+    y_min: float,
+    y_max: float,
+    color: tuple
+) -> None:
+    """Plot a single confidence line on the graph."""
+    prev_point = None
+
+    for t, conf in zip(window_times, conf_values):
+        x = graph_pos_x + int(((t - window_start) / window_duration) * graph_width)
+        conf_clamped = max(min(conf, y_max), y_min)
+        y = graph_pos_y + graph_height - int((conf_clamped - y_min) / (y_max - y_min) * graph_height)
+
+        if prev_point:
+            cv2.line(frame, prev_point, (x, y), color, 1, cv2.LINE_AA)
+        prev_point = (x, y)
+
+
+def cut_video_by_segments(
+    output_folder: str,
+    segments_pattern: str = "*_segments.csv",
+    labeled_video_prefix: str = "labeled_",
+    output_subfolder: str = "gesture_segments"
+) -> Dict[str, List[str]]:
+    """
+    Extract video segments and corresponding features from labeled videos.
+
+    Args:
+        output_folder: Path to folder containing segments.csv files and labeled videos
+        segments_pattern: Pattern to match segment CSV files
+        labeled_video_prefix: Prefix of labeled video files
+        output_subfolder: Name of subfolder to store segmented videos
+
+    Returns:
+        Dictionary mapping original video names to lists of generated segment paths
+    """
+    # Create subfolder for segments if it doesn't exist
+    segments_folder = os.path.join(output_folder, output_subfolder)
+    os.makedirs(segments_folder, exist_ok=True)
+
+    # Get all segment CSV files
+    segment_files = glob.glob(os.path.join(output_folder, segments_pattern))
+    results = {}
+
+    for segment_file in segment_files:
+        try:
+            # Get original video name from segments file name
+            base_name = os.path.basename(segment_file).replace('_segments.csv', '')
+            labeled_video = os.path.join(output_folder, f"{labeled_video_prefix}{base_name}")
+            features_path = os.path.join(output_folder, f"{base_name}_features.npy")
+
+            # Check if labeled video and features exist
+            if not os.path.exists(labeled_video):
+                print(f"Warning: Labeled video not found for {base_name}")
+                continue
+            if not os.path.exists(features_path):
+                print(f"Warning: Features file not found for {base_name}")
+                continue
+
+            # Read segments file
+            segments_df = pd.read_csv(segment_file)
+
+            if segments_df.empty:
+                print(f"No segments found in {segment_file}")
+                continue
+
+            # Create subfolder for this video's segments
+            video_segments_folder = os.path.join(segments_folder, base_name)
+            os.makedirs(video_segments_folder, exist_ok=True)
+
+            # Load video and get fps
+            video = VideoFileClip(labeled_video)
+            fps = video.fps
+
+            # Load features
+            features = np.load(features_path)
+
+            segment_paths = []
+
+            # Process each segment
+            for idx, segment in segments_df.iterrows():
+                start_time = segment['start_time']
+                end_time = segment['end_time']
+                label = segment['label']
+
+                # Calculate frame indices
+                start_frame = int(start_time * fps)
+                end_frame = int(end_time * fps)
+
+                # Create segment filenames
+                segment_filename = f"{base_name}_segment_{idx+1}_{label}_{start_time:.2f}_{end_time:.2f}.mp4"
+                features_filename = f"{base_name}_segment_{idx+1}_{label}_{start_time:.2f}_{end_time:.2f}_features.npy"
+
+                segment_path = os.path.join(video_segments_folder, segment_filename)
+                segment_features_path = os.path.join(video_segments_folder, features_filename)
+
+                # Extract and save video segment
+                try:
+                    # Cut video
+                    segment_clip = video.subclipped(start_time, end_time)
+                    segment_clip.write_videofile(
+                        segment_path,
+                        codec='libx264',
+                        audio=False
+                    )
+                    segment_clip.close()
+
+                    # Cut and save features
+                    if start_frame < len(features) and end_frame <= len(features):
+                        segment_features = features[start_frame:end_frame]
+                        np.save(segment_features_path, segment_features)
+                        print(f"Created segment and features: {segment_filename}")
+                    else:
+                        print(f"Warning: Frame indices {start_frame}:{end_frame} out of bounds "
+                              f"for features array of length {len(features)}")
+
+                    segment_paths.append(segment_path)
+
+                except Exception as e:
+                    print(f"Error creating segment {segment_filename}: {str(e)}")
+                    continue
+
+            # Clean up
+            video.close()
+
+            results[base_name] = segment_paths
+            print(f"Completed processing segments for {base_name}")
+
+        except Exception as e:
+            print(f"Error processing {segment_file}: {str(e)}")
+            continue
+
+    return results
+
+
+def find_all_videos(folder: str, pattern: str = "*.mp4") -> List[str]:
+    """
+    Recursively find all video files in a folder and its subfolders.
+
+    Args:
+        folder: Root folder to search
+        pattern: File pattern to match (default: "*.mp4")
+
+    Returns:
+        List of full paths to video files
+    """
+    videos = []
+    for root, _, files in os.walk(folder):
+        for file in files:
+            if file.endswith('.mp4'):
+                videos.append(os.path.join(root, file))
+    return videos
+
+
+def create_sliding_windows(
+    features: List[List[float]],
+    seq_length: int,
+    stride: int = 1,
+    input_fps: Optional[float] = None,
+    target_fps: float = 25.0
+) -> np.ndarray:
+    """
+    Create sliding windows from feature sequence.
+
+    Args:
+        features: List of feature vectors
+        seq_length: Length of each window
+        stride: Step size between windows (default: 1)
+        input_fps: Original video FPS (if provided, will adjust stride)
+        target_fps: Target FPS for analysis
+
+    Returns:
+        NumPy array of windowed features with shape (num_windows, seq_length, num_features)
+    """
+    if len(features) < seq_length:
+        return np.array([])
+
+    windows = []
+    for i in range(0, len(features) - seq_length + 1, stride):
+        window = features[i:i + seq_length]
+        if len(window) == seq_length:
+            windows.append(window)
+
+    return np.array(windows)
