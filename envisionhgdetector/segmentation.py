@@ -4,7 +4,7 @@ Segmentation utilities for gesture detection.
 Handles frame-by-frame annotation processing and segment creation.
 """
 
-from typing import List
+from typing import List, Optional
 import numpy as np
 import pandas as pd
 
@@ -46,7 +46,7 @@ def validate_annotations_dataframe(annotations: pd.DataFrame, label_column: str)
         )
 
 
-def validate_threshold(value: float, name: str, min_val: float = 0.0, max_val: float = None) -> float:
+def validate_threshold(value: float, name: str, min_val: float = 0.0, max_val: Optional[float] = None) -> float:
     """
     Validate and coerce a threshold value.
 
