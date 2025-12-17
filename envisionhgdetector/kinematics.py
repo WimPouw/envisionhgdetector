@@ -5,7 +5,6 @@ Computes movement features including velocity, acceleration, jerk,
 McNeillian space usage, and submovement detection.
 """
 
-import statistics
 from dataclasses import dataclass
 from typing import List, NamedTuple, Optional, Tuple, Union
 
@@ -344,16 +343,17 @@ def get_mcneillian_mode(spaces: List[int]) -> int:
     Returns:
         Mode of the main space usage (1-4)
     """
-    mainspace = []
-    for space in spaces:
-        if space > 40:
-            mainspace.append(4)
-        elif space > 30:
-            mainspace.append(3)
-        else:
-            mainspace.append(space)
+    # Vectorized conversion to main space codes
+    spaces_arr = np.array(spaces)
+    mainspace = np.where(spaces_arr > 40, 4,
+                         np.where(spaces_arr > 30, 3, spaces_arr))
 
-    return statistics.mode(mainspace)
+    # Use numpy bincount for robust mode calculation (handles multimodal data)
+    if len(mainspace) == 0:
+        return 1  # Default to center-center
+
+    counts = np.bincount(mainspace.astype(int))
+    return int(np.argmax(counts))
 
 
 def calc_mcneillian_space(
@@ -491,38 +491,26 @@ def calc_volume_size(df: pd.DataFrame, hand: str) -> float:
     Returns:
         Volume/area of the gesture space
     """
-    # Initialize boundaries from first frame
-    if hand == 'B':
-        x_max = max([df['R_Hand'][0][0], df['L_Hand'][0][0]])
-        x_min = min([df['R_Hand'][0][0], df['L_Hand'][0][0]])
-        y_max = max([df['R_Hand'][0][1], df['L_Hand'][0][1]])
-        y_min = min([df['R_Hand'][0][1], df['L_Hand'][0][1]])
-        if len(df['R_Hand'][0]) > 2:
-            z_max = max([df['R_Hand'][0][2], df['L_Hand'][0][2]])
-            z_min = min([df['R_Hand'][0][2], df['L_Hand'][0][2]])
-    else:
-        hand_str = hand + '_Hand'
-        x_min = x_max = df[hand_str][0][0]
-        y_min = y_max = df[hand_str][0][1]
-        if len(df[hand_str][0]) > 2:
-            z_min = z_max = df[hand_str][0][2]
-
-    # Process all frames to find extremes
+    # Collect hand positions into arrays for vectorized operations
     hand_list = ['R_Hand', 'L_Hand'] if hand == 'B' else [hand + '_Hand']
 
-    for frame in range(len(df)):
-        for hand_idx in hand_list:
-            curr_pos = df[hand_idx][frame]
-            x_min = min(x_min, curr_pos[0])
-            x_max = max(x_max, curr_pos[0])
-            y_min = min(y_min, curr_pos[1])
-            y_max = max(y_max, curr_pos[1])
-            if len(curr_pos) > 2:
-                z_min = min(z_min, curr_pos[2])
-                z_max = max(z_max, curr_pos[2])
+    # Stack all positions into a single array
+    all_positions = []
+    for hand_key in hand_list:
+        positions = np.array([df[hand_key][i] for i in range(len(df[hand_key]))])
+        all_positions.append(positions)
+
+    # Concatenate all hand positions
+    all_positions = np.vstack(all_positions)
+
+    # Vectorized min/max computation
+    x_min, y_min = np.min(all_positions[:, :2], axis=0)
+    x_max, y_max = np.max(all_positions[:, :2], axis=0)
 
     # Calculate volume/area
-    if len(df[hand_list[0]][0]) > 2:
+    if all_positions.shape[1] > 2:
+        z_min = np.min(all_positions[:, 2])
+        z_max = np.max(all_positions[:, 2])
         vol = (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
     else:
         vol = (x_max - x_min) * (y_max - y_min)
@@ -638,7 +626,7 @@ def find_movepauses(velocity_array: np.ndarray) -> List[int]:
 def calculate_distance(
     positions: List,
     fps: float
-) -> Tuple[List[float], List[float]]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Calculate distance and velocity between consecutive positions.
 
@@ -647,15 +635,22 @@ def calculate_distance(
         fps: Frames per second
 
     Returns:
-        Tuple of (distances, velocities)
+        Tuple of (distances, velocities) as numpy arrays
     """
-    distances = []
-    velocities = []
+    # Convert to numpy array for vectorized operations
+    pos_array = np.asarray(positions)
 
-    for i in range(1, len(positions)):
-        dist = np.linalg.norm(np.array(positions[i]) - np.array(positions[i-1]))
-        distances.append(dist)
-        velocities.append(dist * fps)
+    if len(pos_array) < 2:
+        return np.array([]), np.array([])
+
+    # Vectorized: compute differences between consecutive positions
+    diffs = np.diff(pos_array, axis=0)
+
+    # Vectorized: compute Euclidean distances
+    distances = np.linalg.norm(diffs, axis=1)
+
+    # Vectorized: compute velocities
+    velocities = distances * fps
 
     return distances, velocities
 
@@ -774,7 +769,7 @@ def calc_holds(
                         hold_durations.append(len(cluster))
 
                 hold_time = hold_time / fps if fps > 0 else 0
-                hold_avg = statistics.mean(hold_durations) if hold_durations else 0
+                hold_avg = float(np.mean(hold_durations)) if hold_durations else 0
 
         return hold_count, hold_time, hold_avg
 
@@ -803,11 +798,13 @@ def compute_kinematic_features(
     Returns:
         KinematicFeatures object with all computed metrics
     """
-    # Convert landmarks to DataFrame format
-    df = pd.DataFrame()
-    for joint in ['L_Hand', 'R_Hand', 'LElb', 'RElb', 'LShoulder', 'RShoulder',
-                 'Neck', 'MidHip', 'LEye', 'REye', 'Nose']:
-        df[joint] = [landmarks[i, JOINT_MAP[joint]] for i in range(len(landmarks))]
+    # Convert landmarks to DataFrame format using vectorized slicing
+    joint_names = ['L_Hand', 'R_Hand', 'LElb', 'RElb', 'LShoulder', 'RShoulder',
+                   'Neck', 'MidHip', 'LEye', 'REye', 'Nose']
+    df = pd.DataFrame({
+        joint: list(landmarks[:, JOINT_MAP[joint]])
+        for joint in joint_names
+    })
 
     # Analyze movement to determine active hand
     left_hand = landmarks[:, 15]

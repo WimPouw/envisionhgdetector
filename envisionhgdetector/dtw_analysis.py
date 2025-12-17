@@ -6,8 +6,9 @@ Computes similarity between gestures and creates visualizations.
 
 import glob
 import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -17,6 +18,32 @@ from shapedtw.shapeDescriptors import RawSubsequenceDescriptor
 
 from .kinematics import compute_kinematic_features
 from .tracking import extract_upper_limb_features, remove_nans
+
+
+def _compute_single_dtw(args: Tuple[int, int, np.ndarray, np.ndarray, str, str]) -> Tuple[int, int, float]:
+    """
+    Compute DTW distance for a single pair of gestures.
+    Designed for parallel execution.
+
+    Args:
+        args: Tuple of (i, j, gesture_i, gesture_j, name_i, name_j)
+
+    Returns:
+        Tuple of (i, j, distance)
+    """
+    i, j, gesture_i, gesture_j, name_i, name_j = args
+    try:
+        result = shape_dtw(
+            x=gesture_i,
+            y=gesture_j,
+            subsequence_width=4,
+            shape_descriptor=RawSubsequenceDescriptor(),
+            multivariate_version="dependent"
+        )
+        return (i, j, result.normalized_distance)
+    except Exception as e:
+        print(f"Error computing DTW for {name_i} and {name_j}: {e}")
+        return (i, j, np.nan)
 
 
 class DTWAnalysisError(Exception):
@@ -154,26 +181,40 @@ def compute_gesture_kinematics_dtw(
     num_gestures = len(gesture_data)
     dtw_dist = np.zeros((num_gestures, num_gestures))
 
-    print(f"Computing DTW distances for {num_gestures} gestures...")
+    # Generate all pairs for DTW computation
+    pairs = [
+        (i, j, gesture_data[i], gesture_data[j], gesture_names[i], gesture_names[j])
+        for i in range(num_gestures)
+        for j in range(i + 1, num_gestures)
+    ]
 
-    # Compute DTW distances (symmetric matrix)
-    for i in range(num_gestures):
-        for j in range(i + 1, num_gestures):
-            try:
-                result = shape_dtw(
-                    x=gesture_data[i],
-                    y=gesture_data[j],
-                    subsequence_width=4,
-                    shape_descriptor=RawSubsequenceDescriptor(),
-                    multivariate_version="dependent"
-                )
-                distance = result.normalized_distance
+    total_pairs = len(pairs)
+    print(f"Computing DTW distances for {num_gestures} gestures ({total_pairs} pairs)...")
+
+    # Use parallel processing for DTW computation
+    # Limit workers to avoid memory issues with large arrays
+    max_workers = min(os.cpu_count() or 4, 8)
+
+    try:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(_compute_single_dtw, pair): pair for pair in pairs}
+
+            completed = 0
+            for future in as_completed(futures):
+                i, j, distance = future.result()
                 dtw_dist[i, j] = distance
                 dtw_dist[j, i] = distance
-            except Exception as e:
-                print(f"Error computing DTW for {gesture_names[i]} and {gesture_names[j]}: {e}")
-                dtw_dist[i, j] = np.nan
-                dtw_dist[j, i] = np.nan
+                completed += 1
+                if completed % 100 == 0 or completed == total_pairs:
+                    print(f"  Progress: {completed}/{total_pairs} pairs completed")
+
+    except Exception as e:
+        # Fallback to sequential processing if parallel fails
+        print(f"Parallel processing failed ({e}), falling back to sequential...")
+        for i, j, g_i, g_j, name_i, name_j in pairs:
+            i, j, distance = _compute_single_dtw((i, j, g_i, g_j, name_i, name_j))
+            dtw_dist[i, j] = distance
+            dtw_dist[j, i] = distance
 
     # Convert kinematic features to DataFrame
     features_df = _kinematic_features_to_dataframe(kinematic_features)

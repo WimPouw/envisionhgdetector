@@ -299,17 +299,14 @@ def retrack_gesture_videos(
                     visibility_scores.append(frame_visibility)
                     frame_indices.append(frame_idx)
 
-                    # Draw pose on frame
-                    annotated_frame = frame.copy()
+                    # Draw pose on frame (MediaPipe draws in-place, no copy needed)
                     mp_drawing.draw_landmarks(
-                        annotated_frame,
+                        frame,
                         results.pose_landmarks,
                         mp_pose.POSE_CONNECTIONS
                     )
-                else:
-                    annotated_frame = frame
 
-                out.write(annotated_frame)
+                out.write(frame)
                 frame_idx += 1
 
             cap.release()

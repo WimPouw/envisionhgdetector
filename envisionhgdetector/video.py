@@ -257,22 +257,29 @@ def label_video(
 
     progress_bar = tqdm(total=output_frames, desc="Labeling video", unit="frames")
 
-    # Process frames at the target rate
+    # Read frames sequentially (much faster than seeking)
+    # Track which input frames map to output frames
+    frame_ratio = input_fps / target_fps
+    current_input_frame = 0
+    last_frame = None
+
     for output_frame_idx in range(output_frames):
-        # Calculate which input frame to read
         output_time = output_frame_idx / target_fps
-        input_frame_idx = int(output_time * input_fps)
+        target_input_frame = int(output_time * input_fps)
 
-        # Ensure we don't exceed video bounds
-        if input_frame_idx >= total_frames:
+        # Read frames sequentially until we reach the target
+        while current_input_frame <= target_input_frame:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            last_frame = frame
+            current_input_frame += 1
+
+        if last_frame is None:
             break
 
-        # Seek to the correct frame
-        cap.set(cv2.CAP_PROP_POS_FRAMES, input_frame_idx)
-        ret, frame = cap.read()
-
-        if not ret:
-            break
+        # Work with a copy for annotation (avoid modifying cached frame)
+        frame = last_frame.copy() if frame_ratio > 1 else last_frame
 
         # Get the label at current time
         try:
