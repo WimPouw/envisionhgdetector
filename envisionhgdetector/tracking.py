@@ -16,6 +16,78 @@ from scipy.ndimage import gaussian_filter1d
 from .video import find_all_videos
 
 
+class TrackingError(Exception):
+    """Exception raised for errors during pose tracking."""
+    pass
+
+
+def validate_landmarks(landmarks: np.ndarray) -> np.ndarray:
+    """
+    Validate landmarks array for feature extraction.
+
+    Args:
+        landmarks: Array to validate
+
+    Returns:
+        Validated numpy array
+
+    Raises:
+        TrackingError: If validation fails
+    """
+    if not isinstance(landmarks, np.ndarray):
+        raise TrackingError(
+            f"landmarks must be a numpy array, got {type(landmarks).__name__}"
+        )
+
+    if landmarks.size == 0:
+        raise TrackingError("landmarks array cannot be empty")
+
+    if landmarks.ndim != 3:
+        raise TrackingError(
+            f"landmarks must be a 3D array with shape [N, num_points, 3], "
+            f"got {landmarks.ndim}D array with shape: {landmarks.shape}"
+        )
+
+    if landmarks.shape[2] != 3:
+        raise TrackingError(
+            f"landmarks last dimension must be 3 (x, y, z), "
+            f"got shape: {landmarks.shape}"
+        )
+
+    return landmarks
+
+
+def validate_folder_path(folder: str, name: str = "folder") -> str:
+    """
+    Validate a folder path exists and is a directory.
+
+    Args:
+        folder: Path to validate
+        name: Parameter name for error messages
+
+    Returns:
+        Validated path string
+
+    Raises:
+        TrackingError: If validation fails
+    """
+    if not isinstance(folder, str):
+        raise TrackingError(
+            f"{name} must be a string, got {type(folder).__name__}"
+        )
+
+    if not folder.strip():
+        raise TrackingError(f"{name} path cannot be empty")
+
+    if not os.path.exists(folder):
+        raise TrackingError(f"{name} not found: {folder}")
+
+    if not os.path.isdir(folder):
+        raise TrackingError(f"{name} is not a directory: {folder}")
+
+    return folder
+
+
 def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
     """
     Extract and format upper limb features from world landmarks.
@@ -29,12 +101,15 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
         elbows, wrists, and mean-centered fingers.
 
     Raises:
-        ValueError: If landmarks shape is invalid
+        TrackingError: If landmarks shape is invalid
     """
-    if landmarks.ndim != 3 or landmarks.shape[2] != 3:
-        raise ValueError(
-            f"Landmarks must be a 3D array with shape [N, num_points, 3], "
-            f"got shape: {landmarks.shape}"
+    landmarks = validate_landmarks(landmarks)
+
+    # Verify minimum number of keypoints (need at least 23 for all upper body)
+    if landmarks.shape[1] < 23:
+        raise TrackingError(
+            f"landmarks must have at least 23 keypoints for upper body extraction, "
+            f"got {landmarks.shape[1]}"
         )
 
     # Keypoint indices for upper body joints (MediaPipe pose landmarks)
@@ -108,7 +183,15 @@ def remove_nans(features: np.ndarray) -> np.ndarray:
 
     Returns:
         Cleaned features with NaN values replaced by 0.0
+
+    Raises:
+        TrackingError: If features is not a numpy array
     """
+    if not isinstance(features, np.ndarray):
+        raise TrackingError(
+            f"features must be a numpy array, got {type(features).__name__}"
+        )
+
     return np.nan_to_num(features, nan=0.0)
 
 
@@ -130,8 +213,21 @@ def retrack_gesture_videos(
 
     Returns:
         Dictionary mapping video names to tuples of (landmarks, visibility_scores)
+
+    Raises:
+        TrackingError: If input validation fails
     """
-    os.makedirs(output_folder, exist_ok=True)
+    # Validate inputs
+    input_folder = validate_folder_path(input_folder, "input_folder")
+
+    if not isinstance(output_folder, str) or not output_folder.strip():
+        raise TrackingError("output_folder must be a non-empty string")
+
+    # Create output folder
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+    except OSError as e:
+        raise TrackingError(f"Cannot create output folder {output_folder}: {e}")
     tracked_folder = os.path.join(output_folder, "tracked_videos")
     os.makedirs(tracked_folder, exist_ok=True)
 

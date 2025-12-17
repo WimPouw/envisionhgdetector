@@ -7,7 +7,7 @@ Computes similarity between gestures and creates visualizations.
 import glob
 import os
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -17,6 +17,70 @@ from shapedtw.shapeDescriptors import RawSubsequenceDescriptor
 
 from .kinematics import compute_kinematic_features
 from .tracking import extract_upper_limb_features, remove_nans
+
+
+class DTWAnalysisError(Exception):
+    """Exception raised for errors during DTW analysis."""
+    pass
+
+
+def validate_folder_path(folder: str, name: str = "folder", must_exist: bool = True) -> str:
+    """
+    Validate a folder path.
+
+    Args:
+        folder: Path to validate
+        name: Parameter name for error messages
+        must_exist: If True, verify folder exists
+
+    Returns:
+        Validated path string
+
+    Raises:
+        DTWAnalysisError: If validation fails
+    """
+    if not isinstance(folder, str):
+        raise DTWAnalysisError(
+            f"{name} must be a string, got {type(folder).__name__}"
+        )
+
+    if not folder.strip():
+        raise DTWAnalysisError(f"{name} path cannot be empty")
+
+    if must_exist:
+        if not os.path.exists(folder):
+            raise DTWAnalysisError(f"{name} not found: {folder}")
+
+        if not os.path.isdir(folder):
+            raise DTWAnalysisError(f"{name} is not a directory: {folder}")
+
+    return folder
+
+
+def validate_fps(fps: Union[int, float]) -> float:
+    """
+    Validate frames per second value.
+
+    Args:
+        fps: FPS value to validate
+
+    Returns:
+        Validated float value
+
+    Raises:
+        DTWAnalysisError: If validation fails
+    """
+    try:
+        fps = float(fps)
+    except (TypeError, ValueError):
+        raise DTWAnalysisError(
+            f"fps must be a number, got {type(fps).__name__}"
+        )
+
+    if fps <= 0:
+        raise DTWAnalysisError(f"fps must be positive, got {fps}")
+
+    return fps
 
 
 def compute_gesture_kinematics_dtw(
@@ -35,7 +99,7 @@ def compute_gesture_kinematics_dtw(
     Args:
         tracked_folder: Folder containing tracked landmark data (.npy files)
         output_folder: Folder to save DTW results
-        fps: Frames per second of the video
+        fps: Frames per second of the video (must be > 0)
         landmark_pattern: Pattern to match landmark files
 
     Returns:
@@ -43,8 +107,20 @@ def compute_gesture_kinematics_dtw(
         - DTW distance matrix (symmetric, with zeros on diagonal)
         - List of gesture names (corresponding to matrix indices)
         - DataFrame of kinematic features for each gesture
+
+    Raises:
+        DTWAnalysisError: If input validation fails or no landmark files found
     """
-    os.makedirs(output_folder, exist_ok=True)
+    # Validate inputs
+    tracked_folder = validate_folder_path(tracked_folder, "tracked_folder", must_exist=True)
+    output_folder = validate_folder_path(output_folder, "output_folder", must_exist=False)
+    fps = validate_fps(fps)
+
+    # Create output folder
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+    except OSError as e:
+        raise DTWAnalysisError(f"Cannot create output folder {output_folder}: {e}")
 
     # Load all landmark files
     landmark_files = glob.glob(os.path.join(tracked_folder, landmark_pattern))
@@ -178,7 +254,58 @@ def create_gesture_visualization(
         gesture_names: List of gesture names corresponding to matrix indices
         output_folder: Folder to save visualization data
         n_neighbors: Number of neighbors for UMAP (affects local vs global structure)
+
+    Raises:
+        DTWAnalysisError: If input validation fails
     """
+    # Validate inputs
+    if not isinstance(dtw_matrix, np.ndarray):
+        raise DTWAnalysisError(
+            f"dtw_matrix must be a numpy array, got {type(dtw_matrix).__name__}"
+        )
+
+    if dtw_matrix.size == 0:
+        raise DTWAnalysisError("dtw_matrix cannot be empty")
+
+    if dtw_matrix.ndim != 2:
+        raise DTWAnalysisError(
+            f"dtw_matrix must be 2D, got {dtw_matrix.ndim}D array"
+        )
+
+    if dtw_matrix.shape[0] != dtw_matrix.shape[1]:
+        raise DTWAnalysisError(
+            f"dtw_matrix must be square, got shape {dtw_matrix.shape}"
+        )
+
+    if not isinstance(gesture_names, list):
+        raise DTWAnalysisError(
+            f"gesture_names must be a list, got {type(gesture_names).__name__}"
+        )
+
+    if len(gesture_names) != dtw_matrix.shape[0]:
+        raise DTWAnalysisError(
+            f"gesture_names length ({len(gesture_names)}) must match "
+            f"dtw_matrix dimension ({dtw_matrix.shape[0]})"
+        )
+
+    if len(gesture_names) < 2:
+        raise DTWAnalysisError(
+            "Need at least 2 gestures for UMAP visualization"
+        )
+
+    output_folder = validate_folder_path(output_folder, "output_folder", must_exist=False)
+
+    if not isinstance(n_neighbors, int) or n_neighbors < 1:
+        raise DTWAnalysisError(
+            f"n_neighbors must be a positive integer, got {n_neighbors}"
+        )
+
+    # Create output folder
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+    except OSError as e:
+        raise DTWAnalysisError(f"Cannot create output folder {output_folder}: {e}")
+
     # Handle NaN values in DTW matrix
     dtw_matrix_clean = np.nan_to_num(dtw_matrix, nan=np.nanmax(dtw_matrix))
 

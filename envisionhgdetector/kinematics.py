@@ -7,12 +7,74 @@ McNeillian space usage, and submovement detection.
 
 import statistics
 from dataclasses import dataclass
-from typing import List, NamedTuple, Optional, Tuple
+from typing import List, NamedTuple, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
 from scipy import signal
 from scipy.ndimage import gaussian_filter1d
+
+
+class KinematicsError(Exception):
+    """Exception raised for errors during kinematic analysis."""
+    pass
+
+
+def validate_landmarks_array(landmarks: np.ndarray, name: str = "landmarks") -> np.ndarray:
+    """
+    Validate landmarks array has correct shape and type.
+
+    Args:
+        landmarks: Array to validate
+        name: Parameter name for error messages
+
+    Returns:
+        Validated numpy array
+
+    Raises:
+        KinematicsError: If validation fails
+    """
+    if not isinstance(landmarks, np.ndarray):
+        raise KinematicsError(
+            f"{name} must be a numpy array, got {type(landmarks).__name__}"
+        )
+
+    if landmarks.size == 0:
+        raise KinematicsError(f"{name} array cannot be empty")
+
+    return landmarks
+
+
+def validate_fps(fps: Union[int, float], name: str = "fps") -> float:
+    """
+    Validate frames per second value.
+
+    Args:
+        fps: FPS value to validate
+        name: Parameter name for error messages
+
+    Returns:
+        Validated float value
+
+    Raises:
+        KinematicsError: If validation fails
+    """
+    try:
+        fps = float(fps)
+    except (TypeError, ValueError):
+        raise KinematicsError(
+            f"{name} must be a number, got {type(fps).__name__}"
+        )
+
+    if fps <= 0:
+        raise KinematicsError(f"{name} must be positive, got {fps}")
+
+    if fps > 1000:
+        # Sanity check - unusually high FPS
+        import warnings
+        warnings.warn(f"Unusually high {name} value: {fps}. Verify this is correct.")
+
+    return fps
 
 
 # Mapping from joint names to MediaPipe pose landmark indices
@@ -102,12 +164,22 @@ def calculate_derivatives(
         Tuple of (velocity, acceleration, jerk) arrays
 
     Raises:
-        ValueError: If positions is empty or fps is non-positive
+        KinematicsError: If positions is empty or fps is non-positive
     """
-    if not isinstance(positions, np.ndarray) or positions.size == 0:
-        raise ValueError("positions must be a non-empty numpy array")
-    if fps <= 0:
-        raise ValueError("fps must be positive")
+    positions = validate_landmarks_array(positions, "positions")
+    fps = validate_fps(fps, "fps")
+
+    # Validate positions shape
+    if positions.ndim != 2 or positions.shape[1] != 3:
+        raise KinematicsError(
+            f"positions must have shape (N, 3), got {positions.shape}"
+        )
+
+    if len(positions) < 2:
+        raise KinematicsError(
+            f"positions must have at least 2 frames for derivative calculation, "
+            f"got {len(positions)}"
+        )
 
     dt = 1 / fps
 

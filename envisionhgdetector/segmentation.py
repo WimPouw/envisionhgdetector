@@ -9,6 +9,79 @@ import numpy as np
 import pandas as pd
 
 
+class SegmentationError(Exception):
+    """Exception raised for errors during segmentation."""
+    pass
+
+
+def validate_annotations_dataframe(annotations: pd.DataFrame, label_column: str) -> None:
+    """
+    Validate that annotations DataFrame has required structure.
+
+    Args:
+        annotations: DataFrame to validate
+        label_column: Expected label column name
+
+    Raises:
+        SegmentationError: If validation fails
+    """
+    if not isinstance(annotations, pd.DataFrame):
+        raise SegmentationError(
+            f"annotations must be a pandas DataFrame, got {type(annotations).__name__}"
+        )
+
+    if annotations.empty:
+        return  # Empty DataFrame is valid, will return empty segments
+
+    if 'time' not in annotations.columns:
+        raise SegmentationError(
+            f"annotations DataFrame must contain 'time' column. "
+            f"Found columns: {list(annotations.columns)}"
+        )
+
+    if label_column not in annotations.columns:
+        raise SegmentationError(
+            f"annotations DataFrame must contain '{label_column}' column. "
+            f"Found columns: {list(annotations.columns)}"
+        )
+
+
+def validate_threshold(value: float, name: str, min_val: float = 0.0, max_val: float = None) -> float:
+    """
+    Validate and coerce a threshold value.
+
+    Args:
+        value: Value to validate
+        name: Parameter name for error messages
+        min_val: Minimum allowed value
+        max_val: Maximum allowed value (optional)
+
+    Returns:
+        Validated float value
+
+    Raises:
+        SegmentationError: If validation fails
+    """
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        raise SegmentationError(
+            f"{name} must be a number, got {type(value).__name__}: {value}"
+        )
+
+    if min_val is not None and value < min_val:
+        raise SegmentationError(
+            f"{name} must be >= {min_val}, got {value}"
+        )
+
+    if max_val is not None and value > max_val:
+        raise SegmentationError(
+            f"{name} must be <= {max_val}, got {value}"
+        )
+
+    return value
+
+
 def create_segments(
     annotations: pd.DataFrame,
     label_column: str,
@@ -22,12 +95,26 @@ def create_segments(
         annotations: DataFrame with predictions containing 'time' and label columns
         label_column: Name of the column containing gesture labels
         min_gap_s: Minimum gap between segments in seconds. Segments with gaps smaller
-                  than this will be merged
-        min_length_s: Minimum segment length in seconds
+                  than this will be merged. Must be >= 0.
+        min_length_s: Minimum segment length in seconds. Must be >= 0.
 
     Returns:
         DataFrame with columns: start_time, end_time, labelid, label, duration
+
+    Raises:
+        SegmentationError: If input validation fails
     """
+    # Validate inputs
+    validate_annotations_dataframe(annotations, label_column)
+    min_gap_s = validate_threshold(min_gap_s, 'min_gap_s', min_val=0.0)
+    min_length_s = validate_threshold(min_length_s, 'min_length_s', min_val=0.0)
+
+    # Handle empty DataFrame
+    if annotations.empty:
+        return pd.DataFrame(
+            columns=['start_time', 'end_time', 'labelid', 'label', 'duration']
+        )
+
     is_gesture = annotations[label_column] == 'Gesture'
     is_move = annotations[label_column] == 'Move'
     is_any_gesture = is_gesture | is_move
@@ -126,12 +213,28 @@ def get_prediction_at_threshold(
              - NoGesture_confidence
              - Gesture_confidence
              - Move_confidence
-        motion_threshold: Minimum motion confidence to consider as having motion
-        gesture_threshold: Minimum gesture/move confidence to classify as that type
+        motion_threshold: Minimum motion confidence to consider as having motion (0.0-1.0)
+        gesture_threshold: Minimum gesture/move confidence to classify as that type (0.0-1.0)
 
     Returns:
         Predicted label: 'Gesture', 'Move', or 'NoGesture'
+
+    Raises:
+        SegmentationError: If required columns are missing or thresholds invalid
     """
+    # Validate thresholds
+    motion_threshold = validate_threshold(motion_threshold, 'motion_threshold', min_val=0.0, max_val=1.0)
+    gesture_threshold = validate_threshold(gesture_threshold, 'gesture_threshold', min_val=0.0, max_val=1.0)
+
+    # Validate required columns
+    required_cols = ['NoGesture_confidence', 'Gesture_confidence', 'Move_confidence']
+    missing_cols = [col for col in required_cols if col not in row.index]
+    if missing_cols:
+        raise SegmentationError(
+            f"Row missing required confidence columns: {missing_cols}. "
+            f"Found: {list(row.index)}"
+        )
+
     has_motion = 1 - row['NoGesture_confidence']
 
     if has_motion >= motion_threshold:

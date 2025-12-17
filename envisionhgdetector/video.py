@@ -6,13 +6,145 @@ Handles video labeling, segmentation, and file operations.
 
 import os
 import glob
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import cv2
 import numpy as np
 import pandas as pd
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from tqdm import tqdm
+
+
+class VideoProcessingError(Exception):
+    """Exception raised for errors during video processing."""
+    pass
+
+
+def validate_video_path(video_path: str, must_exist: bool = True) -> str:
+    """
+    Validate a video file path.
+
+    Args:
+        video_path: Path to validate
+        must_exist: If True, verify the file exists
+
+    Returns:
+        Validated path string
+
+    Raises:
+        VideoProcessingError: If validation fails
+    """
+    if not isinstance(video_path, str):
+        raise VideoProcessingError(
+            f"video_path must be a string, got {type(video_path).__name__}"
+        )
+
+    if not video_path.strip():
+        raise VideoProcessingError("video_path cannot be empty")
+
+    if must_exist and not os.path.exists(video_path):
+        raise VideoProcessingError(f"Video file not found: {video_path}")
+
+    return video_path
+
+
+def validate_output_path(output_path: str) -> str:
+    """
+    Validate an output file path and ensure parent directory exists.
+
+    Args:
+        output_path: Path to validate
+
+    Returns:
+        Validated path string
+
+    Raises:
+        VideoProcessingError: If validation fails
+    """
+    if not isinstance(output_path, str):
+        raise VideoProcessingError(
+            f"output_path must be a string, got {type(output_path).__name__}"
+        )
+
+    if not output_path.strip():
+        raise VideoProcessingError("output_path cannot be empty")
+
+    # Ensure parent directory exists
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir and not os.path.exists(parent_dir):
+        try:
+            os.makedirs(parent_dir, exist_ok=True)
+        except OSError as e:
+            raise VideoProcessingError(
+                f"Cannot create output directory {parent_dir}: {e}"
+            )
+
+    return output_path
+
+
+def validate_segments_dataframe(segments: pd.DataFrame) -> pd.DataFrame:
+    """
+    Validate segments DataFrame has required columns.
+
+    Args:
+        segments: DataFrame to validate
+
+    Returns:
+        Validated DataFrame
+
+    Raises:
+        VideoProcessingError: If validation fails
+    """
+    if not isinstance(segments, pd.DataFrame):
+        raise VideoProcessingError(
+            f"segments must be a pandas DataFrame, got {type(segments).__name__}"
+        )
+
+    if segments.empty:
+        return segments  # Empty is valid
+
+    required_cols = ['start_time', 'end_time', 'label']
+    missing_cols = [col for col in required_cols if col not in segments.columns]
+
+    if missing_cols:
+        raise VideoProcessingError(
+            f"segments DataFrame missing required columns: {missing_cols}. "
+            f"Found columns: {list(segments.columns)}"
+        )
+
+    return segments
+
+
+def validate_positive_number(value: Union[int, float], name: str, allow_zero: bool = False) -> float:
+    """
+    Validate that a value is a positive number.
+
+    Args:
+        value: Value to validate
+        name: Parameter name for error messages
+        allow_zero: If True, zero is allowed
+
+    Returns:
+        Validated float value
+
+    Raises:
+        VideoProcessingError: If validation fails
+    """
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        raise VideoProcessingError(
+            f"{name} must be a number, got {type(value).__name__}"
+        )
+
+    if allow_zero:
+        if value < 0:
+            raise VideoProcessingError(f"{name} must be >= 0, got {value}")
+    else:
+        if value <= 0:
+            raise VideoProcessingError(f"{name} must be > 0, got {value}")
+
+    return value
 
 
 def label_video(
@@ -36,13 +168,36 @@ def label_video(
         output_path: Path to save labeled video
         predictions_df: Optional DataFrame with frame-by-frame predictions for overlay
         valid_timestamps: Optional list of valid timestamps
-        motion_threshold: Motion threshold for display (optional)
-        gesture_threshold: Gesture threshold for display (optional)
-        window_duration: Duration of confidence graph window in seconds
-        target_fps: Output video frame rate
+        motion_threshold: Motion threshold for display (optional, 0.0-1.0)
+        gesture_threshold: Gesture threshold for display (optional, 0.0-1.0)
+        window_duration: Duration of confidence graph window in seconds (> 0)
+        target_fps: Output video frame rate (> 0)
+
+    Raises:
+        VideoProcessingError: If input validation fails or video cannot be processed
     """
+    # Validate inputs
+    video_path = validate_video_path(video_path, must_exist=True)
+    output_path = validate_output_path(output_path)
+    segments = validate_segments_dataframe(segments)
+    window_duration = validate_positive_number(window_duration, 'window_duration')
+    target_fps = validate_positive_number(target_fps, 'target_fps')
+
+    if motion_threshold is not None:
+        motion_threshold = validate_positive_number(motion_threshold, 'motion_threshold', allow_zero=True)
+        if motion_threshold > 1.0:
+            raise VideoProcessingError(f"motion_threshold must be <= 1.0, got {motion_threshold}")
+
+    if gesture_threshold is not None:
+        gesture_threshold = validate_positive_number(gesture_threshold, 'gesture_threshold', allow_zero=True)
+        if gesture_threshold > 1.0:
+            raise VideoProcessingError(f"gesture_threshold must be <= 1.0, got {gesture_threshold}")
+
     # Open video
     cap = cv2.VideoCapture(video_path)
+
+    if not cap.isOpened():
+        raise VideoProcessingError(f"Cannot open video file: {video_path}")
     input_fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -460,7 +615,24 @@ def find_all_videos(folder: str, pattern: str = "*.mp4") -> List[str]:
 
     Returns:
         List of full paths to video files
+
+    Raises:
+        VideoProcessingError: If folder path is invalid
     """
+    if not isinstance(folder, str):
+        raise VideoProcessingError(
+            f"folder must be a string, got {type(folder).__name__}"
+        )
+
+    if not folder.strip():
+        raise VideoProcessingError("folder path cannot be empty")
+
+    if not os.path.exists(folder):
+        raise VideoProcessingError(f"Folder not found: {folder}")
+
+    if not os.path.isdir(folder):
+        raise VideoProcessingError(f"Path is not a directory: {folder}")
+
     videos = []
     for root, _, files in os.walk(folder):
         for file in files:
@@ -481,14 +653,35 @@ def create_sliding_windows(
 
     Args:
         features: List of feature vectors
-        seq_length: Length of each window
-        stride: Step size between windows (default: 1)
+        seq_length: Length of each window (must be > 0)
+        stride: Step size between windows (must be > 0, default: 1)
         input_fps: Original video FPS (if provided, will adjust stride)
         target_fps: Target FPS for analysis
 
     Returns:
         NumPy array of windowed features with shape (num_windows, seq_length, num_features)
+
+    Raises:
+        VideoProcessingError: If input validation fails
     """
+    # Validate inputs
+    if not isinstance(seq_length, int) or seq_length <= 0:
+        raise VideoProcessingError(
+            f"seq_length must be a positive integer, got {seq_length}"
+        )
+
+    if not isinstance(stride, int) or stride <= 0:
+        raise VideoProcessingError(
+            f"stride must be a positive integer, got {stride}"
+        )
+
+    if features is None:
+        raise VideoProcessingError("features cannot be None")
+
+    # Handle empty features
+    if len(features) == 0:
+        return np.array([])
+
     if len(features) < seq_length:
         return np.array([])
 
