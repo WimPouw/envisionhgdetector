@@ -8,6 +8,8 @@ import os
 import json
 import uuid
 import tempfile
+import time
+import random
 from pathlib import Path
 from typing import Dict, Any
 from datetime import datetime
@@ -16,9 +18,17 @@ from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-# Import gesture detection modules
-from ..detector import GestureDetector
-from ..elan import create_elan_file
+# Try to import gesture detection modules (may fail if TensorFlow not installed)
+DEMO_MODE = False
+try:
+    from ..detector import GestureDetector
+    from ..elan import create_elan_file
+except ImportError as e:
+    print(f"Warning: Running in DEMO MODE - {e}")
+    print("Install TensorFlow and other dependencies for full functionality.")
+    DEMO_MODE = True
+    GestureDetector = None
+    create_elan_file = None
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -44,6 +54,17 @@ def allowed_file(filename: str) -> bool:
 def index():
     """Serve the main HTML page."""
     return send_from_directory('static', 'index.html')
+
+
+@app.route('/api/info')
+def get_info():
+    """Get server info including demo mode status."""
+    return jsonify({
+        'demo_mode': DEMO_MODE,
+        'version': '2.0.0',
+        'allowed_extensions': list(ALLOWED_EXTENSIONS),
+        'max_file_size_mb': MAX_CONTENT_LENGTH // (1024 * 1024)
+    })
 
 
 @app.route('/api/upload', methods=['POST'])
@@ -142,11 +163,81 @@ def process_video(job_id: str):
     return jsonify({'status': 'processing', 'job_id': job_id})
 
 
+def _process_video_demo(job_id: str, model_type: str, motion_threshold: float,
+                        gesture_threshold: float, min_duration: int):
+    """
+    Demo mode processing - generates fake results for UI testing.
+    """
+    job = jobs[job_id]
+
+    def update_progress(step: str, progress: int):
+        job['step'] = step
+        job['progress'] = progress
+
+    # Simulate processing steps
+    steps = [
+        ('loading', 10, 0.5),
+        ('configuring', 25, 0.3),
+        ('processing', 50, 1.5),
+        ('processing', 75, 1.0),
+        ('finalizing', 90, 0.5),
+    ]
+
+    for step, progress, delay in steps:
+        update_progress(step, progress)
+        time.sleep(delay)
+
+    # Generate demo results
+    num_segments = random.randint(4, 10)
+    segments = []
+    current_time = 0.5
+
+    gesture_types = ['Gesture', 'Move']
+
+    for i in range(num_segments):
+        gesture = random.choice(gesture_types)
+        duration = random.uniform(0.8, 2.5)
+        start_time = current_time
+        end_time = start_time + duration
+
+        segments.append({
+            'id': i + 1,
+            'gesture': gesture,
+            'startTime': round(start_time, 3),
+            'endTime': round(end_time, 3),
+            'startFrame': int(start_time * 30),
+            'endFrame': int(end_time * 30),
+            'confidence': round(random.uniform(0.75, 0.98), 2),
+            'duration': round(duration, 3)
+        })
+
+        current_time = end_time + random.uniform(0.5, 2.0)
+
+    job['results'] = {
+        'segments': segments,
+        'total_segments': len(segments),
+        'video_duration': current_time,
+        'fps': 30,
+        'labeled_video': None,
+        'predictions_csv': None,
+        'segments_csv': None,
+        'elan_file': None,
+        'demo_mode': True
+    }
+
+    update_progress('complete', 100)
+    job['status'] = 'complete'
+
+
 def _process_video_sync(job_id: str, model_type: str, motion_threshold: float,
                         gesture_threshold: float, min_duration: int):
     """
     Synchronous video processing (for async, wrap with Celery task).
     """
+    # Use demo mode if dependencies not available
+    if DEMO_MODE:
+        return _process_video_demo(job_id, model_type, motion_threshold, gesture_threshold, min_duration)
+
     job = jobs[job_id]
 
     def update_progress(step: str, progress: int):
@@ -350,11 +441,16 @@ def run_server(host: str = '127.0.0.1', port: int = 5000, debug: bool = False):
     print(f"\n{'='*50}")
     print("EnvisionHG Web Interface")
     print(f"{'='*50}")
+    if DEMO_MODE:
+        print("MODE: DEMO (TensorFlow not installed)")
+        print("      Results will be simulated for UI testing")
+    else:
+        print("MODE: FULL (All dependencies available)")
     print(f"Server running at: http://{host}:{port}")
     print(f"Upload folder: {UPLOAD_FOLDER}")
     print(f"{'='*50}\n")
 
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, threaded=True)
 
 
 if __name__ == '__main__':
