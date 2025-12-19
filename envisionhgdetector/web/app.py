@@ -21,8 +21,10 @@ from werkzeug.utils import secure_filename
 # Try to import gesture detection modules (may fail if TensorFlow not installed)
 DEMO_MODE = False
 try:
+    import cv2
     from ..detector import GestureDetector
     from ..elan import create_elan_file
+    from ..video import label_video
 except ImportError as e:
     print(f"Warning: Running in DEMO MODE - {e}")
     print("Install TensorFlow and other dependencies for full functionality.")
@@ -245,57 +247,76 @@ def _process_video_sync(job_id: str, model_type: str, motion_threshold: float,
         job['progress'] = progress
 
     try:
-        # Step 1: Initialize detector
+        # Step 1: Initialize detector with all parameters
         update_progress('loading', 10)
-        detector = GestureDetector(model_type=model_type)
-
-        # Step 2: Configure parameters
-        update_progress('configuring', 20)
-        detector.set_params(
+        detector = GestureDetector(
+            model_type=model_type,
             motion_threshold=motion_threshold,
             gesture_threshold=gesture_threshold,
             min_length_s=min_duration / 30.0  # Convert frames to seconds at 30fps
         )
+
+        # Step 2: Get video FPS
+        update_progress('configuring', 20)
+        cap = cv2.VideoCapture(job['filepath'])
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        video_duration = frame_count / fps if fps > 0 else 0
+        cap.release()
 
         # Step 3: Process video
         update_progress('processing', 30)
         output_folder = os.path.join(app.config['UPLOAD_FOLDER'], job_id, 'output')
         os.makedirs(output_folder, exist_ok=True)
 
-        results = detector.process_video(
-            video_path=job['filepath'],
-            output_folder=output_folder,
-            create_labeled_video=True,
-            create_elan_file=True
-        )
+        predictions_df, stats, segments_df, features, timestamps = detector.predict_video(job['filepath'])
+
+        update_progress('labeling', 60)
+
+        # Step 4: Generate labeled video
+        # Ensure output has .mp4 extension
+        base_name = Path(job['filename']).stem
+        labeled_video_path = os.path.join(output_folder, f"labeled_{base_name}.mp4")
+        label_video(job['filepath'], segments_df, labeled_video_path, predictions_df)
+
+        # Step 5: Generate ELAN file
+        update_progress('exporting', 80)
+        elan_path = os.path.join(output_folder, f"{Path(job['filename']).stem}.eaf")
+        create_elan_file(job['filepath'], segments_df, elan_path, fps)
+
+        # Save predictions CSV
+        predictions_csv_path = os.path.join(output_folder, f"predictions_{Path(job['filename']).stem}.csv")
+        predictions_df.to_csv(predictions_csv_path, index=False)
+
+        # Save segments CSV
+        segments_csv_path = os.path.join(output_folder, f"segments_{Path(job['filename']).stem}.csv")
+        segments_df.to_csv(segments_csv_path, index=False)
 
         update_progress('finalizing', 90)
 
-        # Extract results
+        # Extract results for JSON response
         segments = []
-        if results and 'segments' in results:
-            segments_df = results['segments']
-            for idx, row in segments_df.iterrows():
-                segments.append({
-                    'id': idx + 1,
-                    'gesture': row.get('label', 'Unknown'),
-                    'startTime': float(row.get('start_time', 0)),
-                    'endTime': float(row.get('end_time', 0)),
-                    'startFrame': int(row.get('start_time', 0) * 30),
-                    'endFrame': int(row.get('end_time', 0) * 30),
-                    'confidence': float(row.get('confidence', 0.85)),
-                    'duration': float(row.get('duration', row.get('end_time', 0) - row.get('start_time', 0)))
-                })
+        for idx, row in segments_df.iterrows():
+            segments.append({
+                'id': idx + 1,
+                'gesture': row.get('label', 'Unknown'),
+                'startTime': float(row.get('start_time', 0)),
+                'endTime': float(row.get('end_time', 0)),
+                'startFrame': int(row.get('start_time', 0) * fps),
+                'endFrame': int(row.get('end_time', 0) * fps),
+                'confidence': 0.85,  # Segments don't have confidence, use default
+                'duration': float(row.get('duration', row.get('end_time', 0) - row.get('start_time', 0)))
+            })
 
         job['results'] = {
             'segments': segments,
             'total_segments': len(segments),
-            'video_duration': results.get('duration', 0),
-            'fps': results.get('fps', 30),
-            'labeled_video': results.get('labeled_video_path'),
-            'predictions_csv': results.get('predictions_path'),
-            'segments_csv': results.get('segments_path'),
-            'elan_file': results.get('elan_path')
+            'video_duration': video_duration,
+            'fps': int(fps),
+            'labeled_video': labeled_video_path,
+            'predictions_csv': predictions_csv_path,
+            'segments_csv': segments_csv_path,
+            'elan_file': elan_path
         }
 
         update_progress('complete', 100)
