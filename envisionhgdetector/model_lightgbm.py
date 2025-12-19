@@ -24,15 +24,15 @@ class LightGBMGestureModel:
     LightGBM-based gesture detection model.
     Optimized for real-time processing with MediaPipe pose landmarks.
     """
-    
+
     def __init__(self, config: Optional[Config] = None):
         """Initialize LightGBM model with configuration."""
         self.config = config or Config()
-        
+
         # Find and load model
         model_path = self._find_model_path()
         self.load_model(model_path)
-        
+
         # Initialize MediaPipe for ultra-fast processing
         self.mp_pose = mp.solutions.pose
         self.pose = self.mp_pose.Pose(
@@ -43,39 +43,52 @@ class LightGBMGestureModel:
             min_detection_confidence=0.3,
             min_tracking_confidence=0.3
         )
-        
+
         # Buffers for windowing
         self.key_joints_buffer = deque(maxlen=self.window_size)
         self.left_fingers_buffer = deque(maxlen=self.window_size)
         self.right_fingers_buffer = deque(maxlen=self.window_size)
-        
+
         # Motion detection
         self.motion_threshold = 0.02
-        
+
         # Confidence threshold (can be set externally)
         self.confidence_threshold = 0.2
+
+    def __del__(self):
+        """Cleanup MediaPipe resources."""
+        self.close()
+
+    def close(self):
+        """Release MediaPipe Pose resources."""
+        if hasattr(self, 'pose') and self.pose is not None:
+            self.pose.close()
+            self.pose = None
     
     def _find_model_path(self) -> str:
-        """Find the LightGBM model file."""
+        """Find the LightGBM model file. Prefers v2 (with dynamics) over v1."""
         # Try config path first
         if hasattr(self.config, 'weights_path') and self.config.weights_path:
             if self.config.weights_path.endswith('.pkl') and os.path.exists(self.config.weights_path):
                 return self.config.weights_path
-        
-        # Try default paths
+
+        # Try default paths - prefer v2 (with acceleration/jerk) over v1
         possible_paths = [
+            os.path.join(os.path.dirname(__file__), 'model', 'lightgbm_gesture_model_v2.pkl'),
             os.path.join(os.path.dirname(__file__), 'model', 'lightgbm_gesture_model_v1.pkl'),
+            os.path.join(os.path.dirname(__file__), 'lightgbm_gesture_model_v2.pkl'),
             os.path.join(os.path.dirname(__file__), 'lightgbm_gesture_model_v1.pkl'),
+            'lightgbm_gesture_model_v2.pkl',
             'lightgbm_gesture_model_v1.pkl'
         ]
-        
+
         for path in possible_paths:
             if os.path.exists(path):
                 return path
-        
+
         raise FileNotFoundError(
             f"LightGBM model not found. Tried paths: {possible_paths}. "
-            f"Please ensure lightgbm_gesture_model_v1.pkl is in the model folder."
+            f"Please ensure lightgbm_gesture_model_v1.pkl or v2.pkl is in the model folder."
         )
     
     def load_model(self, model_path: str):
@@ -91,12 +104,14 @@ class LightGBMGestureModel:
             self.window_size = model_data['window_size']
             self.gesture_labels = model_data['gesture_labels']
             self.includes_fingers = model_data.get('includes_fingers', False)
+            self.includes_dynamics = model_data.get('includes_dynamics', False)
             self.expected_features = model_data.get('feature_count', 80 if self.includes_fingers else 50)
-            
+
             print(f"LightGBM model loaded successfully!")
             print(f"Window size: {self.window_size} frames")
             print(f"Available gestures: {self.gesture_labels}")
-            print(f"Advanced features: {'ENABLED' if self.includes_fingers else 'DISABLED'}")
+            print(f"Finger features: {'ENABLED' if self.includes_fingers else 'DISABLED'}")
+            print(f"Motion dynamics: {'ENABLED' if self.includes_dynamics else 'DISABLED'}")
             print(f"Expected features: {self.expected_features}")
             
         except Exception as e:
@@ -271,56 +286,97 @@ class LightGBMGestureModel:
         
         return left_fingers_relative, right_fingers_relative
     
-    def _extract_enhanced_features(self, key_joints_sequence: np.ndarray, 
-                                  left_fingers_sequence: np.ndarray, 
+    def _extract_enhanced_features(self, key_joints_sequence: np.ndarray,
+                                  left_fingers_sequence: np.ndarray,
                                   right_fingers_sequence: np.ndarray) -> np.ndarray:
-        """Extract enhanced features matching the training feature extraction."""
+        """
+        Extract enhanced features matching the training feature extraction.
+        Supports both v1 (80 features) and v2 (92 features with dynamics).
+        """
         if len(key_joints_sequence) == 0:
             return np.zeros(self.expected_features, dtype=np.float32)
-        
+
         features = []
-        
+
         # Current pose (18 values: 6 joints * 3 coords)
         current_pose = key_joints_sequence[-1]
         features.extend(current_pose)
-        
+
+        # Initialize velocity-related variables
+        velocity = np.zeros(18)
+        left_wrist_speed = 0.0
+        right_wrist_speed = 0.0
+
         if len(key_joints_sequence) > 1:
-            # Simple velocity (18 values)
+            # Velocity (18 values)
             velocity = key_joints_sequence[-1] - key_joints_sequence[-2]
             features.extend(velocity)
-            
-            # Wrist speeds only (2 values)
+
+            # Wrist speeds (2 values)
             left_wrist_speed = np.linalg.norm(velocity[12:15])
             right_wrist_speed = np.linalg.norm(velocity[15:18])
             features.extend([left_wrist_speed, right_wrist_speed])
         else:
             features.extend([0.0] * 20)
-        
-        # Simple range over window for pose
+
+        # Wrist ranges over window (6 values)
         if len(key_joints_sequence) >= 3:
-            # Range for wrists only (6 values)
             wrist_data = key_joints_sequence[:, 12:18]
             wrist_ranges = np.ptp(wrist_data, axis=0)
             features.extend(wrist_ranges)
         else:
             features.extend([0.0] * 6)
-        
-        # Advanced features (if enabled)
+
+        # Motion dynamics features (v2 models with 92 features)
+        if self.includes_dynamics and self.expected_features >= 92:
+            # Acceleration features (8 values)
+            if len(key_joints_sequence) > 2:
+                prev_velocity = key_joints_sequence[-2] - key_joints_sequence[-3]
+                acceleration = velocity - prev_velocity
+                wrist_acceleration = acceleration[12:18]
+                features.extend(wrist_acceleration)
+
+                left_accel_mag = np.linalg.norm(wrist_acceleration[:3])
+                right_accel_mag = np.linalg.norm(wrist_acceleration[3:6])
+                features.extend([left_accel_mag, right_accel_mag])
+            else:
+                features.extend([0.0] * 8)
+
+            # Jerk and smoothness features (4 values)
+            if len(key_joints_sequence) > 3:
+                prev_prev_velocity = key_joints_sequence[-3] - key_joints_sequence[-4]
+                prev_velocity = key_joints_sequence[-2] - key_joints_sequence[-3]
+                prev_acceleration = prev_velocity - prev_prev_velocity
+
+                jerk = (velocity - prev_velocity) - prev_acceleration
+                wrist_jerk = jerk[12:18]
+
+                left_jerk_mag = np.linalg.norm(wrist_jerk[:3])
+                right_jerk_mag = np.linalg.norm(wrist_jerk[3:6])
+                features.extend([left_jerk_mag, right_jerk_mag])
+
+                left_smoothness = left_jerk_mag / (left_wrist_speed + 1e-6)
+                right_smoothness = right_jerk_mag / (right_wrist_speed + 1e-6)
+                features.extend([left_smoothness, right_smoothness])
+            else:
+                features.extend([0.0] * 4)
+
+        # Finger features (if enabled)
         if self.includes_fingers and self.expected_features >= 80:
             # Current finger positions (18 values: 2 hands * 9 coords each)
             current_left_fingers = left_fingers_sequence[-1] if len(left_fingers_sequence) > 0 else np.zeros(9)
             current_right_fingers = right_fingers_sequence[-1] if len(right_fingers_sequence) > 0 else np.zeros(9)
             features.extend(current_left_fingers)
             features.extend(current_right_fingers)
-            
+
             # Shape features for each hand (6 values total)
             finger_distances = self._calculate_finger_distances(current_left_fingers, current_right_fingers)
             features.extend(finger_distances)
-        
+
         # Pad to expected size
         while len(features) < self.expected_features:
             features.append(0.0)
-        
+
         return np.array(features[:self.expected_features], dtype=np.float32)
     
     def _calculate_finger_distances(self, left_fingers: np.ndarray, right_fingers: np.ndarray) -> List[float]:

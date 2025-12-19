@@ -5,6 +5,9 @@ import pandas as pd
 import lightgbm as lgb
 import joblib
 import time
+import json
+import logging
+from datetime import datetime
 from typing import List, Tuple, Dict, Any
 from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold
 from sklearn.preprocessing import StandardScaler, LabelEncoder
@@ -13,6 +16,92 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 from collections import Counter
+
+
+def setup_logging(log_dir: str = None) -> Tuple[logging.Logger, Path]:
+    """
+    Setup logging for training runs.
+
+    Args:
+        log_dir: Directory for log files. Defaults to training/logs/
+
+    Returns:
+        Tuple of (logger, log_file_path)
+    """
+    if log_dir is None:
+        log_dir = Path(__file__).parent.parent / 'logs'
+    else:
+        log_dir = Path(log_dir)
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create timestamped log file
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = log_dir / f'training_{timestamp}.log'
+
+    # Configure logger
+    logger = logging.getLogger('EnvisionTraining')
+    logger.setLevel(logging.INFO)
+
+    # Clear existing handlers
+    logger.handlers.clear()
+
+    # File handler
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    file_formatter = logging.Formatter('%(asctime)s | %(levelname)s | %(message)s')
+    file_handler.setFormatter(file_formatter)
+    logger.addHandler(file_handler)
+
+    # Console handler (less verbose)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter('%(message)s')
+    console_handler.setFormatter(console_formatter)
+    logger.addHandler(console_handler)
+
+    return logger, log_file
+
+
+def save_training_summary(results: Dict[str, Any], config: Dict[str, Any],
+                          output_dir: Path, logger: logging.Logger):
+    """
+    Save a JSON summary of training results for easy parsing.
+
+    Args:
+        results: Training results dictionary
+        config: Training configuration
+        output_dir: Directory to save summary
+        logger: Logger instance
+    """
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    summary_file = output_dir / f'training_summary_{timestamp}.json'
+
+    summary = {
+        'timestamp': datetime.now().isoformat(),
+        'config': config,
+        'results': {
+            k: v if not isinstance(v, np.ndarray) else v.tolist()
+            for k, v in results.items()
+            if k != 'balance_analysis'  # Skip nested dict with potential issues
+        },
+        'balance_analysis': {
+            k: v if not isinstance(v, (np.ndarray, np.floating, np.integer)) else float(v)
+            for k, v in results.get('balance_analysis', {}).items()
+            if k != 'label_counts'
+        }
+    }
+
+    # Add label counts separately (convert keys to strings for JSON)
+    if 'balance_analysis' in results and 'label_counts' in results['balance_analysis']:
+        summary['balance_analysis']['label_counts'] = {
+            str(k): int(v) for k, v in results['balance_analysis']['label_counts'].items()
+        }
+
+    with open(summary_file, 'w') as f:
+        json.dump(summary, f, indent=2, default=str)
+
+    logger.info(f"Training summary saved to: {summary_file}")
 
 
 # EXACT SAME as inference script
@@ -442,93 +531,146 @@ class MaximumDataLightGBMTrainerWithFingers:
         key_landmarks_flat = key_landmarks.reshape(key_landmarks.shape[0], -1)
         return key_landmarks_flat.astype(np.float32)
     
-    def extract_enhanced_features_with_fingers(self, key_joints_sequence: np.ndarray, 
-                                             left_fingers_sequence: np.ndarray, 
+    def extract_enhanced_features_with_fingers(self, key_joints_sequence: np.ndarray,
+                                             left_fingers_sequence: np.ndarray,
                                              right_fingers_sequence: np.ndarray) -> np.ndarray:
         """
-        ENHANCED feature extraction including finger landmarks.
-        This is the NEW version that includes finger shape information.
+        ENHANCED feature extraction including finger landmarks and motion dynamics.
+        This version includes acceleration and jerk features for better gesture recognition.
+
+        Feature breakdown (92 total):
+        - Current pose: 18 (6 joints × 3 coords)
+        - Velocity: 18 + 2 (wrist speeds) = 20
+        - Wrist ranges: 6
+        - Acceleration: 6 (wrist coords) + 2 (magnitudes) = 8
+        - Jerk + smoothness: 4
+        - Finger positions: 18
+        - Finger distances: 6
+        - Padding: 12
         """
         if len(key_joints_sequence) == 0:
-            return np.zeros(80, dtype=np.float32)  # Increased to 80 for finger features
-        
+            return np.zeros(92, dtype=np.float32)
+
         features = []
-        
-        # Original pose features (same as before)
+
         # Current pose (18 values: 6 joints * 3 coords)
         current_pose = key_joints_sequence[-1]
         features.extend(current_pose)
-        
+
+        # Initialize velocity-related variables
+        velocity = np.zeros(18)
+        left_wrist_speed = 0.0
+        right_wrist_speed = 0.0
+
         if len(key_joints_sequence) > 1:
-            # Simple velocity (18 values)
+            # Velocity (18 values)
             velocity = key_joints_sequence[-1] - key_joints_sequence[-2]
             features.extend(velocity)
-            
-            # Wrist speeds only (2 values)
+
+            # Wrist speeds (2 values)
             left_wrist_speed = np.linalg.norm(velocity[12:15])
             right_wrist_speed = np.linalg.norm(velocity[15:18])
             features.extend([left_wrist_speed, right_wrist_speed])
         else:
             features.extend([0.0] * 20)
-        
-        # Simple range over window for pose
+
+        # Wrist ranges over window (6 values)
         if len(key_joints_sequence) >= 3:
-            # Range for wrists only (6 values)
             wrist_data = key_joints_sequence[:, 12:18]
             wrist_ranges = np.ptp(wrist_data, axis=0)
             features.extend(wrist_ranges)
         else:
             features.extend([0.0] * 6)
-        
-        # NEW: Finger features (30 additional values)
-        
-        # Current finger positions (18 values: 2 hands * 9 coords each)
+
+        # NEW: Acceleration features (8 values)
+        wrist_acceleration = np.zeros(6)
+        left_accel_mag = 0.0
+        right_accel_mag = 0.0
+
+        if len(key_joints_sequence) > 2:
+            # Previous velocity
+            prev_velocity = key_joints_sequence[-2] - key_joints_sequence[-3]
+            # Acceleration = change in velocity
+            acceleration = velocity - prev_velocity
+            # Extract wrist acceleration (6 values)
+            wrist_acceleration = acceleration[12:18]
+            features.extend(wrist_acceleration)
+
+            # Acceleration magnitudes (2 values)
+            left_accel_mag = np.linalg.norm(wrist_acceleration[:3])
+            right_accel_mag = np.linalg.norm(wrist_acceleration[3:6])
+            features.extend([left_accel_mag, right_accel_mag])
+        else:
+            features.extend([0.0] * 8)
+
+        # NEW: Jerk and smoothness features (4 values)
+        if len(key_joints_sequence) > 3:
+            # Previous acceleration
+            prev_prev_velocity = key_joints_sequence[-3] - key_joints_sequence[-4]
+            prev_velocity = key_joints_sequence[-2] - key_joints_sequence[-3]
+            prev_acceleration = prev_velocity - prev_prev_velocity
+
+            # Jerk = change in acceleration
+            jerk = (velocity - prev_velocity) - prev_acceleration
+            wrist_jerk = jerk[12:18]
+
+            # Jerk magnitudes (2 values)
+            left_jerk_mag = np.linalg.norm(wrist_jerk[:3])
+            right_jerk_mag = np.linalg.norm(wrist_jerk[3:6])
+            features.extend([left_jerk_mag, right_jerk_mag])
+
+            # Smoothness ratio: jerk/speed (2 values)
+            # Low ratio = smooth motion, high ratio = jerky motion
+            left_smoothness = left_jerk_mag / (left_wrist_speed + 1e-6)
+            right_smoothness = right_jerk_mag / (right_wrist_speed + 1e-6)
+            features.extend([left_smoothness, right_smoothness])
+        else:
+            features.extend([0.0] * 4)
+
+        # Finger positions (18 values: 2 hands * 9 coords each)
         current_left_fingers = left_fingers_sequence[-1] if len(left_fingers_sequence) > 0 else np.zeros(9)
         current_right_fingers = right_fingers_sequence[-1] if len(right_fingers_sequence) > 0 else np.zeros(9)
         features.extend(current_left_fingers)
         features.extend(current_right_fingers)
-        
-        # Finger shape features for each hand (6 values total)
-        # Left hand distances
+
+        # Finger shape features (6 values total)
         left_pinky_thumb_dist = 0.0
         left_index_thumb_dist = 0.0
         left_pinky_index_dist = 0.0
-        
+
         if len(current_left_fingers) >= 9 and np.any(current_left_fingers):
             left_pinky_pos = current_left_fingers[0:3]
             left_index_pos = current_left_fingers[3:6]
             left_thumb_pos = current_left_fingers[6:9]
-            
+
             left_pinky_thumb_dist = np.linalg.norm(left_pinky_pos - left_thumb_pos)
             left_index_thumb_dist = np.linalg.norm(left_index_pos - left_thumb_pos)
             left_pinky_index_dist = np.linalg.norm(left_pinky_pos - left_index_pos)
-        
-        # Right hand distances
+
         right_pinky_thumb_dist = 0.0
         right_index_thumb_dist = 0.0
         right_pinky_index_dist = 0.0
-        
+
         if len(current_right_fingers) >= 9 and np.any(current_right_fingers):
             right_pinky_pos = current_right_fingers[0:3]
             right_index_pos = current_right_fingers[3:6]
             right_thumb_pos = current_right_fingers[6:9]
-            
+
             right_pinky_thumb_dist = np.linalg.norm(right_pinky_pos - right_thumb_pos)
             right_index_thumb_dist = np.linalg.norm(right_index_pos - right_thumb_pos)
             right_pinky_index_dist = np.linalg.norm(right_pinky_pos - right_index_pos)
-        
+
         features.extend([
             left_pinky_thumb_dist, left_index_thumb_dist, left_pinky_index_dist,
             right_pinky_thumb_dist, right_index_thumb_dist, right_pinky_index_dist
         ])
-        
-        # Total so far: 18 + 18 + 2 + 6 + 9 + 9 + 6 = 68 features
-        
-        # Pad to consistent size (80)
-        while len(features) < 80:
+
+        # Total: 18 + 20 + 6 + 8 + 4 + 18 + 6 = 80 features
+        # Pad to 92 for future expansion
+        while len(features) < 92:
             features.append(0.0)
-        
-        return np.array(features[:80], dtype=np.float32)
+
+        return np.array(features[:92], dtype=np.float32)
     
     def prepare_training_data_with_fingers(self, X_sequences: np.ndarray, y_labels: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Convert sequences to features INCLUDING finger landmarks."""
@@ -664,11 +806,11 @@ class MaximumDataLightGBMTrainerWithFingers:
                 
                 cv_scores.append(fold_accuracy)
                 fold_times.append(time.time() - fold_start)
-                
+
                 print(f"  Fold {fold + 1} accuracy: {fold_accuracy:.4f} (time: {fold_times[-1]:.1f}s)")
-                
-                # Keep best model
-                if fold == 0 or fold_accuracy == max(cv_scores):
+
+                # Keep best model (first fold or better than previous best)
+                if fold == 0 or fold_accuracy >= max(cv_scores[:-1]):
                     self.model = fold_model
                     self.scaler = scaler_fold
             
@@ -771,24 +913,29 @@ class MaximumDataLightGBMTrainerWithFingers:
             'gesture_labels': self.gesture_labels,
             'window_size': self.window_size,
             'training_timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
-            'feature_names': [f'enhanced_feature_{i}' for i in range(80)],  # Updated for 80 features
+            'feature_names': [f'enhanced_feature_{i}' for i in range(92)],  # Updated for 92 features (v2)
             'overlap': 0,
             'includes_fingers': True,  # Flag to indicate finger features are included
-            'feature_count': 80  # Explicit feature count
+            'includes_dynamics': True,  # Flag for acceleration/jerk features (v2)
+            'feature_count': 92  # Explicit feature count (v2 with dynamics)
         }
         
         joblib.dump(model_data, filepath)
         print(f"✅ Model saved to: {filepath}")
-        print(f"   🔗 Compatible with enhanced inference script!")
+        print(f"   🔗 Compatible with enhanced inference script (v2)!")
         print(f"   🤏 Includes finger landmarks (pinky, index, thumb relative to wrists)")
+        print(f"   🚀 Includes motion dynamics (acceleration, jerk, smoothness)")
 
 
 def main():
-    """Enhanced main training pipeline for maximum data usage with fingers."""
+    """Enhanced main training pipeline for maximum data usage with fingers and dynamics."""
     import argparse
-    
-    parser = argparse.ArgumentParser(description='Train LightGBM with MAXIMUM data usage and FINGER LANDMARKS')
-    parser.add_argument('--npz_path', type=str, default='./training/bodylandmarks7wlonly.npz',
+
+    # Get script directory for relative paths
+    script_dir = Path(__file__).parent
+
+    parser = argparse.ArgumentParser(description='Train LightGBM with motion dynamics (acceleration, jerk)')
+    parser.add_argument('--npz_path', type=str, default=str(script_dir / '../data/bodylandmarks7wlonly.npz'),
                        help='Path to NPZ training data')
     parser.add_argument('--max_sequences', type=int, default=None,
                        help='Maximum sequences per gesture (None = unlimited)')
@@ -796,86 +943,123 @@ def main():
                        help='Frame stride (1=all frames, 2=every other, etc.)')
     parser.add_argument('--augment', action='store_true',
                        help='Apply data augmentation')
-    parser.add_argument('--output_model', type=str, default='gesture_model_with_fingers.pkl',
+    parser.add_argument('--output_model', type=str,
+                       default=str(script_dir / '../../envisionhgdetector/model/lightgbm_gesture_model_v2.pkl'),
                        help='Output model filename')
     parser.add_argument('--cv_folds', type=int, default=5,
                        help='Number of cross-validation folds')
     parser.add_argument('--analyze_only', action='store_true',
                        help='Only analyze data without training')
-    
+    parser.add_argument('--log_dir', type=str, default=None,
+                       help='Directory for log files (default: training/logs/)')
+
     args = parser.parse_args()
-    
-    print("🚀 MAXIMUM DATA USAGE TRAINING WITH FINGER LANDMARKS")
-    print("=" * 70)
-    print(f"Training data: {args.npz_path}")
-    print(f"Frame stride: {args.stride} ({'ALL sequences' if args.stride == 1 else 'reduced sequences'})")
-    print(f"Max sequences per gesture: {args.max_sequences or 'UNLIMITED'}")
-    print(f"Data augmentation: {'ON' if args.augment else 'OFF'}")
-    print(f"Output model: {args.output_model}")
-    print(f"🤏 NEW: Finger landmarks (pinky, index, thumb) ENABLED from 23-landmark pose data")
-    print(f"📊 Expected data structure: 23 landmarks, 69 features per frame")
-    
+
+    # Setup logging
+    logger, log_file = setup_logging(args.log_dir)
+
+    logger.info("=" * 70)
+    logger.info("LIGHTGBM TRAINING v2 - WITH MOTION DYNAMICS")
+    logger.info("=" * 70)
+    logger.info(f"Log file: {log_file}")
+    logger.info(f"Training data: {args.npz_path}")
+    logger.info(f"Frame stride: {args.stride} ({'ALL sequences' if args.stride == 1 else 'reduced sequences'})")
+    logger.info(f"Max sequences per gesture: {args.max_sequences or 'UNLIMITED'}")
+    logger.info(f"Data augmentation: {'ON' if args.augment else 'OFF'}")
+    logger.info(f"Output model: {args.output_model}")
+    logger.info(f"CV folds: {args.cv_folds}")
+    logger.info(f"Finger landmarks: ENABLED (pinky, index, thumb)")
+    logger.info(f"Motion dynamics: ENABLED (acceleration, jerk, smoothness)")
+    logger.info(f"Features: 92 (up from 80 in v1)")
+
+    # Store config for summary
+    training_config = {
+        'npz_path': args.npz_path,
+        'stride': args.stride,
+        'max_sequences': args.max_sequences,
+        'augment': args.augment,
+        'output_model': args.output_model,
+        'cv_folds': args.cv_folds,
+        'window_size': 5,
+        'feature_count': 92
+    }
+
     # Initialize trainer
     trainer = MaximumDataLightGBMTrainerWithFingers(window_size=5)
-    
+
     try:
         # First, analyze available data
         analysis = trainer.analyze_available_data(args.npz_path)
-        
+
+        logger.info(f"Data analysis: {analysis['total_frames']:,} total frames, "
+                   f"{len(analysis['gesture_counts'])} gesture types")
+
         if args.analyze_only:
-            print(f"\n📊 ANALYSIS COMPLETE - No training performed")
+            logger.info("ANALYSIS COMPLETE - No training performed")
             return
-        
+
         # Load data with maximum usage
         X_sequences, y_labels = trainer.load_npz_data_maximum(
-            args.npz_path, 
+            args.npz_path,
             max_sequences_per_label=args.max_sequences,
             stride=args.stride,
             augment_data=args.augment
         )
-        
+
+        logger.info(f"Loaded {len(X_sequences):,} sequences")
+
         # Prepare features with fingers
         X_features, y_prepared = trainer.prepare_training_data_with_fingers(X_sequences, y_labels)
-        
+
+        logger.info(f"Extracted {X_features.shape[1]} features from {X_features.shape[0]:,} sequences")
+
         # Train with maximum data
         results = trainer.train_with_maximum_data(X_features, y_prepared, cv_folds=args.cv_folds)
-        
+
         # Save model
         trainer.save_model(args.output_model)
-        
-        print(f"\n🎉 MAXIMUM DATA TRAINING WITH FINGERS COMPLETED!")
-        print(f"📁 Model saved to: {args.output_model}")
+
+        # Log final results
+        logger.info("=" * 70)
+        logger.info("TRAINING COMPLETED SUCCESSFULLY")
+        logger.info("=" * 70)
+        logger.info(f"Model saved to: {args.output_model}")
+
         if 'cv_mean' in results:
-            print(f"🎯 CV Accuracy: {results['cv_mean']:.4f} ± {results['cv_std']:.4f}")
+            logger.info(f"CV Accuracy: {results['cv_mean']:.4f} +/- {results['cv_std']:.4f}")
+            logger.info(f"CV Scores per fold: {[f'{s:.4f}' for s in results['cv_scores']]}")
         else:
-            print(f"🎯 Test Accuracy: {results['test_accuracy']:.4f}")
-        print(f"📊 Total samples used: {results['total_samples']:,}")
-        print(f"🤏 Features (with fingers): {results['num_features']}")
-        print(f"⚡ Training time: {results['training_time']:.1f} seconds")
-        
-        # Show data efficiency gained
+            logger.info(f"Test Accuracy: {results['test_accuracy']:.4f}")
+
+        logger.info(f"Total samples used: {results['total_samples']:,}")
+        logger.info(f"Features (with fingers): {results['num_features']}")
+        logger.info(f"Model trees: {results['num_trees']}")
+        logger.info(f"Training time: {results['training_time']:.1f} seconds")
+
+        # Data efficiency
         theoretical_max = analysis['total_potential_sequences']
         actual_used = results['total_samples']
         if args.augment:
-            # Account for augmentation
-            base_sequences = actual_used // 1.3  # Rough estimate
+            base_sequences = actual_used // 1.3
             efficiency = (base_sequences / theoretical_max) * 100
         else:
             efficiency = (actual_used / theoretical_max) * 100
-        
-        print(f"\n📈 DATA EFFICIENCY:")
-        print(f"Used {actual_used:,} out of {theoretical_max:,} possible sequences")
-        print(f"Data efficiency: {efficiency:.1f}%")
-        
-        print(f"\n🔥 Use this enhanced model with inference:")
-        print(f"   python EnvisionRealTimeInference_WithFingers.py --model {args.output_model}")
-        
+
+        logger.info(f"Data efficiency: {efficiency:.1f}% ({actual_used:,}/{theoretical_max:,} sequences)")
+
+        # Save JSON summary
+        log_dir = Path(log_file).parent
+        save_training_summary(results, training_config, log_dir, logger)
+
+        logger.info(f"Log file: {log_file}")
+        logger.info("Use this model with: python EnvisionRealTimeInference_WithFingers.py --model " + args.output_model)
+
     except FileNotFoundError:
-        print(f"❌ Training data not found: {args.npz_path}")
+        logger.error(f"Training data not found: {args.npz_path}")
     except Exception as e:
-        print(f"❌ Training failed: {e}")
+        logger.error(f"Training failed: {e}")
         import traceback
-        traceback.print_exc()
+        logger.error(traceback.format_exc())
 
 
 if __name__ == "__main__":

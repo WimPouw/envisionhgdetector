@@ -122,11 +122,50 @@ The detector uses 29 features extracted from MediaPipe Holistic, including:
 - Body landmark distances
 - Normalized feature metrics
 
-## LightGBM Model (69 features):
-- Key joint positions (shoulders, elbows, wrists)
-- Velocities
+## LightGBM Model (92 features)
+
+- Key joint positions (shoulders, elbows, wrists) with 3D world coordinates
+- Finger landmarks (pinky, index, thumb)
+- Velocities and accelerations
+- Motion dynamics (jerk, smoothness)
 - Movement ranges and patterns
-- Index Thumb Middle Finger Distances and Positions
+
+## Training Your Own Model
+
+The package includes scripts to train custom models on your own annotated data.
+
+### Prerequisites
+
+- Video files with gesture annotations in ELAN format (.eaf files)
+- Videos and annotations should follow the M3D TED dataset structure
+
+### Training Pipeline
+
+```bash
+# Step 1: Prepare training data from videos + ELAN annotations
+cd training/scripts
+python prepare_m3d_data.py --data_dir /path/to/m3d/data --output ../data/m3d_world_landmarks.npz
+
+# Step 2: Train the LightGBM model
+cd ../TrainingcodeGBM
+python EnvisionRealTimeTrain.py --npz_path ../data/m3d_world_landmarks.npz --augment
+
+# Step 3: Test the trained model on sample videos
+cd ../scripts
+python test_model.py --video /path/to/test_video.mp4 --output results.json
+```
+
+### Training Options
+
+```bash
+python EnvisionRealTimeTrain.py \
+    --npz_path ../data/training_data.npz \  # Training data file
+    --augment \                              # Enable data augmentation
+    --cv_folds 5 \                           # Cross-validation folds
+    --output_model ../../envisionhgdetector/model/lightgbm_gesture_model_v2.pkl
+```
+
+Training logs and summaries are saved to `training/logs/`.
 
 ## Output
 
