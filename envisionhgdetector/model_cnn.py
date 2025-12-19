@@ -1,11 +1,15 @@
-# envisionhgdetector/envisionhgdetector/model.py
+# envisionhgdetector/model_cnn.py
+"""
+CNN model architecture for gesture detection.
+Uses 1D convolutions over temporal sequences of pose features.
+"""
 
 import tensorflow as tf
 from tensorflow.keras import layers, regularizers, Model
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
+
 from .config import Config
-from typing import Tuple
 
 class EnhancedPreprocessing(layers.Layer):
     def __init__(
@@ -28,13 +32,25 @@ class EnhancedPreprocessing(layers.Layer):
         self.mask_max_size = mask_max_size
 
     def time_warp(self, features: tf.Tensor) -> tf.Tensor:
-        """Apply random temporal warping."""
-        warp = tf.random.uniform([], self.time_warp_range[0], self.time_warp_range[1])
+        """Apply random temporal warping by resampling to a warped length."""
+        warp_factor = tf.random.uniform([], self.time_warp_range[0], self.time_warp_range[1])
         seq_len = tf.shape(features)[1]
+        # Warp to a different length then resize back to original
+        warped_len = tf.cast(tf.cast(seq_len, tf.float32) * warp_factor, tf.int32)
+        warped_len = tf.maximum(warped_len, 1)  # Ensure at least 1 frame
+
+        # Resize to warped length then back to original (creates temporal distortion)
         warped = tf.image.resize(
-            features[:, :, :, tf.newaxis], 
+            features[:, :, :, tf.newaxis],
+            [warped_len, tf.shape(features)[2]]
+        )[:, :, :, 0]
+
+        # Resize back to original length
+        warped = tf.image.resize(
+            warped[:, :, :, tf.newaxis],
             [seq_len, tf.shape(features)[2]]
         )[:, :, :, 0]
+
         return warped
 
     def add_position_jitter(self, features: tf.Tensor) -> tf.Tensor:
