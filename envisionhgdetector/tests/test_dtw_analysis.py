@@ -10,6 +10,7 @@ import pytest
 
 from envisionhgdetector.dtw_analysis import (
     create_gesture_visualization,
+    DTWAnalysisError,
 )
 
 
@@ -18,13 +19,14 @@ class TestCreateGestureVisualization:
 
     def test_creates_visualization_file(self):
         """Test that visualization CSV file is created."""
-        # Create a simple DTW matrix
+        # Create a simple DTW matrix (needs at least 4 gestures for proper UMAP)
         dtw_matrix = np.array([
-            [0.0, 1.0, 2.0],
-            [1.0, 0.0, 1.5],
-            [2.0, 1.5, 0.0]
+            [0.0, 1.0, 2.0, 3.0],
+            [1.0, 0.0, 1.5, 2.5],
+            [2.0, 1.5, 0.0, 1.0],
+            [3.0, 2.5, 1.0, 0.0]
         ])
-        gesture_names = ['gesture_1', 'gesture_2', 'gesture_3']
+        gesture_names = ['gesture_1', 'gesture_2', 'gesture_3', 'gesture_4']
 
         with tempfile.TemporaryDirectory() as tmpdir:
             create_gesture_visualization(dtw_matrix, gesture_names, tmpdir)
@@ -35,11 +37,12 @@ class TestCreateGestureVisualization:
     def test_output_has_correct_columns(self):
         """Test that output CSV has expected columns."""
         dtw_matrix = np.array([
-            [0.0, 1.0, 2.0],
-            [1.0, 0.0, 1.5],
-            [2.0, 1.5, 0.0]
+            [0.0, 1.0, 2.0, 3.0],
+            [1.0, 0.0, 1.5, 2.5],
+            [2.0, 1.5, 0.0, 1.0],
+            [3.0, 2.5, 1.0, 0.0]
         ])
-        gesture_names = ['gesture_1', 'gesture_2', 'gesture_3']
+        gesture_names = ['gesture_1', 'gesture_2', 'gesture_3', 'gesture_4']
 
         with tempfile.TemporaryDirectory() as tmpdir:
             create_gesture_visualization(dtw_matrix, gesture_names, tmpdir)
@@ -73,11 +76,12 @@ class TestCreateGestureVisualization:
     def test_handles_nan_values(self):
         """Test that NaN values in DTW matrix are handled."""
         dtw_matrix = np.array([
-            [0.0, 1.0, np.nan],
-            [1.0, 0.0, 1.5],
-            [np.nan, 1.5, 0.0]
+            [0.0, 1.0, 2.0, np.nan],
+            [1.0, 0.0, 1.5, 2.0],
+            [2.0, 1.5, 0.0, 1.0],
+            [np.nan, 2.0, 1.0, 0.0]
         ])
-        gesture_names = ['g1', 'g2', 'g3']
+        gesture_names = ['g1', 'g2', 'g3', 'g4']
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Should not raise an error
@@ -86,9 +90,8 @@ class TestCreateGestureVisualization:
             output_path = os.path.join(tmpdir, "gesture_visualization.csv")
             assert os.path.exists(output_path)
 
-    def test_small_n_neighbors_adjustment(self):
-        """Test that n_neighbors is adjusted for small datasets."""
-        # With only 2 gestures, n_neighbors must be < 2
+    def test_too_few_gestures_raises_error(self):
+        """Test that less than 3 gestures raises an error (UMAP requires n_neighbors >= 2)."""
         dtw_matrix = np.array([
             [0.0, 1.0],
             [1.0, 0.0]
@@ -96,13 +99,10 @@ class TestCreateGestureVisualization:
         gesture_names = ['g1', 'g2']
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            # Should not raise an error due to n_neighbors adjustment
-            create_gesture_visualization(
-                dtw_matrix, gesture_names, tmpdir, n_neighbors=15
-            )
-
-            output_path = os.path.join(tmpdir, "gesture_visualization.csv")
-            assert os.path.exists(output_path)
+            with pytest.raises(DTWAnalysisError):
+                create_gesture_visualization(
+                    dtw_matrix, gesture_names, tmpdir, n_neighbors=15
+                )
 
 
 class TestKinematicFeaturesDataFrame:

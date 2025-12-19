@@ -9,6 +9,7 @@ from envisionhgdetector.kinematics import (
     find_submovements,
     compute_limb_kinematics,
     ArmKinematics,
+    KinematicsError,
 )
 
 
@@ -35,16 +36,16 @@ class TestCalculateDerivatives:
         assert jerk.shape == positions.shape
 
     def test_empty_positions_raises(self):
-        """Test that empty positions raises ValueError."""
-        with pytest.raises(ValueError):
+        """Test that empty positions raises KinematicsError."""
+        with pytest.raises(KinematicsError):
             calculate_derivatives(np.array([]), 25.0)
 
     def test_invalid_fps_raises(self):
-        """Test that non-positive fps raises ValueError."""
+        """Test that non-positive fps raises KinematicsError."""
         positions = np.array([[0, 0, 0], [1, 1, 1]])
-        with pytest.raises(ValueError):
+        with pytest.raises(KinematicsError):
             calculate_derivatives(positions, 0.0)
-        with pytest.raises(ValueError):
+        with pytest.raises(KinematicsError):
             calculate_derivatives(positions, -10.0)
 
 

@@ -329,16 +329,16 @@ def create_gesture_visualization(
             f"dtw_matrix dimension ({dtw_matrix.shape[0]})"
         )
 
-    if len(gesture_names) < 2:
+    if len(gesture_names) < 3:
         raise DTWAnalysisError(
-            "Need at least 2 gestures for UMAP visualization"
+            "Need at least 3 gestures for UMAP visualization (UMAP requires n_neighbors >= 2)"
         )
 
     output_folder = validate_folder_path(output_folder, "output_folder", must_exist=False)
 
-    if not isinstance(n_neighbors, int) or n_neighbors < 1:
+    if not isinstance(n_neighbors, int) or n_neighbors < 2:
         raise DTWAnalysisError(
-            f"n_neighbors must be a positive integer, got {n_neighbors}"
+            f"n_neighbors must be an integer >= 2, got {n_neighbors}"
         )
 
     # Create output folder
@@ -350,10 +350,14 @@ def create_gesture_visualization(
     # Handle NaN values in DTW matrix
     dtw_matrix_clean = np.nan_to_num(dtw_matrix, nan=np.nanmax(dtw_matrix))
 
+    # Ensure n_neighbors doesn't exceed number of gestures - 1
+    effective_n_neighbors = min(n_neighbors, len(gesture_names) - 1)
+    effective_n_neighbors = max(effective_n_neighbors, 2)  # UMAP requires at least 2
+
     # Create UMAP projection using precomputed distances
     reducer = umap.UMAP(
         n_components=2,
-        n_neighbors=min(n_neighbors, len(gesture_names) - 1),
+        n_neighbors=effective_n_neighbors,
         metric='precomputed'
     )
     projection = reducer.fit_transform(dtw_matrix_clean)

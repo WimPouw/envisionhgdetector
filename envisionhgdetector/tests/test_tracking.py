@@ -7,6 +7,7 @@ import pytest
 from envisionhgdetector.tracking import (
     extract_upper_limb_features,
     remove_nans,
+    TrackingError,
 )
 
 
@@ -25,15 +26,15 @@ class TestExtractUpperLimbFeatures:
         assert features.shape[0] == 10
 
     def test_invalid_shape_raises(self):
-        """Test that invalid landmark shapes raise ValueError."""
+        """Test that invalid landmark shapes raise TrackingError."""
         # 2D array instead of 3D
         landmarks_2d = np.random.randn(10, 99)
-        with pytest.raises(ValueError):
+        with pytest.raises(TrackingError):
             extract_upper_limb_features(landmarks_2d)
 
         # Wrong last dimension (should be 3 for x,y,z)
         landmarks_wrong = np.random.randn(10, 33, 4)
-        with pytest.raises(ValueError):
+        with pytest.raises(TrackingError):
             extract_upper_limb_features(landmarks_wrong)
 
     def test_output_shape_consistency(self):

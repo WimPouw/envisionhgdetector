@@ -36,7 +36,8 @@ class TestCreateSegments:
         assert len(result) == 1
         assert result.iloc[0]['label'] == 'Gesture'
         assert result.iloc[0]['start_time'] == 0.1
-        assert result.iloc[0]['end_time'] == 0.6
+        # End time is the timestamp where state changes (index 7 = 0.7)
+        assert result.iloc[0]['end_time'] == 0.7
 
     def test_merge_close_segments(self):
         """Test that close segments are merged."""
@@ -50,7 +51,8 @@ class TestCreateSegments:
 
         assert len(result) == 1
         assert result.iloc[0]['start_time'] == 0.1
-        assert result.iloc[0]['end_time'] == 0.5
+        # Merged segment ends at index 6 = 0.6
+        assert result.iloc[0]['end_time'] == 0.6
 
     def test_filter_short_segments(self):
         """Test that segments shorter than min_length_s are filtered."""

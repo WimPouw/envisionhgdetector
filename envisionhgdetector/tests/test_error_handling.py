@@ -274,12 +274,12 @@ class TestDTWAnalysisErrors:
             create_gesture_visualization(matrix, ['g1', 'g2'], '/tmp')  # Only 2 names
 
     def test_too_few_gestures(self):
-        """Test error when less than 2 gestures."""
+        """Test error when less than 3 gestures (UMAP requires n_neighbors >= 2)."""
         from envisionhgdetector.dtw_analysis import create_gesture_visualization, DTWAnalysisError
 
         matrix = np.array([[0.0]])
 
-        with pytest.raises(DTWAnalysisError, match="at least 2 gestures"):
+        with pytest.raises(DTWAnalysisError, match="at least 3 gestures"):
             create_gesture_visualization(matrix, ['g1'], '/tmp')
 
     def test_invalid_n_neighbors(self):
@@ -288,10 +288,10 @@ class TestDTWAnalysisErrors:
 
         matrix = np.zeros((3, 3))
 
-        with pytest.raises(DTWAnalysisError, match="must be a positive integer"):
+        with pytest.raises(DTWAnalysisError, match="n_neighbors must be an integer >= 2"):
             create_gesture_visualization(matrix, ['g1', 'g2', 'g3'], '/tmp', n_neighbors=0)
 
-        with pytest.raises(DTWAnalysisError, match="must be a positive integer"):
+        with pytest.raises(DTWAnalysisError, match="n_neighbors must be an integer >= 2"):
             create_gesture_visualization(matrix, ['g1', 'g2', 'g3'], '/tmp', n_neighbors=-1)
 
 
