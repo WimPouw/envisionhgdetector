@@ -6,7 +6,8 @@ Handles video labeling, segmentation, and file operations.
 
 import os
 import glob
-from typing import Dict, List, Optional, Union
+from contextlib import contextmanager
+from typing import Dict, Generator, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -18,6 +19,57 @@ from tqdm import tqdm
 class VideoProcessingError(Exception):
     """Exception raised for errors during video processing."""
     pass
+
+
+@contextmanager
+def video_capture(source: Union[str, int]) -> Generator[cv2.VideoCapture, None, None]:
+    """
+    Context manager for cv2.VideoCapture that ensures proper resource cleanup.
+
+    Args:
+        source: Video file path or camera index
+
+    Yields:
+        cv2.VideoCapture object
+
+    Raises:
+        VideoProcessingError: If video cannot be opened
+
+    Example:
+        with video_capture("video.mp4") as cap:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+    """
+    cap = cv2.VideoCapture(source)
+    try:
+        if not cap.isOpened():
+            raise VideoProcessingError(f"Could not open video source: {source}")
+        yield cap
+    finally:
+        cap.release()
+
+
+def get_video_info(video_path: str) -> Dict[str, Union[int, float]]:
+    """
+    Get video metadata without keeping the file open.
+
+    Args:
+        video_path: Path to video file
+
+    Returns:
+        Dict with 'fps', 'frame_count', 'width', 'height', 'duration'
+    """
+    with video_capture(video_path) as cap:
+        return {
+            'fps': cap.get(cv2.CAP_PROP_FPS),
+            'frame_count': int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+            'width': int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            'height': int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            'duration': cap.get(cv2.CAP_PROP_FRAME_COUNT) / cap.get(cv2.CAP_PROP_FPS)
+            if cap.get(cv2.CAP_PROP_FPS) > 0 else 0
+        }
 
 
 def validate_video_path(video_path: str, must_exist: bool = True) -> str:

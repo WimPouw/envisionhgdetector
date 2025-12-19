@@ -19,7 +19,7 @@ from .config import Config
 from .model_cnn import GestureModel
 from .model_lightgbm import LightGBMGestureModel
 from .preprocessing import VideoProcessor
-from .segmentation import create_segments, get_prediction_at_threshold
+from .segmentation import create_segments, get_prediction_at_threshold, apply_thresholds_vectorized
 from .elan import create_elan_file
 from .video import label_video
 from .tracking import retrack_gesture_videos
@@ -85,11 +85,10 @@ class GestureDetector:
         return np.array(windows)
 
     def _get_video_fps(self, video_path: str) -> int:
-        """Get video FPS."""
-        cap = cv2.VideoCapture(video_path)
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        cap.release()
-        return fps
+        """Get video FPS with proper resource cleanup."""
+        from .video import video_capture
+        with video_capture(video_path) as cap:
+            return int(cap.get(cv2.CAP_PROP_FPS))
     
     def predict_video(
         self,
@@ -172,14 +171,11 @@ class GestureDetector:
         
         results_df = pd.DataFrame(rows)
 
-        # Apply thresholds
-        results_df['label'] = results_df.apply(
-            lambda row: get_prediction_at_threshold(
-                row,
-                self.params['motion_threshold'],
-                self.params['gesture_threshold']
-            ),
-            axis=1
+        # Apply thresholds using vectorized operation (10-100x faster than .apply())
+        results_df['label'] = apply_thresholds_vectorized(
+            results_df,
+            self.params['motion_threshold'],
+            self.params['gesture_threshold']
         )
 
         # Create segments
@@ -252,7 +248,7 @@ class GestureDetector:
                 gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
                 gesture_name = self.model.standardize_gesture_name(gesture_name)
                 
-                # Convert LightGBM output to align witht he CNN format
+                # Convert LightGBM output to align with the CNN format
                 if gesture_name == "NOGESTURE":
                     gesture_conf = 1-confidence # gesture confidence is the 1-no gesture confidence                   
                     nogesture_conf = confidence # no gesture confidence is the confidence of the no gesture class
@@ -263,7 +259,7 @@ class GestureDetector:
                         gesture_conf = 0.0
                         move_conf = confidence
                         nogesture_conf = 1-confidence
-                    else: #then its a a gesture
+                    else:  # it's a gesture
                         gesture_conf = confidence
                         move_conf = 0.0
                         nogesture_conf = 1-confidence
@@ -290,15 +286,12 @@ class GestureDetector:
         
         if results_df.empty:
             return pd.DataFrame(), {"error": "No predictions generated"}, pd.DataFrame(), np.array([])
-        
-        # Apply thresholds (reuse existing logic)
-        results_df['label'] = results_df.apply(
-            lambda row: get_prediction_at_threshold(
-                row,
-                self.params['motion_threshold'],
-                self.params['gesture_threshold']
-            ),
-            axis=1
+
+        # Apply thresholds using vectorized operation (10-100x faster than .apply())
+        results_df['label'] = apply_thresholds_vectorized(
+            results_df,
+            self.params['motion_threshold'],
+            self.params['gesture_threshold']
         )
 
         # Create segments
@@ -336,8 +329,11 @@ class GestureDetector:
         for video_path in videos:
             video_name = os.path.basename(video_path)
             print(f"\nProcessing {video_name} with {self.model_type.upper()} model...")
-            
+
             try:
+                # Get FPS once at the start to avoid redundant I/O
+                fps = self._get_video_fps(video_path)
+
                 # Process video (automatically routes to correct model)
                 print("Extracting features and model inferencing...")
                 predictions_df, stats, segments, features, timestamps = self.predict_video(video_path)
@@ -385,12 +381,11 @@ class GestureDetector:
                     )
                     
                     print("Generating ELAN file...")
-                    # Create ELAN file
+                    # Create ELAN file (reuse fps from start of loop)
                     output_path = os.path.join(
                         output_folder,
                         f"{video_name}.eaf"
                     )
-                    fps = self._get_video_fps(video_path)
                     create_elan_file(
                         video_path,
                         segments,

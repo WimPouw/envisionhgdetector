@@ -251,3 +251,78 @@ def get_prediction_at_threshold(
             return max(valid_gestures, key=lambda x: x[1])[0]
 
     return 'NoGesture'
+
+
+def apply_thresholds_vectorized(
+    df: pd.DataFrame,
+    motion_threshold: float = 0.6,
+    gesture_threshold: float = 0.6
+) -> np.ndarray:
+    """
+    Vectorized version of get_prediction_at_threshold for entire DataFrames.
+
+    This is significantly faster than using .apply() with get_prediction_at_threshold
+    for large DataFrames (10-100x speedup).
+
+    Args:
+        df: DataFrame containing confidence columns:
+            - NoGesture_confidence
+            - Gesture_confidence
+            - Move_confidence
+        motion_threshold: Minimum motion confidence (0.0-1.0)
+        gesture_threshold: Minimum gesture/move confidence (0.0-1.0)
+
+    Returns:
+        NumPy array of predicted labels ('Gesture', 'Move', or 'NoGesture')
+
+    Raises:
+        SegmentationError: If required columns are missing or thresholds invalid
+    """
+    # Validate thresholds
+    motion_threshold = validate_threshold(motion_threshold, 'motion_threshold', min_val=0.0, max_val=1.0)
+    gesture_threshold = validate_threshold(gesture_threshold, 'gesture_threshold', min_val=0.0, max_val=1.0)
+
+    # Validate required columns
+    required_cols = ['NoGesture_confidence', 'Gesture_confidence', 'Move_confidence']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise SegmentationError(
+            f"DataFrame missing required confidence columns: {missing_cols}. "
+            f"Found: {list(df.columns)}"
+        )
+
+    # Extract arrays for vectorized operations
+    no_gesture_conf = df['NoGesture_confidence'].values
+    gesture_conf = df['Gesture_confidence'].values
+    move_conf = df['Move_confidence'].values
+
+    # Calculate motion (1 - NoGesture confidence)
+    has_motion = 1 - no_gesture_conf
+
+    # Initialize labels as NoGesture
+    n_rows = len(df)
+    labels = np.full(n_rows, 'NoGesture', dtype=object)
+
+    # Find rows with sufficient motion
+    motion_mask = has_motion >= motion_threshold
+
+    # Among rows with motion, find valid gesture/move predictions
+    gesture_valid = motion_mask & (gesture_conf >= gesture_threshold)
+    move_valid = motion_mask & (move_conf >= gesture_threshold)
+
+    # Where only gesture is valid
+    gesture_only = gesture_valid & ~move_valid
+    labels[gesture_only] = 'Gesture'
+
+    # Where only move is valid
+    move_only = move_valid & ~gesture_valid
+    labels[move_only] = 'Move'
+
+    # Where both are valid, choose the one with higher confidence
+    both_valid = gesture_valid & move_valid
+    gesture_wins = both_valid & (gesture_conf >= move_conf)
+    move_wins = both_valid & (move_conf > gesture_conf)
+    labels[gesture_wins] = 'Gesture'
+    labels[move_wins] = 'Move'
+
+    return labels
