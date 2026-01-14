@@ -1,44 +1,32 @@
 # envisionhgdetector/detector.py
+"""
+Main detector classes for gesture detection.
+Supports both CNN and LightGBM models for batch and real-time processing.
+"""
 
+import logging
 import os
 import glob
-from typing import Dict, List, Optional, Tuple
-import pandas as pd
-import numpy as np
-import cv2
 import shutil
 import time
+from typing import Dict, List, Optional, Tuple
+
+import cv2
+import numpy as np
+import pandas as pd
+
 from .config import Config
-from .model_cnn import GestureModel  # Renamed CNN model
-from .model_lightgbm import LightGBMGestureModel  # New LightGBM model
-from .preprocessing import VideoProcessor, create_sliding_windows
-from .utils import (
-    create_segments, get_prediction_at_threshold, create_elan_file, 
-    label_video, cut_video_by_segments, retrack_gesture_videos,
-    compute_gesture_kinematics_dtw, create_gesture_visualization, create_dashboard,
-    setup_dashboard_folders, joint_map, calc_mcneillian_space, calc_vert_height,
-    calc_volume_size, calc_holds
-)
+from .model_cnn import GestureModel
+from .model_lightgbm import LightGBMGestureModel
+from .preprocessing import VideoProcessor
+from .segmentation import create_segments, get_prediction_at_threshold, apply_thresholds_vectorized
+from .elan import create_elan_file
+from .video import label_video
+from .tracking import retrack_gesture_videos
+from .dtw_analysis import compute_gesture_kinematics_dtw, create_gesture_visualization
+from .dashboard_utils import setup_dashboard_folders, get_dashboard_css
 
-# Standard library imports
-import json
-from pathlib import Path
-import mediapipe as mp
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from scipy.ndimage import gaussian_filter1d
-import umap.umap_ as umap
-from shapedtw.shapedtw import shape_dtw
-from shapedtw.shapeDescriptors import RawSubsequenceDescriptor
-import plotly.express as px
-from dash import Dash, dcc, html, Input, Output
-from scipy import signal
-from scipy.spatial.distance import euclidean
-from typing import NamedTuple
-from dataclasses import dataclass
-import statistics
-
-# suppress warnings
-import logging
+# Suppress moviepy warnings
 logging.getLogger("moviepy").setLevel(logging.WARNING)
 
 def apply_smoothing(series: pd.Series, window: int = 5) -> pd.Series:
@@ -97,11 +85,10 @@ class GestureDetector:
         return np.array(windows)
 
     def _get_video_fps(self, video_path: str) -> int:
-        """Get video FPS."""
-        cap = cv2.VideoCapture(video_path)
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        cap.release()
-        return fps
+        """Get video FPS with proper resource cleanup."""
+        from .video import video_capture
+        with video_capture(video_path) as cap:
+            return int(cap.get(cv2.CAP_PROP_FPS))
     
     def predict_video(
         self,
@@ -184,14 +171,11 @@ class GestureDetector:
         
         results_df = pd.DataFrame(rows)
 
-        # Apply thresholds
-        results_df['label'] = results_df.apply(
-            lambda row: get_prediction_at_threshold(
-                row,
-                self.params['motion_threshold'],
-                self.params['gesture_threshold']
-            ),
-            axis=1
+        # Apply thresholds using vectorized operation (10-100x faster than .apply())
+        results_df['label'] = apply_thresholds_vectorized(
+            results_df,
+            self.params['motion_threshold'],
+            self.params['gesture_threshold']
         )
 
         # Create segments
@@ -264,7 +248,7 @@ class GestureDetector:
                 gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
                 gesture_name = self.model.standardize_gesture_name(gesture_name)
                 
-                # Convert LightGBM output to align witht he CNN format
+                # Convert LightGBM output to align with the CNN format
                 if gesture_name == "NOGESTURE":
                     gesture_conf = 1-confidence # gesture confidence is the 1-no gesture confidence                   
                     nogesture_conf = confidence # no gesture confidence is the confidence of the no gesture class
@@ -275,7 +259,7 @@ class GestureDetector:
                         gesture_conf = 0.0
                         move_conf = confidence
                         nogesture_conf = 1-confidence
-                    else: #then its a a gesture
+                    else:  # it's a gesture
                         gesture_conf = confidence
                         move_conf = 0.0
                         nogesture_conf = 1-confidence
@@ -302,15 +286,12 @@ class GestureDetector:
         
         if results_df.empty:
             return pd.DataFrame(), {"error": "No predictions generated"}, pd.DataFrame(), np.array([])
-        
-        # Apply thresholds (reuse existing logic)
-        results_df['label'] = results_df.apply(
-            lambda row: get_prediction_at_threshold(
-                row,
-                self.params['motion_threshold'],
-                self.params['gesture_threshold']
-            ),
-            axis=1
+
+        # Apply thresholds using vectorized operation (10-100x faster than .apply())
+        results_df['label'] = apply_thresholds_vectorized(
+            results_df,
+            self.params['motion_threshold'],
+            self.params['gesture_threshold']
         )
 
         # Create segments
@@ -348,8 +329,11 @@ class GestureDetector:
         for video_path in videos:
             video_name = os.path.basename(video_path)
             print(f"\nProcessing {video_name} with {self.model_type.upper()} model...")
-            
+
             try:
+                # Get FPS once at the start to avoid redundant I/O
+                fps = self._get_video_fps(video_path)
+
                 # Process video (automatically routes to correct model)
                 print("Extracting features and model inferencing...")
                 predictions_df, stats, segments, features, timestamps = self.predict_video(video_path)
@@ -397,12 +381,11 @@ class GestureDetector:
                     )
                     
                     print("Generating ELAN file...")
-                    # Create ELAN file
+                    # Create ELAN file (reuse fps from start of loop)
                     output_path = os.path.join(
                         output_folder,
                         f"{video_name}.eaf"
                     )
-                    fps = self._get_video_fps(video_path)
                     create_elan_file(
                         video_path,
                         segments,
@@ -507,142 +490,9 @@ class GestureDetector:
             print(f"App dashboard copied to: {destination_script_path}")
             
             # Create the CSS file in the assets folder
-            css_content = '''
-                body, 
-                .dash-graph,
-                .dash-core-components,
-                .dash-html-components { 
-                    margin: 0; 
-                    background-color: #111; 
-                    font-family: sans-serif !important;
-                    min-height: 100vh;
-                    width: 100%;
-                    color: #ffffff;
-                }
-
-                /* Modern container styling */
-                .dashboard-container {
-                    max-width: 1400px;
-                    margin: 0 auto;
-                    padding: 2rem;
-                    font-family: sans-serif !important;
-                }
-
-                /* Enhanced headings */
-                h1, h2, h3, h4, h5, h6 {
-                    color: rgba(255, 255, 255, 0.95);
-                    font-weight: 600;
-                    letter-spacing: -0.02em;
-                    font-family: sans-serif !important;
-                }
-
-                h1 {
-                    font-size: 2.5rem;
-                    text-align: center;
-                    margin-bottom: 2rem;
-                    background: linear-gradient(45deg, #fff, #a8a8a8);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    text-shadow: 0 0 30px rgba(255,255,255,0.1);
-                    font-family: sans-serif !important;
-                }
-
-                h2 {
-                    font-size: 1.5rem;
-                    margin: 1.5rem 0;
-                    padding-bottom: 0.5rem;
-                    border-bottom: 2px solid rgba(255,255,255,0.1);
-                    font-family: sans-serif !important;
-                }
-
-                /* Card-like sections */
-                .visualization-section {
-                    background: rgba(255, 255, 255, 0.03);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 12px;
-                    padding: 1.5rem;
-                    margin-bottom: 2rem;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                    backdrop-filter: blur(10px);
-                }
-
-                /* Grid layout for kinematic features */
-                .kinematic-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 1.5rem;
-                    margin-right: 120px; /* Space for fixed video */
-                    grid-auto-rows: minmax(200px, auto); 
-                    height: 500px; /* Adjust as needed */
-                }
-
-                /* Video container styling */
-                .video-container {
-                    background: rgba(0, 0, 0, 0.3);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 12px;
-                    padding: 1rem;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-                }
-
-                /* Interactive elements */
-                .interactive-element {
-                    transition: all 0.2s ease-in-out;
-                }
-
-                .interactive-element:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
-                }
-
-                /* Scrollbar styling */
-                ::-webkit-scrollbar {
-                    width: 8px;
-                    height: 8px;
-                }
-
-                ::-webkit-scrollbar-track {
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 4px;
-                }
-
-                ::-webkit-scrollbar-thumb {
-                    background: rgba(255, 255, 255, 0.3);
-                    border-radius: 4px;
-                }
-
-                ::-webkit-scrollbar-thumb:hover {
-                    background: rgba(255, 255, 255, 0.4);
-                }
-
-                /* Loading states */
-                .loading {
-                    opacity: 0.7;
-                    transition: opacity 0.3s ease;
-                }
-
-                /* Tooltip styling */
-                .tooltip {
-                    background: rgba(0, 0, 0, 0.8);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 6px;
-                    padding: 0.5rem;
-                    font-size: 0.875rem;
-                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-                    font-family: sans-serif !important;
-                }
-
-                /* Force Dash components to use sans-serif */
-                .dash-plot-container, 
-                .dash-graph-container,
-                .js-plotly-plot,
-                .plotly {
-                    font-family: sans-serif !important;
-                }
-                '''
             css_file_path = os.path.join(assets_folder, "styles.css")
             with open(css_file_path, "w") as css_file:
-                css_file.write(css_content.strip())
+                css_file.write(get_dashboard_css())
             
             print(f"CSS file created at: {css_file_path}")
             print("Run 'python app.py' to start the dashboard")
@@ -1118,68 +968,41 @@ class RealtimeGestureDetector:
             
             print(f"Detailed session summary saved to: {detailed_path}")
     
-    def load_and_analyze_session(self, session_folder: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Load and analyze a previous session."""
-        raw_csv = os.path.join(session_folder, "raw_frame_results.csv")
-        segments_csv = os.path.join(session_folder, "gesture_segments.csv")
-        summary_json = os.path.join(session_folder, "session_summary.csv")
-        
-        raw_df = pd.DataFrame()
-        segments_df = pd.DataFrame()
-        
-        if os.path.exists(raw_csv):
-            raw_df = pd.read_csv(raw_csv)
-            print(f"Loaded raw results: {len(raw_df)} frames")
-        
-        if os.path.exists(segments_csv):
-            segments_df = pd.read_csv(segments_csv)
-            print(f"Loaded segments: {len(segments_df)} segments")
-        
-        if os.path.exists(summary_json):
-            import json
-            with open(summary_json, 'r') as f:
-                summary = json.load(f)
-            print(f"Session summary:")
-            print(f"   Duration: {summary['session_info']['duration_seconds']:.1f}s")
-            print(f"   Parameters: threshold={summary['parameters']['confidence_threshold']:.2f}")
-            print(f"   Results: {summary['results']['processed_segments']} segments")
-        
-        return raw_df, segments_df
-    
     def set_refinement_parameters(self, min_gap_s: float = None, min_length_s: float = None):
         """Update post-processing refinement parameters."""
         if min_gap_s is not None:
             self.min_gap_s = max(0.1, min(2.0, min_gap_s))
             print(f"Min gap updated to: {self.min_gap_s}s")
-        
+
         if min_length_s is not None:
             self.min_length_s = max(0.1, min(3.0, min_length_s))
             print(f"Min length updated to: {self.min_length_s}s")
-    
+
     def load_and_analyze_session(self, session_folder: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """Load and analyze a previous session."""
+        import json
+
         raw_csv = os.path.join(session_folder, "raw_frame_results.csv")
         segments_csv = os.path.join(session_folder, "gesture_segments.csv")
         summary_json = os.path.join(session_folder, "session_summary.csv")
-        
+
         raw_df = pd.DataFrame()
         segments_df = pd.DataFrame()
-        
+
         if os.path.exists(raw_csv):
             raw_df = pd.read_csv(raw_csv)
             print(f"Loaded raw results: {len(raw_df)} frames")
-        
+
         if os.path.exists(segments_csv):
             segments_df = pd.read_csv(segments_csv)
             print(f"Loaded segments: {len(segments_df)} segments")
-        
+
         if os.path.exists(summary_json):
-            import json
             with open(summary_json, 'r') as f:
                 summary = json.load(f)
             print(f"Session summary:")
             print(f"   Duration: {summary['session_info']['duration_seconds']:.1f}s")
             print(f"   Parameters: threshold={summary['parameters']['confidence_threshold']:.2f}")
             print(f"   Results: {summary['results']['processed_segments']} segments")
-        
+
         return raw_df, segments_df

@@ -1,0 +1,39 @@
+{
+  "video_path": "C:\\Users\\babaj\\Documents\\GitHub\\envisionhgdetector\\training\\scripts\\..\\..\\sample_data\\tyson_sample.mp4",
+  "video_name": "tyson_sample.mp4",
+  "timestamp": "2025-12-19T17:48:34.899140",
+  "video_info": {
+    "resolution": "1280x720",
+    "fps": 30.00115834588208,
+    "total_frames": 518,
+    "duration_seconds": 17.266000000000002
+  },
+  "model_info": {
+    "gesture_labels": [
+      "Gesture",
+      "NoGesture"
+    ],
+    "window_size": 5,
+    "includes_fingers": true,
+    "includes_dynamics": true,
+    "expected_features": 92
+  },
+  "results": {
+    "total_predictions": 514,
+    "prediction_counts": {
+      "NoGesture": 514
+    },
+    "prediction_percentages": {
+      "NoGesture": "100.0%"
+    },
+    "mean_confidence": 0.9898056202677792,
+    "min_confidence": 0.8644062852983967,
+    "max_confidence": 0.9996450373850542
+  },
+  "performance": {
+    "total_time_seconds": 11.541857719421387,
+    "avg_frame_time_ms": 19.678957674033853,
+    "fps_achieved": 44.88012351151806,
+    "realtime_capable": "True"
+  }
+}

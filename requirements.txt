@@ -14,7 +14,9 @@ scipy>=1.10.0
 dash==2.7.0
 plotly==5.5.0
 dash-bootstrap-components>=1.4.0
-werkzeug==2.0.3
+werkzeug>=2.0.3
+flask>=2.0.0
+flask-cors>=3.0.0
 ipython>=8.0.0
 lightgbm>=3.3.0
 scikit-learn>=1.0.0

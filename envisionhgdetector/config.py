@@ -25,46 +25,46 @@ class Config:
     
     def __post_init__(self):
         """Setup paths after initialization."""
-        # CNN model weights path
+        self.weights_path = self._find_model_path(
+            'model/model_weights_20250224_103340.h5',
+            'model_weights_20250224_103340.h5'
+        )
+        self.lightgbm_weights_path = self._find_model_path(
+            'model/lightgbm_gesture_model_v1.pkl',
+            'lightgbm_gesture_model_v1.pkl'
+        )
+
+    def _find_model_path(self, resource_path: str, filename: str) -> str:
+        """
+        Find model path using importlib.resources with fallbacks.
+
+        Args:
+            resource_path: Path relative to package (e.g., 'model/weights.h5')
+            filename: Just the filename for fallback search
+
+        Returns:
+            Absolute path to model file, or None if not found
+        """
+        # Try importlib.resources first (Python 3.9+)
         try:
-            # Using importlib.resources (Python 3.9+)
-            self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250224_103340.h5'))
-        except:
-            # Fallback for older Python versions or if file doesn't exist
-            try:
-                # Or using pkg_resources (older Python versions)
-                # self.weights_path = resource_filename('envisionhgdetector', 'model/SAGAplus_gesturenogesture_trained_binaryCNNmodel_weightsv1.h5')
-                self.weights_path = str(files('envisionhgdetector').joinpath('model/model_weights_20250224_103340.h5'))
-            except:
-                # Final fallback - check if file exists in expected locations
-                possible_paths = [
-                    os.path.join(os.path.dirname(__file__), 'model', 'model_weights_20250224_103340.h5'),
-                    'model_weights_20250224_103340.h5'
-                ]
-                self.weights_path = None
-                for path in possible_paths:
-                    if os.path.exists(path):
-                        self.weights_path = path
-                        break
-        
-        # LightGBM model weights path
-        try:
-            # Using importlib.resources (Python 3.9+)
-            self.lightgbm_weights_path = str(files('envisionhgdetector').joinpath('model/lightgbm_gesture_model_v1.pkl'))
-            # Check if file actually exists
-            if not os.path.exists(self.lightgbm_weights_path):
-                self.lightgbm_weights_path = None
-        except:
-            # Fallback - check if file exists in expected locations
-            possible_paths = [
-                os.path.join(os.path.dirname(__file__), 'model', 'lightgbm_gesture_model_v1.pkl'),
-                'lightgbm_gesture_model_v1.pkl'
-            ]
-            self.lightgbm_weights_path = None
-            for path in possible_paths:
-                if os.path.exists(path):
-                    self.lightgbm_weights_path = path
-                    break
+            path = str(files('envisionhgdetector').joinpath(resource_path))
+            if os.path.exists(path):
+                return path
+        except (TypeError, FileNotFoundError, ModuleNotFoundError):
+            pass  # Fall through to manual search
+
+        # Fallback - check common locations
+        possible_paths = [
+            os.path.join(os.path.dirname(__file__), resource_path),
+            os.path.join(os.path.dirname(__file__), 'model', filename),
+            filename
+        ]
+
+        for path in possible_paths:
+            if os.path.exists(path):
+                return path
+
+        return None
     
     def get_model_path(self, model_type: str):
         """Get the appropriate model path based on model type."""
