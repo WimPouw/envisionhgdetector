@@ -75,10 +75,10 @@ class GestureDetector:
             raise ValueError(f"Unknown model type: {model_type}. Use 'cnn', 'lightgbm', or 'combined'")
         
         self.params = {
-            'motion_threshold': motion_threshold or self.config.default_motion_threshold,
-            'gesture_threshold': gesture_threshold or self.config.default_gesture_threshold,
-            'min_gap_s': min_gap_s or self.config.default_min_gap_s,
-            'min_length_s': min_length_s or self.config.default_min_length_s,
+            'motion_threshold': motion_threshold if motion_threshold is not None else self.config.default_motion_threshold,
+            'gesture_threshold': gesture_threshold if gesture_threshold is not None else self.config.default_gesture_threshold,
+            'min_gap_s': min_gap_s if min_gap_s is not None else self.config.default_min_gap_s,
+            'min_length_s': min_length_s if min_length_s is not None else self.config.default_min_length_s,
             'gesture_class_bias': gesture_class_bias
         }
         
@@ -88,9 +88,9 @@ class GestureDetector:
             combined_config = CombinedConfig(
                 cnn_weights_path=self.config.weights_path,
                 lgbm_weights_path=self.config.lightgbm_weights_path,
-                cnn_motion_threshold=cnn_motion_threshold or self.params['motion_threshold'],
-                cnn_gesture_threshold=cnn_gesture_threshold or self.params['gesture_threshold'],
-                lgbm_threshold=lgbm_threshold or self.params['motion_threshold'],
+                cnn_motion_threshold=cnn_motion_threshold if cnn_motion_threshold is not None else self.params['motion_threshold'],
+                cnn_gesture_threshold=cnn_gesture_threshold if cnn_gesture_threshold is not None else self.params['gesture_threshold'],
+                lgbm_threshold=lgbm_threshold if lgbm_threshold is not None else self.params['motion_threshold'],
                 min_gap_s=self.params['min_gap_s'],
                 min_length_s=self.params['min_length_s']
             )
@@ -343,7 +343,7 @@ class GestureDetector:
         self,
         video_path: str,
         stride: int = 1
-    ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray]:
+    ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, List, List]:
         """Original CNN prediction method."""
         # Extract features and timestamps
         features, timestamps = self.video_processor.process_video(video_path)
@@ -439,7 +439,7 @@ class GestureDetector:
         self,
         video_path: str,
         stride: int = 1
-    ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray]:
+    ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, List, List]:
         """LightGBM prediction method with CNN-compatible output."""
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -1392,35 +1392,7 @@ class RealtimeGestureDetector:
         if min_gap_s is not None:
             self.min_gap_s = max(0.1, min(2.0, min_gap_s))
             print(f"Min gap updated to: {self.min_gap_s}s")
-        
+
         if min_length_s is not None:
             self.min_length_s = max(0.1, min(3.0, min_length_s))
             print(f"Min length updated to: {self.min_length_s}s")
-    
-    def load_and_analyze_session(self, session_folder: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Load and analyze a previous session."""
-        raw_csv = os.path.join(session_folder, "raw_frame_results.csv")
-        segments_csv = os.path.join(session_folder, "gesture_segments.csv")
-        summary_json = os.path.join(session_folder, "session_summary.csv")
-        
-        raw_df = pd.DataFrame()
-        segments_df = pd.DataFrame()
-        
-        if os.path.exists(raw_csv):
-            raw_df = pd.read_csv(raw_csv)
-            print(f"Loaded raw results: {len(raw_df)} frames")
-        
-        if os.path.exists(segments_csv):
-            segments_df = pd.read_csv(segments_csv)
-            print(f"Loaded segments: {len(segments_df)} segments")
-        
-        if os.path.exists(summary_json):
-            import json
-            with open(summary_json, 'r') as f:
-                summary = json.load(f)
-            print(f"Session summary:")
-            print(f"   Duration: {summary['session_info']['duration_seconds']:.1f}s")
-            print(f"   Parameters: threshold={summary['parameters']['confidence_threshold']:.2f}")
-            print(f"   Results: {summary['results']['processed_segments']} segments")
-        
-        return raw_df, segments_df

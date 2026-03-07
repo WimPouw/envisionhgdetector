@@ -123,30 +123,28 @@ class TestCreateSegments:
 # ============================================================================
 
 class TestThresholdBehavior:
-    """
-    These tests document the CURRENT (buggy) threshold behavior where
-    passing 0.0 is treated as falsy and replaced with the config default.
-    When the falsy-threshold bug is fixed, these tests should be UPDATED
-    to verify that 0.0 is respected.
-    """
+    """Verify that explicitly passed thresholds (including 0.0) are respected."""
 
-    def test_zero_motion_threshold_uses_config_default(self):
-        """
-        CURRENT BEHAVIOR: passing motion_threshold=0.0 silently uses config default.
-        After bug fix: 0.0 should be used as-is.
-        """
+    def test_zero_motion_threshold_is_respected(self):
+        """Passing 0.0 should be used as-is, not replaced with config default."""
         from envisionhgdetector.config import Config
         cfg = Config()
-        # Simulate the current behavior in detector.py line 91-94
         motion_threshold = 0.0
-        effective = motion_threshold or cfg.default_motion_threshold
-        assert effective == cfg.default_motion_threshold  # 0.7, not 0.0
+        effective = motion_threshold if motion_threshold is not None else cfg.default_motion_threshold
+        assert effective == 0.0
+
+    def test_none_threshold_uses_config_default(self):
+        from envisionhgdetector.config import Config
+        cfg = Config()
+        motion_threshold = None
+        effective = motion_threshold if motion_threshold is not None else cfg.default_motion_threshold
+        assert effective == cfg.default_motion_threshold
 
     def test_nonzero_threshold_is_respected(self):
         from envisionhgdetector.config import Config
         cfg = Config()
         motion_threshold = 0.5
-        effective = motion_threshold or cfg.default_motion_threshold
+        effective = motion_threshold if motion_threshold is not None else cfg.default_motion_threshold
         assert effective == 0.5
 
 

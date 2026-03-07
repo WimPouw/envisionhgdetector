@@ -1032,33 +1032,6 @@ def find_submovements(speed_profile: np.ndarray, fps: float) -> Tuple[np.ndarray
     
     return peaks, peak_heights
 
-def compute_limb_kinematics(positions: np.ndarray, fps: float) -> ArmKinematics:
-    """
-    Compute kinematics for a limb segment.
-    """
-    # Calculate derivatives
-    velocity, acceleration, jerk = calculate_derivatives(positions, fps)
-    
-    # Calculate speed (magnitude of velocity)
-    speed = np.linalg.norm(velocity, axis=1)
-    
-    # Find submovements (ensure we handle no peaks case)
-    peaks, peak_heights = find_submovements(speed, fps)
-    
-    # If no peaks were found, use zero-arrays of appropriate shape
-    if len(peaks) == 0:
-        peaks = np.array([0])
-        peak_heights = np.array([0])
-    
-    return ArmKinematics(
-        velocity=velocity,
-        acceleration=acceleration,
-        jerk=jerk,
-        speed=speed,
-        peaks=peaks,
-        peak_heights=peak_heights
-    )
-
 def define_mcneillian_grid(df, frame):
     """Define the grid based on original implementation."""
     bodycent = df['Neck'][frame][1] - (df['Neck'][frame][1] - df['MidHip'][frame][1])/2
