@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+NUL
+
+# Large binary files (use external hosting)
+*.mp4
+*.wav
+*.zip
+*.h5
+*.pkl
+*.npy
+*.npz
+*.gif
+*.avi
+*.mov
+
+# Generated output
+output/
+output_realtime/
+envisionhgdetector/output_realtime/
+
+# Training artifacts
+trained_models/
+training/data/
+training/logs/
+
+# Test output
+out_of_sample_testing/output/
+
+# Misc junk
+0.5.5
+0.56.0
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Keep model files that ship with the package
+!envisionhgdetector/model/*.h5
+!envisionhgdetector/model/*.pkl
