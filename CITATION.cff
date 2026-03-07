@@ -1,4 +1,4 @@
-cff-version: 3.0.0.0
+cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
 - family-names: "Pouw"
@@ -18,5 +18,5 @@ authors:
   given-names: "Babajide"
 title: "EnvisionHGdetector: A Computational Framework for Co-speech Gesture Detection, Kinematic Analysis, and Interactive Visualization"
 version: 3.0.1
-date-released: 19-02-2026
+date-released: 2026-02-19
 url: "https://pypi.org/project/envisionhgdetector/"

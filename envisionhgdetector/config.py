@@ -101,7 +101,7 @@ class Config:
             path = str(files('envisionhgdetector').joinpath(f'model/{filename}'))
             if os.path.exists(path):
                 return path
-        except:
+        except Exception:
             pass
         
         # Fallback - check common locations

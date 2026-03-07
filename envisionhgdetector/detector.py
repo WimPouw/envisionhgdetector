@@ -25,19 +25,6 @@ from .label_video_combined import label_video_combined  # Dual-panel for combine
 # Standard library imports
 import json
 from pathlib import Path
-import mediapipe as mp
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from scipy.ndimage import gaussian_filter1d
-import umap.umap_ as umap
-from shapedtw.shapedtw import shape_dtw
-from shapedtw.shapeDescriptors import RawSubsequenceDescriptor
-import plotly.express as px
-from dash import Dash, dcc, html, Input, Output
-from scipy import signal
-from scipy.spatial.distance import euclidean
-from typing import NamedTuple
-from dataclasses import dataclass
-import statistics
 
 # suppress warnings
 import logging

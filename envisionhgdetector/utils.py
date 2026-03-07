@@ -755,9 +755,7 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
         wrists, and mean-centered fingers.
     """
     # Check if landmarks are the expected shape
-    print(f"Debug: Landmarks shape is {landmarks.shape}")
     if landmarks.ndim != 3 or landmarks.shape[2] != 3:
-        print(f"Debug: Landmarks shape is not as expected! Shape: {landmarks.shape}")
         raise ValueError("Landmarks must be a 3D array with shape [N, num_points, 3]")
     
     # Update the keypoint indices based on the 33 keypoints (0-32)
@@ -797,12 +795,8 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
     
     # Extract features in consistent order
     for key, index in ordered_keypoints:
-        print(f"Debug: Extracting keypoint {key} at index {index}")
         feature = landmarks[:, index]
-        if np.any(np.isnan(feature)) or feature.size == 0:
-            print(f"Debug: No data for keypoint {key}, skipping")
-        else:
-            print(f"Debug: Data for keypoint {key}: {feature}")
+        if not (np.any(np.isnan(feature)) or feature.size == 0):
             all_features.append(feature.reshape(-1, 3))
 
     # Process fingers with clear left/right separation
@@ -815,8 +809,6 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
         all_features.append(right_fingers)
 
     features = np.concatenate(all_features, axis=1)
-    print(f"Debug: Final feature array shape: {features.shape}")
-    
     return features
 
 def process_hand_fingers(landmarks, side, finger_indices):
@@ -1486,7 +1478,7 @@ def calc_holds(df, subslocs_L, subslocs_R, FPS, hand):
                         initial_move = min(subslocs_R)
 
                     hold_cluster = [cluster for cluster in hold_cluster if cluster[0] >= initial_move]
-                except:
+                except Exception:
                     pass  # Keep all clusters if filtering fails
 
                 # Calculate statistics

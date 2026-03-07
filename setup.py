@@ -32,6 +32,6 @@ setup(
     install_requires=required,
     include_package_data=True,
     package_data={
-        'envisionhgdetector': ['model/*.h5'],
+        'envisionhgdetector': ['model/*.h5', 'model/*.pkl'],
     },
 )
