@@ -1,0 +1,58 @@
+\iffalse %\NOT in the paper
+\subsection{Research Questions}
+This paper addresses the following key question:
+ Can a lightweight CNN model achieve reliable co-speech gesture detection across varied datasets using only 25 frames of pose features?
+    %\item How well does MediaPipe-based skeleton tracking perform as input for gesture detection compared to other approaches?
+    %\\item What is the optimal balance between model complexity and performance for real-world gesture detection applications?
+    %\\item How does the model generalize across different recording conditions, languages, and cultural contexts?
+
+
+    %\subsection{Paper Organization}
+    %The remainder of this paper is organized as follows. \begin{itemize}
+        %\item Section~\ref{sec:related} reviews key approaches to gesture analysis, covering manual annotation methods (including ELAN and inter-rater reliability), rule-based detection (such as velocity-based heuristics and SPUDNIG), and machine learning techniques (CNNs, LSTMs, transformers, and gesture phase detection). It also examines pose estimation advancements (comparing OpenPose, MediaPipe, and 2D vs. 3D methods) and addresses cross-dataset generalization challenges, including dataset bias, general-purpose detector efforts, and cultural/linguistic variations.
+        %\item Section~\ref{sec:methodology} details our methodology, including dataset preparation, feature extraction, and model architecture.
+        %\item Section~\ref{sec:results} presents experimental results and performance analysis across different datasets.
+        %\item Section~\ref{sec:discussion} discusses implications, limitations, and potential applications.
+    %\end{itemize}
+
+\section{Related Work}\label{sec:related}
+
+The development of automated gesture detection tools sits at the intersection of several research domains. This section reviews key approaches and challenges in gesture analysis, focusing on the progression from manual annotation to current machine learning solutions.
+
+\subsection{Manual Gesture Annotation Methods}\label{subsec:manual}
+Manual annotation remains the gold standard in gesture studies, though it faces significant scalability challenges. Researchers typically spend hours analyzing videos frame-by-frame to identify gesture strokes and phases \citep{ripperdaSpeedingDetectionNoniconic2020}. Tools like ELAN have become standard for multimodal annotation, enabling synchronized analysis of speech, gesture, and other communicative channels \citep{kongMultimodalAnalysisTool2014}. However, even with such tools, the time-intensive nature of manual annotation limits the scale of gesture studies.
+
+A key challenge in manual annotation is achieving consistent inter-rater reliability (IRR). While tools like EasyDIAg help calculate agreement indices \citep{holleAutomaticReliabilityAssessment2014}, the subjective nature of gesture interpretation often leads to variations across annotators. This challenge is particularly relevant for our work, as it highlights the need for computational approaches that can provide consistent, reproducible annotations at scale.
+
+\subsection{Rule-based Detection Approaches}\label{subsec:rule}
+Early attempts at automating gesture detection relied on rule-based systems, with velocity-based detection being particularly influential. The SPUDNIG tool \citep{ripperdaSpeedingDetectionNoniconic2020} exemplifies this approach, using movement speed thresholds to identify potential gestures. While such systems can achieve high true positive rates for movement detection, they typically suffer from high false-positive rates (XX to 70\%) due to their inability to differentiate between intentional gestures and other movements \citep{pouwSemanticallyRelatedGestures2021}. Our work builds upon these insights by incorporating machine learning to better distinguish between gesture and non-gesture movements.
+
+\subsection{Machine Learning in Gesture Detection}\label{subsec:ml}
+Recent advances in machine learning have opened new possibilities for gesture detection. Particularly relevant to our work are:
+
+\subsubsection{Deep neural networks Architectures}
+Convolutional Neural Networks have shown promise in gesture recognition, especially when combined with pose estimation. Recent work by \citet{ghalebCoSpeechGestureDetection2024} demonstrated success using Spatio-Temporal Graph Convolutional Networks (ST-GCNs) for gesture phase detection, achieving 61\% accuracy. Our approach builds on these advances while prioritizing computational efficiency for widespread accessibility.
+
+\subsubsection{Semi-automated Approaches}
+Notable success has been achieved with semi-automated systems. \citet{ienagaSemiautomationGestureAnnotation2022} developed a system using Light Gradient Boosting Machines that achieved 86\% accuracy when trained on just 3\% of hand-annotated data. While impressive, such approaches still require custom training for each new dataset, unlike our proposed general-purpose solution.
+
+\subsection{Pose Estimation Evolution}\label{subsec:pose}
+Pose estimation has become crucial for gesture analysis, with frameworks like OpenPose \citep{caoOpenPoseRealtimeMultiPerson2021} and MediaPipe \citep{lugaresiMediaPipeFrameworkBuilding2019} enabling reliable skeleton tracking. MediaPipe Holistic, which we employ, offers particular advantages for gesture detection:
+\begin{itemize}
+    \item Efficient CPU-based processing, making it accessible to researchers without specialized hardware
+    \item Comprehensive tracking of body, hand, and facial landmarks
+    \item Robust performance across varying recording conditions
+\end{itemize}
+
+\subsection{Cross-dataset Generalization}\label{subsec:generalization}
+A persistent challenge in gesture detection is developing models that generalize across different datasets and recording conditions. Previous attempts at general-purpose gesture detection have been limited by:
+\begin{itemize}
+    \item Dataset biases in recording conditions and participant demographics
+    \item Variations in gesture definitions and annotation practices
+    \item Cultural and linguistic differences in gesture production
+\end{itemize}
+
+Our work addresses these challenges through multi-dataset training and careful feature engineering while acknowledging the ongoing need for expanded dataset diversity.
+
+This review of related work highlights both the progress made in automated gesture detection and the remaining challenges that EnvisionHGdetector aims to address. Notably, it emphasizes the need for accessible, general-purpose tools to bridge the gap between the efficiency of automated methods and the nuanced understanding provided by manual annotation.
+\fi

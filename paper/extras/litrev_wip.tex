@@ -1,0 +1,173 @@
+\section{Related Work/Problem Space}\label{sec:related}
+
+\subsection{Manual Gesture Annotation Methods}\label{subsec:manual}
+% Cover traditional annotation practices, ELAN usage, inter-rater reliability methods
+
+
+Traditional gesture annotation practices form the foundation of gesture studies, involving manual coding of gestures based on predefined criteria. These methods provide high-quality annotations by leveraging human understanding of context and nuance, allowing annotators to consider contextual factors that automated systems may overlook. However, they face significant scalability challenges, with the process being time-consuming and subject to human bias, leading to inconsistencies in annotations across different annotators \citep{ripperdaSpeedingDetectionNoniconic2020}.
+
+ELAN (EUDICO Linguistic Annotator) has emerged as the predominant tool for multimodal annotation in gesture studies. Its strength lies in supporting synchronized annotation of multiple modalities, enabling researchers to analyze the intricate relationships between speech, gesture, and other communicative channels. ELAN provides a flexible platform for annotating gestures alongside verbal communication, facilitating the exploration of speech-gesture relationships \citep{kongMultimodalAnalysisTool2014}. However, while it provides robust annotation management and visualization capabilities, it cannot eliminate the fundamental time requirements of manual annotation.
+
+A critical aspect of manual annotation is the assessment of inter-rater reliability (IRR), which measures the consistency between different annotators when labeling gestures. Common methods include calculating the Intraclass Correlation Coefficient (ICC) and employing statistical analyses to compare annotations from multiple raters \citep{liaoReliabilityAssessmentGesture2010}. Tools like EasyDIAg have been developed to facilitate IRR calculation, providing composite agreement indices that consider both segmentation and categorization decisions \citep{holleAutomaticReliabilityAssessment2014}. However, achieving satisfactory IRR typically requires extensive annotator training, and variability in individual interpretations can still lead to discrepancies.
+
+The field faces several persistent methodological challenges. There is a notable lack of standardized protocols for gesture annotation, leading to variability in how gestures are defined and categorized across studies \citep{ripperdaSpeedingDetectionNoniconic2020}. Additionally, many annotation methods focus primarily on static gestures and may not adequately capture the dynamic aspects of gestures that evolve over time \citep{kimGesturalBehaviorAnalysis2012}. This limitation particularly affects the analysis of gestures in real-world interactions where timing and fluidity are essential components of communicative behavior.
+
+Furthermore, the field faces challenges in consistently reporting performance metrics. As noted by \citet{cantaliniMoneglia2020}, performance metrics are often reported inconsistently across studies, making it challenging to compare results and assess the effectiveness of different approaches. Many studies focus primarily on accuracy as a performance metric, neglecting other important factors such as precision, recall, and F1 score \citep{namAutomaticGestureRecognition2012}. This narrow focus on accuracy metrics may not provide a comprehensive view of model performance, particularly when dealing with imbalanced datasets or complex gestural patterns.
+
+These challenges in manual annotation have motivated recent efforts toward automation and semi-automation in gesture analysis. However, the development of automated tools must carefully balance the efficiency gains of computational methods with the nuanced understanding that human annotators provide of gesture dynamics and contextual factors.\cite{ghalebCoSpeechGestureDetection2024}
+
+
+\subsection{Rule-based Gesture Detection}\label{subsec:rule}
+% Cover velocity-based detection, SPUDNIG, other heuristic approaches
+
+
+Rule-based approaches represent an early attempt to automate gesture detection, offering simplicity and interpretability compared to more complex machine learning methods. These systems typically rely on predefined rules and heuristics based on geometric and motion characteristics to identify gestures (REF). Among these approaches, velocity-based detection methods have gained particular attention in the gesture studies community.
+
+SPUDNIG (SPeeding Up the Detection of Non-iconic and Iconic Gestures) exemplifies the potential of simple rule-based detection. This approach employs velocity thresholds to identify potential gesture events, operating on the principle that meaningful gestures typically involve distinct movement patterns that can be distinguished from baseline motion (REF). 
+
+\iffalse
+While SPUDNIG and similar velocity-based approaches achieve reasonable true positive rates, often exceeding 70\%, they typically suffer from high false-positive rates, sometimes reaching up to XX\% in real-world applications \citep{ripperdaSpeedingDetectionNoniconic2020}. This limitation stems from their inability to differentiate between intentional gestures and other forms of movement, such as self-adaptors or object manipulation.
+\fi
+
+Other heuristic approaches have explored various geometric and kinematic features. These include the use of joint angles, inter-joint distances, and motion trajectories to define gesture events (REF). While such rule-based systems benefit from low computational requirements and real-time processing capabilities \citep{molinaGestureRecognition2015}, they face several significant limitations. Their effectiveness often degrades when dealing with complex gestures or variations in gesture execution, as predefined rules may not capture the full range of natural gesture variations (REF).
+
+The scalability of rule-based approaches presents another challenge. As the number of gesture types increases, the complexity of defining and maintaining appropriate rules grows substantially, making these systems increasingly difficult to manage (REF). Additionally, rule-based methods would typically lack contextual awareness, potentially leading to misinterpretation of gestures in different communicative situations.
+
+Despite these limitations, rule-based approaches, particularly velocity-based detection methods, continue to serve a valuable role in gesture studies. They can effectively provide initial gesture segmentation that researchers can then refine through manual annotation, potentially reducing the overall time required for gesture analysis. The simplicity and interpretability of these methods also make them useful as baseline systems against which more sophisticated approaches can be compared.
+
+\subsection{Machine Learning Approaches}\label{subsec:ml}
+% Cover CNN, LSTM, transformer-based approaches
+% Include recent work on gesture phase detection
+% Discuss transfer learning attempts
+
+Machine learning-based gesture recognition has evolved through multiple paradigms, ranging from convolutional neural networks (CNNs) to recurrent architectures like long short-term memory (LSTM) networks, and more recently, transformer-based models. This section reviews these approaches, focusing on their applications in gesture phase detection and transfer learning methodologies.
+
+\subsubsection{Convolutional Neural Networks (CNNs)}
+CNNs have been widely employed in gesture recognition, particularly for processing visual input such as RGB, depth, or optical flow data. By leveraging spatial hierarchies, CNNs capture local features effectively, making them suitable for static and dynamic gesture classification. Notable architectures, including ResNet and EfficientNet, have been adapted for gesture datasets, achieving high performance in controlled environments. However, CNNs often struggle with long-term temporal dependencies, limiting their effectiveness for complex gesture sequences \cite{chen2020cnn}.
+
+\subsubsection{Long Short-Term Memory Networks (LSTMs)}
+To address temporal dependencies in gesture sequences, LSTMs and their variants, such as gated recurrent units (GRUs), have been integrated into gesture recognition pipelines. These networks model sequential dependencies by maintaining memory cells that store and update information over time. LSTM-based approaches have been particularly effective in gesture phase detection, where transitions between preparation, execution, and retraction phases must be accurately delineated. Hybrid CNN-LSTM architectures have demonstrated improved performance by combining spatial and temporal feature extraction capabilities \cite{hu2018hybrid}.
+
+\subsubsection{Transformer-Based Approaches}
+Recent advancements in transformer-based models have significantly impacted gesture recognition, particularly through self-attention mechanisms that capture long-range dependencies without recurrent connections. Vision transformers (ViTs) and spatiotemporal transformers, such as TimeSformer and Video Swin Transformer, have been applied to gesture datasets, showing promise in encoding both spatial and temporal aspects. Additionally, models like MotionBERT and ActionFormer have been introduced for pose-based gesture recognition, leveraging transformer architectures to refine pose sequences and improve robustness to occlusions and variations in gesture execution.
+
+\subsubsection{Gesture Phase Detection}
+Gesture phase detection is crucial for segmenting gestures into meaningful subcomponents, typically categorized into preparation, stroke, hold, and retraction phases. Traditional approaches relied on handcrafted temporal features, but deep learning models now automate phase detection using sequential modeling techniques. CNN-LSTM hybrids, attention-based BiLSTMs, and transformer-based models have been employed to detect phase transitions with greater accuracy. Recent studies have explored contrastive learning techniques to enhance phase representation and improve generalization across datasets \cite{lin2024attention}.
+
+\subsubsection{Transfer Learning in Gesture Recognition}
+Given the scarcity of large-scale labeled gesture datasets, transfer learning has emerged as a critical technique for leveraging pretrained models on related tasks. Approaches include fine-tuning CNN backbones trained on ImageNet, adapting LSTM and transformer models pre-trained on action recognition datasets, and employing domain adaptation techniques to bridge distribution gaps between source and target gesture domains. Recent work has also explored self-supervised learning methods to pretrain gesture representations without requiring extensive labeled data, enabling improved performance in low-data scenarios \cite{chen2020cnn}.
+
+These advancements collectively highlight the evolution of machine learning approaches in gesture recognition, with transformer-based architectures increasingly outperforming traditional CNN and LSTM models, particularly in capturing long-range dependencies and phase transitions.
+
+\subsection{Pose Estimation in Gesture Analysis}\label{subsec:pose}
+% Cover OpenPose, MediaPipe evolution
+% Discuss skeleton-based vs RGB approaches
+% Compare 2D vs 3D pose estimation
+
+Pose estimation is pivotal in gesture analysis, enabling the understanding of human movements by identifying the positions of key body joints. This section examines prominent frameworks such as OpenPose and MediaPipe, contrasts skeleton-based and RGB-based approaches, and compares 2D versus 3D pose estimation techniques.
+
+\subsubsection{OpenPose and MediaPipe Evolution}
+
+OpenPose has represented the first real-time multi-person system to jointly detect human body, hand, facial, and foot keypoints, totaling 135 keypoints, in single images \cite{openpose_github}. It employs a bottom-up approach, detecting body parts first and then assembling them into complete poses. While it excels in accuracy, identifying up to 135 keypoints, it requires substantial computational resources, often necessitating a robust GPU for efficient operation.
+
+Conversely, MediaPipe utilizes a top-down strategy, detecting keypoints to predict poses. Developed by Google, MediaPipe is optimized for speed, enabling real-time processing even on less powerful devices. It offers a user-friendly API and supports multiple programming languages, facilitating quick integration across various platforms \cite{mediapipe_vs_openpose}.
+
+\subsubsection{Skeleton-Based vs. RGB-Based Approaches}
+
+Pose estimation methodologies can be broadly categorized into skeleton-based and RGB-based approaches. Skeleton-based methods model the human body as a set of interconnected joints, effectively capturing the structural relationships between body parts. This representation is robust to variations in appearance and background, reducing the impact of environmental factors and requiring less computational work due to their focus on key joint positions. However, they may lack detailed appearance information, which can be crucial for distinguishing between similar poses \cite{rgb_vs_skeleton}.
+
+RGB-based approaches, on the other hand, leverage the full image data, utilizing color and texture information to infer poses. While they can capture rich appearance details, they are more susceptible to background noise and variations in lighting conditions. These methods often require more computational resources due to the complexity of processing full image data \cite{rgb_vs_skeleton}.
+
+\subsubsection{2D vs. 3D Pose Estimation}
+
+Pose estimation techniques can also be distinguished by their dimensionality: 2D and 3D. 2D pose estimation involves identifying the spatial locations of keypoints in a two-dimensional plane, which is computationally less intensive and suitable for applications where depth information is not critical. However, it lacks depth perception, making it challenging to accurately interpret complex poses or interactions with the environment.
+
+3D pose estimation aims to predict the positions of joints in three-dimensional space, providing a more comprehensive understanding of human posture and movement. This approach is beneficial for applications requiring detailed motion analysis, such as sports analytics or rehabilitation. While 3D estimation offers richer information, it presents significant challenges, including depth ambiguity and occlusion handling, especially when relying on a single RGB image. Recent advancements have explored methods to infer 3D poses from monocular images, but achieving high accuracy remains difficult due to the inherent loss of depth information in 2D projections \cite{3d_pose_estimation}.
+
+These considerations are crucial in selecting appropriate pose estimation techniques for specific gesture analysis applications.
+
+
+\subsection{Cross-dataset Generalization Challenges}\label{subsec:generalization}
+% Discuss dataset bias issues
+% Cover attempts at creating general-purpose detectors,if any
+% Address cultural and linguistic variations
+\subsection{Cross-dataset Generalization Challenges}\label{subsec:generalization}
+
+Cross-dataset generalization in gesture detection remains a significant challenge due to variations in data collection conditions, demographic representation, and gesture definitions. 
+
+\paragraph{Dataset Bias and Variability} Gesture datasets often differ in recording setups (e.g., RGB vs. depth sensors), environmental conditions, and participant diversity. These factors lead to distribution shifts that degrade model performance when applied to unseen datasets.
+
+\paragraph{General-Purpose Gesture Detectors} Efforts to enhance generalization include domain adaptation (e.g., adversarial training, feature alignment), transfer learning (e.g., pretraining on large-scale datasets like NTU RGB+D), and meta-learning approaches. However, adapting models across datasets remains an open problem.
+
+\paragraph{Cultural and Linguistic Variations} Gestures are culturally embedded, with significant differences across regions and languages. Some gestures have universal meanings, while others are culturally specific. Sign language variations (e.g., ASL vs. BSL) further complicate generalization. Biases in dataset annotations can disproportionately affect underrepresented gestures.
+
+\paragraph{Future Directions} Strategies such as dataset augmentation, self-supervised learning, and cross-cultural benchmarking can improve robustness. Standardized evaluation across diverse populations and multimodal fusion (e.g., RGB, depth, IMU) may further enhance generalization.
+
+
+
+
+\subsection{Future Work}
+
+The current implementation of EnvisionHGdetector, while functional, points to several promising directions for future research and development:
+
+\subsubsection{Technical Enhancements}
+The current model architecture, while effective for basic gesture detection, could benefit from several technical improvements. Future work should explore transformer-based architectures, which have shown promising results in related motion detection tasks \citep{zhuMotionBERTUnifiedPerspective2023}. Additionally, the integration of speech features alongside visual pose data could potentially improve detection accuracy, as demonstrated by recent work in multimodal gesture analysis \citep{ghalebLeveragingSpeechGesture2024}. The current failure in ``Move'' class detection suggests a need for architectural modifications or feature engineering specifically targeted at distinguishing between gestural and non-gestural movements.
+
+\subsubsection{Multi-Person and Variable Context Support}
+A significant limitation of the current implementation is its restriction to single-person videos with consistent camera angles. Future versions should explore solutions for multi-person scenarios, which would enable analysis of interactive gestures in conversations. This could involve implementing person tracking and maintaining separate gesture detection streams for each individual. Additionally, developing robustness to varying camera angles and frame cuts would expand the tool's applicability to more naturalistic video data.
+
+\subsubsection{Performance Optimization}
+While the current model achieves moderate performance, several avenues for optimization exist:
+\begin{itemize}
+    \item Implementation of proper early stopping mechanisms rather than time-based training cutoffs
+    \item Exploration of alternative feature sets through systematic ablation studies
+    \item Development of specialized architectures for different gesture types
+    \item Investigation of transfer learning approaches using pre-trained motion models
+\end{itemize}
+
+\subsubsection{Dataset Expansion}
+The planned release of our anonymized gesture dataset represents just a first step. Future work should focus on:
+\begin{itemize}
+    \item Incorporating more diverse cultural contexts and languages
+    \item Adding annotations for fine-grained gesture classifications
+    \item Including more ``in-the-wild'' recordings with varying conditions
+    \item Developing standardized benchmark datasets for gesture detection
+\end{itemize}
+
+\subsubsection{Feature Engineering and Analysis}
+Future versions of EnvisionHGdetector should expand beyond basic detection to include:
+\begin{itemize}
+    \item Automated extraction of gesture quality metrics (speed, acceleration, movement phases)
+    \item Generation of gesture embedding spaces for similarity analysis
+    \item Integration with existing gesture network approaches \citep{pouwGestureNetworksIntroducing2019}
+    \item Development of interpretable feature importance measures
+\end{itemize}
+
+\subsubsection{Evaluation Framework}
+To better understand and improve model performance, future work should establish:
+\begin{itemize}
+    \item Standardized comparison protocols against existing solutions
+    \item Comprehensive error analysis frameworks
+    \item Statistical significance testing methodologies
+    \item Real-world performance metrics in various application contexts
+\end{itemize}
+
+\subsubsection{Integration and Accessibility}
+To increase the tool's utility for researchers, future development should focus on:
+\begin{itemize}
+    \item Creating plug-ins for popular annotation tools like ELAN
+    \item Developing real-time processing capabilities
+    \item Implementing batch processing for large-scale analyses
+    \item Providing more extensive documentation and usage examples
+\end{itemize}
+
+\subsubsection{Broader Applications}
+Future research should explore applications beyond basic gesture detection, such as:
+\begin{itemize}
+    \item Automated analysis of communication disorders
+    \item Real-time gesture feedback systems
+    \item Cross-cultural gesture analysis tools
+    \item Integration with virtual communication platforms
+\end{itemize}
+
+The development of EnvisionHGdetector represents an important step toward automated gesture analysis, but significant work remains to create truly robust and comprehensive tools for gesture studies. By addressing these various directions for improvement, future versions could substantially advance our ability to study human gestural communication at scale.
