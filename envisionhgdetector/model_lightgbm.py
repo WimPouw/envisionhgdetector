@@ -29,6 +29,174 @@ RIGHT_WRIST_IDX = 16
 VISIBILITY_LANDMARKS = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
 
 
+def extract_lgbm_features(sequence: np.ndarray) -> np.ndarray:
+    """
+    Extract 100 features from a sequence of world landmarks for LightGBM.
+    Matches Config 13 training exactly.
+
+    Args:
+        sequence: Array of shape (window_size, 92) - world landmarks
+
+    Returns:
+        100-dimensional feature vector
+    """
+    if len(sequence) == 0:
+        return np.zeros(100, dtype=np.float32)
+
+    n_frames = len(sequence)
+    n_landmarks = 23
+
+    try:
+        seq_4d = sequence.reshape(n_frames, n_landmarks, 4)
+    except ValueError:
+        return np.zeros(100, dtype=np.float32)
+
+    seq_3d = seq_4d[:, :, :3]
+    visibility = seq_4d[:, :, 3]
+
+    features = []
+
+    key_joints = seq_3d[:, KEY_JOINT_INDICES, :]
+    key_joints_flat = key_joints.reshape(n_frames, -1)
+
+    # 1-18: Current pose
+    current_pose = key_joints_flat[-1]
+    features.extend(current_pose)
+
+    # 19-38: Velocity + wrist speeds
+    if n_frames > 1:
+        velocity = key_joints_flat[-1] - key_joints_flat[-2]
+        features.extend(velocity)
+        left_wrist_speed = np.linalg.norm(velocity[12:15])
+        right_wrist_speed = np.linalg.norm(velocity[15:18])
+        features.extend([left_wrist_speed, right_wrist_speed])
+    else:
+        features.extend([0.0] * 20)
+
+    # 39-44: Wrist ranges
+    if n_frames >= 3:
+        wrist_data = key_joints_flat[:, 12:18]
+        wrist_ranges = np.ptp(wrist_data, axis=0)
+        features.extend(wrist_ranges)
+    else:
+        features.extend([0.0] * 6)
+
+    # 45-62: Finger features
+    left_wrist = seq_3d[-1, LEFT_WRIST_IDX, :]
+    right_wrist = seq_3d[-1, RIGHT_WRIST_IDX, :]
+
+    left_fingers = np.zeros(9, dtype=np.float32)
+    right_fingers = np.zeros(9, dtype=np.float32)
+
+    if np.any(left_wrist):
+        left_fingers[0:3] = seq_3d[-1, 17, :] - left_wrist
+        left_fingers[3:6] = seq_3d[-1, 19, :] - left_wrist
+        left_fingers[6:9] = seq_3d[-1, 21, :] - left_wrist
+
+    if np.any(right_wrist):
+        right_fingers[0:3] = seq_3d[-1, 18, :] - right_wrist
+        right_fingers[3:6] = seq_3d[-1, 20, :] - right_wrist
+        right_fingers[6:9] = seq_3d[-1, 22, :] - right_wrist
+
+    features.extend(left_fingers)
+    features.extend(right_fingers)
+
+    # 63-68: Finger distances
+    left_pinky_thumb = np.linalg.norm(left_fingers[0:3] - left_fingers[6:9]) if np.any(left_fingers) else 0.0
+    left_index_thumb = np.linalg.norm(left_fingers[3:6] - left_fingers[6:9]) if np.any(left_fingers) else 0.0
+    left_pinky_index = np.linalg.norm(left_fingers[0:3] - left_fingers[3:6]) if np.any(left_fingers) else 0.0
+    right_pinky_thumb = np.linalg.norm(right_fingers[0:3] - right_fingers[6:9]) if np.any(right_fingers) else 0.0
+    right_index_thumb = np.linalg.norm(right_fingers[3:6] - right_fingers[6:9]) if np.any(right_fingers) else 0.0
+    right_pinky_index = np.linalg.norm(right_fingers[0:3] - right_fingers[3:6]) if np.any(right_fingers) else 0.0
+
+    features.extend([left_pinky_thumb, left_index_thumb, left_pinky_index,
+                     right_pinky_thumb, right_index_thumb, right_pinky_index])
+
+    # 69-70: Wrist acceleration
+    if n_frames > 2:
+        vel_prev = key_joints_flat[-2] - key_joints_flat[-3]
+        vel_curr = key_joints_flat[-1] - key_joints_flat[-2]
+        accel = vel_curr - vel_prev
+        left_wrist_accel = np.linalg.norm(accel[12:15])
+        right_wrist_accel = np.linalg.norm(accel[15:18])
+        features.extend([left_wrist_accel, right_wrist_accel])
+    else:
+        features.extend([0.0, 0.0])
+
+    # 71-72: Trajectory smoothness
+    if n_frames > 2:
+        velocities = np.diff(key_joints_flat, axis=0)
+        left_wrist_vels = velocities[:, 12:15]
+        right_wrist_vels = velocities[:, 15:18]
+        left_smoothness = np.std(np.linalg.norm(left_wrist_vels, axis=1))
+        right_smoothness = np.std(np.linalg.norm(right_wrist_vels, axis=1))
+        features.extend([left_smoothness, right_smoothness])
+    else:
+        features.extend([0.0, 0.0])
+
+    # 73-74: Wrist height
+    left_shoulder = seq_3d[-1, 11, :]
+    right_shoulder = seq_3d[-1, 12, :]
+    left_wrist_pos = seq_3d[-1, LEFT_WRIST_IDX, :]
+    right_wrist_pos = seq_3d[-1, RIGHT_WRIST_IDX, :]
+
+    left_wrist_height = left_wrist_pos[1] - left_shoulder[1] if np.any(left_shoulder) else 0.0
+    right_wrist_height = right_wrist_pos[1] - right_shoulder[1] if np.any(right_shoulder) else 0.0
+    features.extend([left_wrist_height, right_wrist_height])
+
+    # 75: Wrist spread
+    wrist_spread = np.linalg.norm(left_wrist_pos - right_wrist_pos) if np.any(left_wrist_pos) and np.any(right_wrist_pos) else 0.0
+    features.append(wrist_spread)
+
+    # 76-77: Arm extension
+    left_arm_extension = np.linalg.norm(left_wrist_pos - left_shoulder) if np.any(left_shoulder) else 0.0
+    right_arm_extension = np.linalg.norm(right_wrist_pos - right_shoulder) if np.any(right_shoulder) else 0.0
+    features.extend([left_arm_extension, right_arm_extension])
+
+    # 78: Total motion
+    if n_frames > 1:
+        total_motion = np.sum(np.linalg.norm(np.diff(seq_3d[:, LEFT_WRIST_IDX, :], axis=0), axis=1))
+        total_motion += np.sum(np.linalg.norm(np.diff(seq_3d[:, RIGHT_WRIST_IDX, :], axis=0), axis=1))
+        features.append(total_motion)
+    else:
+        features.append(0.0)
+
+    # 79: Position symmetry
+    if np.any(left_wrist_pos) and np.any(right_wrist_pos):
+        body_center = (left_shoulder + right_shoulder) / 2
+        left_rel = left_wrist_pos - body_center
+        right_rel = right_wrist_pos - body_center
+        symmetry = 1.0 / (1.0 + np.linalg.norm(left_rel + right_rel * np.array([-1, 1, 1])))
+        features.append(symmetry)
+    else:
+        features.append(0.0)
+
+    # 80: Motion asymmetry
+    if n_frames > 1:
+        left_motion = np.sum(np.linalg.norm(np.diff(seq_3d[:, LEFT_WRIST_IDX, :], axis=0), axis=1))
+        right_motion = np.sum(np.linalg.norm(np.diff(seq_3d[:, RIGHT_WRIST_IDX, :], axis=0), axis=1))
+        motion_asymmetry = abs(left_motion - right_motion) / (left_motion + right_motion + 1e-6)
+        features.append(motion_asymmetry)
+    else:
+        features.append(0.0)
+
+    # 81-92: Current visibility
+    current_vis = visibility[-1, VISIBILITY_LANDMARKS]
+    features.extend(current_vis)
+
+    # 93-98: Mean visibility
+    mean_vis = np.mean(visibility[:, [11, 12, 13, 14, 15, 16]], axis=0)
+    features.extend(mean_vis)
+
+    # 99-100: Min wrist visibility
+    min_vis_left_wrist = np.min(visibility[:, 15])
+    min_vis_right_wrist = np.min(visibility[:, 16])
+    features.extend([min_vis_left_wrist, min_vis_right_wrist])
+
+    assert len(features) == 100, f"Expected 100 features, got {len(features)}"
+    return np.array(features, dtype=np.float32)
+
+
 class LightGBMGestureModel:
     """
     LightGBM-based gesture detection model.
@@ -164,177 +332,7 @@ class LightGBMGestureModel:
         return np.array(features, dtype=np.float32)
     
     def extract_sequence_features(self, sequence: np.ndarray) -> np.ndarray:
-        """
-        Extract 100 features from a sequence of world landmarks.
-        MATCHES TRAINING EXACTLY!
-        
-        Args:
-            sequence: Array of shape (window_size, 92) - world landmarks
-        
-        Returns:
-            100-dimensional feature vector
-        """
-        if len(sequence) == 0:
-            return np.zeros(100, dtype=np.float32)
-        
-        n_frames = len(sequence)
-        n_landmarks = 23
-        
-        # Reshape to (frames, landmarks, 4) where 4 = x, y, z, visibility
-        try:
-            seq_4d = sequence.reshape(n_frames, n_landmarks, 4)
-        except ValueError:
-            return np.zeros(100, dtype=np.float32)
-        
-        # Separate xyz and visibility
-        seq_3d = seq_4d[:, :, :3]  # (frames, 23, 3)
-        visibility = seq_4d[:, :, 3]  # (frames, 23)
-        
-        features = []
-        
-        # Key joints (shoulders, elbows, wrists)
-        key_joints = seq_3d[:, KEY_JOINT_INDICES, :]  # (frames, 6, 3)
-        key_joints_flat = key_joints.reshape(n_frames, -1)  # (frames, 18)
-        
-        # ===== FEATURES 1-18: Current pose =====
-        current_pose = key_joints_flat[-1]
-        features.extend(current_pose)
-        
-        # ===== FEATURES 19-38: Velocity =====
-        if n_frames > 1:
-            velocity = key_joints_flat[-1] - key_joints_flat[-2]
-            features.extend(velocity)
-            
-            # Wrist speeds (2 values)
-            left_wrist_speed = np.linalg.norm(velocity[12:15])
-            right_wrist_speed = np.linalg.norm(velocity[15:18])
-            features.extend([left_wrist_speed, right_wrist_speed])
-        else:
-            features.extend([0.0] * 20)
-        
-        # ===== FEATURES 39-44: Wrist ranges =====
-        if n_frames >= 3:
-            wrist_data = key_joints_flat[:, 12:18]
-            wrist_ranges = np.ptp(wrist_data, axis=0)
-            features.extend(wrist_ranges)
-        else:
-            features.extend([0.0] * 6)
-        
-        # ===== FEATURES 45-62: Finger features (18 values) =====
-        left_wrist = seq_3d[-1, LEFT_WRIST_IDX, :]
-        right_wrist = seq_3d[-1, RIGHT_WRIST_IDX, :]
-        
-        left_fingers = np.zeros(9, dtype=np.float32)
-        right_fingers = np.zeros(9, dtype=np.float32)
-        
-        if np.any(left_wrist):
-            left_fingers[0:3] = seq_3d[-1, 17, :] - left_wrist  # pinky
-            left_fingers[3:6] = seq_3d[-1, 19, :] - left_wrist  # index
-            left_fingers[6:9] = seq_3d[-1, 21, :] - left_wrist  # thumb
-        
-        if np.any(right_wrist):
-            right_fingers[0:3] = seq_3d[-1, 18, :] - right_wrist  # pinky
-            right_fingers[3:6] = seq_3d[-1, 20, :] - right_wrist  # index
-            right_fingers[6:9] = seq_3d[-1, 22, :] - right_wrist  # thumb
-        
-        features.extend(left_fingers)
-        features.extend(right_fingers)
-        
-        # ===== FEATURES 63-68: Finger distances (6 values) =====
-        left_pinky_thumb = np.linalg.norm(left_fingers[0:3] - left_fingers[6:9]) if np.any(left_fingers) else 0.0
-        left_index_thumb = np.linalg.norm(left_fingers[3:6] - left_fingers[6:9]) if np.any(left_fingers) else 0.0
-        left_pinky_index = np.linalg.norm(left_fingers[0:3] - left_fingers[3:6]) if np.any(left_fingers) else 0.0
-        right_pinky_thumb = np.linalg.norm(right_fingers[0:3] - right_fingers[6:9]) if np.any(right_fingers) else 0.0
-        right_index_thumb = np.linalg.norm(right_fingers[3:6] - right_fingers[6:9]) if np.any(right_fingers) else 0.0
-        right_pinky_index = np.linalg.norm(right_fingers[0:3] - right_fingers[3:6]) if np.any(right_fingers) else 0.0
-        
-        features.extend([left_pinky_thumb, left_index_thumb, left_pinky_index,
-                        right_pinky_thumb, right_index_thumb, right_pinky_index])
-        
-        # ===== FEATURES 69-70: Wrist acceleration =====
-        if n_frames > 2:
-            vel_prev = key_joints_flat[-2] - key_joints_flat[-3]
-            vel_curr = key_joints_flat[-1] - key_joints_flat[-2]
-            accel = vel_curr - vel_prev
-            left_wrist_accel = np.linalg.norm(accel[12:15])
-            right_wrist_accel = np.linalg.norm(accel[15:18])
-            features.extend([left_wrist_accel, right_wrist_accel])
-        else:
-            features.extend([0.0, 0.0])
-        
-        # ===== FEATURES 71-72: Trajectory smoothness =====
-        if n_frames > 2:
-            velocities = np.diff(key_joints_flat, axis=0)
-            left_wrist_vels = velocities[:, 12:15]
-            right_wrist_vels = velocities[:, 15:18]
-            left_smoothness = np.std(np.linalg.norm(left_wrist_vels, axis=1))
-            right_smoothness = np.std(np.linalg.norm(right_wrist_vels, axis=1))
-            features.extend([left_smoothness, right_smoothness])
-        else:
-            features.extend([0.0, 0.0])
-        
-        # ===== FEATURES 73-74: Wrist height relative to shoulders =====
-        left_shoulder = seq_3d[-1, 11, :]
-        right_shoulder = seq_3d[-1, 12, :]
-        left_wrist_pos = seq_3d[-1, LEFT_WRIST_IDX, :]
-        right_wrist_pos = seq_3d[-1, RIGHT_WRIST_IDX, :]
-        
-        left_wrist_height = left_wrist_pos[1] - left_shoulder[1] if np.any(left_shoulder) else 0.0
-        right_wrist_height = right_wrist_pos[1] - right_shoulder[1] if np.any(right_shoulder) else 0.0
-        features.extend([left_wrist_height, right_wrist_height])
-        
-        # ===== FEATURE 75: Wrist spread =====
-        wrist_spread = np.linalg.norm(left_wrist_pos - right_wrist_pos) if np.any(left_wrist_pos) and np.any(right_wrist_pos) else 0.0
-        features.append(wrist_spread)
-        
-        # ===== FEATURES 76-77: Arm extension =====
-        left_arm_extension = np.linalg.norm(left_wrist_pos - left_shoulder) if np.any(left_shoulder) else 0.0
-        right_arm_extension = np.linalg.norm(right_wrist_pos - right_shoulder) if np.any(right_shoulder) else 0.0
-        features.extend([left_arm_extension, right_arm_extension])
-        
-        # ===== FEATURE 78: Total motion =====
-        if n_frames > 1:
-            total_motion = np.sum(np.linalg.norm(np.diff(seq_3d[:, LEFT_WRIST_IDX, :], axis=0), axis=1))
-            total_motion += np.sum(np.linalg.norm(np.diff(seq_3d[:, RIGHT_WRIST_IDX, :], axis=0), axis=1))
-            features.append(total_motion)
-        else:
-            features.append(0.0)
-        
-        # ===== FEATURE 79: Position symmetry =====
-        if np.any(left_wrist_pos) and np.any(right_wrist_pos):
-            body_center = (left_shoulder + right_shoulder) / 2
-            left_rel = left_wrist_pos - body_center
-            right_rel = right_wrist_pos - body_center
-            symmetry = 1.0 / (1.0 + np.linalg.norm(left_rel + right_rel * np.array([-1, 1, 1])))
-            features.append(symmetry)
-        else:
-            features.append(0.0)
-        
-        # ===== FEATURE 80: Motion asymmetry =====
-        if n_frames > 1:
-            left_motion = np.sum(np.linalg.norm(np.diff(seq_3d[:, LEFT_WRIST_IDX, :], axis=0), axis=1))
-            right_motion = np.sum(np.linalg.norm(np.diff(seq_3d[:, RIGHT_WRIST_IDX, :], axis=0), axis=1))
-            motion_asymmetry = abs(left_motion - right_motion) / (left_motion + right_motion + 1e-6)
-            features.append(motion_asymmetry)
-        else:
-            features.append(0.0)
-        
-        # ===== FEATURES 81-92: Current visibility (12 values) =====
-        current_vis = visibility[-1, VISIBILITY_LANDMARKS]
-        features.extend(current_vis)
-        
-        # ===== FEATURES 93-98: Mean visibility (6 values) =====
-        mean_vis = np.mean(visibility[:, [11, 12, 13, 14, 15, 16]], axis=0)
-        features.extend(mean_vis)
-        
-        # ===== FEATURES 99-100: Min wrist visibility (2 values) =====
-        min_vis_left_wrist = np.min(visibility[:, 15])
-        min_vis_right_wrist = np.min(visibility[:, 16])
-        features.extend([min_vis_left_wrist, min_vis_right_wrist])
-        
-        assert len(features) == 100, f"Expected 100 features, got {len(features)}"
-        
-        return np.array(features, dtype=np.float32)
+        return extract_lgbm_features(sequence)
     
     def predict(self, features: np.ndarray) -> np.ndarray:
         """
