@@ -7,12 +7,12 @@ A Python package for detecting and classifying hand gestures using MediaPipe Hol
 </div>
 
 ## Info
-Please go to [envisionbox.org](www.envisionbox.org) for notebook tutorials on how to use this package. This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a convolutional neural network (CNN). We plan to update this package with better predicting network in the near future, and we plan to also make an evaluation report so that it is clear how it performs for several types of videos. For now, feel free to experiment. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by rates will be much superior to this gesture coder.
+Please go to [envisionbox.org](https://www.envisionbox.org) for notebook tutorials on how to use this package. This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a convolutional neural network (CNN) or LightGBM model. If you're looking to quickly generate gesture annotations in ELAN format, this is the package for you. Do note that annotation by raters will be much superior to this automated detector.
 
 The package performs:
 
 * Feature extraction using MediaPipe Holistic (hand, body, and face features)
-* Post-hoc gesture detection using a pre-trained CNN model or LIGHTGBM model, that we trained on SAGA, SAGA+, ECOLANG, TEDM3D dataset, and the zhubo, open gesture annotated datasets.
+* Post-hoc gesture detection using a pre-trained CNN or LightGBM model, trained on SaGA, SaGA+, ECOLANG, TEDM3D, ZHUBO, MULTISIMO, and GESRes datasets.
 * Real-time Webcam Detection: Live gesture detection with configurable parameters
 * Automatic annotation of videos with gesture classifications
 * Output generation in CSV format and ELAN files, and video labeled
@@ -24,13 +24,13 @@ Currently, the detector can identify:
 - Movement patterns ("Move"; this is only trained on SAGA, because these also annotated movements that were not gestures, like nose scratching); it will therefore be an unreliable category perhaps
 
 ## Installation
-Consider creating a conda environment first (conda create -n envision python==3.9; conda activate envision).
+Consider creating a conda environment first:
 ```bash
-conda create -n envision python==3.9
+conda create -n envision python==3.10
 conda activate envision
-(envision) pip install envisionhgdetector
+pip install envisionhgdetector
 ```
-otherwise install like this
+Or install directly:
 ```bash
 pip install envisionhgdetector
 ```
@@ -221,42 +221,12 @@ When using `RealtimeGestureDetector.process_webcam()`, outputs are organized in 
 
 All outputs are designed for integration with research workflows, ELAN annotation software, and further analysis pipelines.
 
-The detector generates three types of output in your specified output folder:
-
-1. Automated Annotations (`/output/automated_annotations/`)
-   - CSV files with frame-by-frame predictions
-   - Contains confidence values and classifications for each frame
-   - Format: `video_name_confidence_timeseries.csv`
-
-2. ELAN Files (`/output/elan_files/`)
-   - ELAN-compatible annotation files (.eaf)
-   - Contains time-aligned gesture segments
-   - Useful for manual verification and research purposes
-   - Format: `video_name.eaf`
-
-3. Labeled Videos (`/output/labeled_videos/`)
-   - Processed videos with visual annotations
-   - Shows real-time gesture detection and confidence scores
-   - Useful for quick verification of detection quality
-   - Format: `labeled_video_name.mp4`
-
-4. Retracked Videos (`/output/retracked/`)
-   - rendered tracked videos and pose world landmarks
-
-5. Kinematic analysis (`output/analyis/`)
-   - DTW distance matrix (.csv) between all gesture comparisons
-   - Kinematic features (.csv) per gesture (e.g., number of submovements, max speed, max acceleration)
-   - Gesture visualization (.csv; UMAP of DTW distance matrix, for input for Dashboard)
-
-6. Dashboard (`/output/app.py`)
-   - This app visualizes the gesture similarity space and shows the kinematic features, the user can click on the videos and identify metrics
-
 ## Technical Background
 
 The package builds on previous work in gesture detection, particularly focused on using MediaPipe Holistic for comprehensive feature extraction. The CNN model is designed to handle complex temporal patterns in the extracted features.
 
 ## Requirements
-- Python 3.7+
+- Python 3.10+
 - tensorflow-cpu
 - mediapipe
 - opencv-python
@@ -267,7 +237,7 @@ The package builds on previous work in gesture detection, particularly focused o
 
 If you use this package, please cite:
 
-Pouw, W., Yung, B., Shaikh, S., Trujillo, J., Rueda-Toicen, A., de Melo, G., Owoyele, B. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 0.0.5.0) [Computer software]. https://pypi.org/project/envisionhgdetector/
+Pouw, W., Shaikh, S., Yung, B., Trujillo, J., Rueda-Toicen, A., de Melo, G., Owoyele, B. (2026). EnvisionHGdetector: A Computational Framework for Co-speech Gesture Detection, Kinematic Analysis, and Interactive Visualization (Version 3.0.1) [Computer software]. https://pypi.org/project/envisionhgdetector/
 
 ### Additional Citations
 
