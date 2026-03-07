@@ -1,0 +1,59 @@
+
+
+
+
+\iffalse
+\subsection{Datasets and Validation Strategy}
+
+Our model training and evaluation strategy follows a robust cross-dataset approach to ensure generalizability across different recording conditions and gesture contexts. We employ a carefully structured dataset split:
+
+\subsubsection{Cross-Dataset Validation}
+To rigorously assess our model's generalization capabilities, we employ a two-stage validation strategy:
+
+\paragraph{Held-out Validation} We reserve 10\% of the SAGA corpus (approximately 2.5 dialogues) for validation during training. This dataset was chosen for validation because it provides the most detailed gesture annotations and multi-modal recordings, allowing for precise evaluation of model performance.
+
+\paragraph{Cross-Dataset Testing} We use the MULTISIMO corpus as our primary test set, specifically because:
+\begin{itemize}
+   \item Its collaborative task-based setting differs significantly from our training contexts
+   \item It features multiple participants and varying camera angles
+   \item It contains naturalistic gestures that challenge the model's ability to generalize
+\end{itemize}
+
+This cross-dataset evaluation approach helps ensure that our model performs robustly across different gesture contexts, recording conditions, and speaker styles, rather than overfitting to any particular dataset's characteristics.
+\fi
+\subsection{Model and Training}
+\begin{itemize}
+    \item Framework: TensorFlow.
+    \item Skeleton tracking using Mediapipe Holistic.
+    \item Training metrics: Accuracy, validation accuracy, etc.
+    % : Which papers detail Mediapipe ,open pose, ....TensorFlow training methodologies?
+\end{itemize}
+\iffalse
+
+
+\subsection{Computational Efficiency}
+The model demonstrates strong computational efficiency, making it suitable for real-world applications on consumer hardware. Running on a standard Dell LAtituted (64gb RAM notebook /.....%CPU (Intel i7-10700K), the system processes video input at an average rate of ....%25 frames per second, with the following component-wise latencies:
+
+
+\subsubsection{Pose features: Feature extractions}
+We prepare 29 features from the pose data, which are essentially normalized pose-embeddings. 
+
+The model was trained using the following configuration:
+\begin{itemize}
+    \item Batch size: 32
+    \item Learning rate: 0.001 with Adam optimizer
+    \item Training epochs: 100 with early stopping
+    \item Input sequence length: 32 frames
+    \item Loss function: Categorical cross-entropy
+\end{itemize}
+
+We monitor several metrics during training:
+\begin{itemize}
+    \item Frame-level accuracy
+    \item Gesture-level F1 score
+    \item Temporal intersection over union (tIoU)
+    \item Confusion matrix across gesture types
+\end{itemize}
+
+To prevent overfitting, we employ regularization techniques including dropout (rate = 0.5) and L2 regularization (λ = 0.01). Data augmentation techniques such as random temporal scaling and random noise addition to landmark positions are applied during training to improve model robustness.
+\fi
