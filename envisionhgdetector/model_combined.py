@@ -240,7 +240,9 @@ def extract_lgbm_features(sequence: np.ndarray) -> np.ndarray:
     min_vis_right_wrist = np.min(visibility[:, 16])
     features.extend([min_vis_left_wrist, min_vis_right_wrist])
     
-    return np.array(features[:100], dtype=np.float32)
+    if len(features) != 100:
+        raise ValueError(f"Expected 100 features, got {len(features)}")
+    return np.array(features, dtype=np.float32)
 
 
 # ============================================================================
@@ -579,35 +581,36 @@ class CombinedGestureModel:
         frame_skip = max(1, int(original_fps / target_fps))
         
         self.reset_buffer()
-        
+
         all_predictions = []
         frame_idx = 0
         processed_idx = 0
-        
+
         # Progress bar
         pbar = tqdm(total=total_frames, desc="Processing frames", unit="frames")
-        
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            if frame_idx % frame_skip == 0:
-                result = self.process_frame(frame)
-                
-                if result is not None:
-                    result['frame_idx'] = frame_idx
-                    result['time_s'] = frame_idx / original_fps
-                    all_predictions.append(result)
-                
-                processed_idx += 1
-            
-            frame_idx += 1
-            pbar.update(1)
-        
-        pbar.close()
-        cap.release()
-        
+
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+
+                if frame_idx % frame_skip == 0:
+                    result = self.process_frame(frame)
+
+                    if result is not None:
+                        result['frame_idx'] = frame_idx
+                        result['time_s'] = frame_idx / original_fps
+                        all_predictions.append(result)
+
+                    processed_idx += 1
+
+                frame_idx += 1
+                pbar.update(1)
+        finally:
+            pbar.close()
+            cap.release()
+
         # Build summary
         summary = {
             'video_path': video_path,

@@ -396,6 +396,8 @@ def video_to_landmarks(
     prev_features: List[float] = []
     landmarks: List[List[float]] = []
     cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise FileNotFoundError(f"Could not open video: {video_path}")
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_interval = max(1, round(fps / 25)) if fps > 0 else 1
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

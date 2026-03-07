@@ -1,8 +1,6 @@
 # Enhanced webcam demo script with parameter input
 from envisionhgdetector import RealtimeGestureDetector
-import pandas as pd
 import os
-from datetime import datetime
 
 def get_parameters():
     """Get detection and post-processing parameters from user."""
