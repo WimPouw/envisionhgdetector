@@ -233,6 +233,15 @@ The package builds on previous work in gesture detection, particularly focused o
 - numpy
 - pandas
 
+## Training and Benchmarks
+
+The training pipeline for the CNN and LightGBM models (including Bayesian hyperparameter sweeps, speaker-independent cross-validation, and holdout evaluation) is available at:
+
+- **Training pipeline**: [github.com/babajideowoyele/envisionhg-training](https://github.com/babajideowoyele/envisionhg-training)
+- **Architecture benchmark**: [github.com/babajideowoyele/gesture-detection-benchmark](https://github.com/babajideowoyele/gesture-detection-benchmark) — systematic comparison of ST-GCN, CTR-GCN, MS-TCN++, and PoseFormer against the CNN/LightGBM baselines
+
+Experiment tracking: [wandb.ai/hpi-dc](https://wandb.ai/hpi-dc/)
+
 ## Citation
 
 If you use this package, please cite:
