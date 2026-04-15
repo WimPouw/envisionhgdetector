@@ -1,18 +1,18 @@
 # EnvisionHGDetector: Co-speech Hand Gesture Detection Python Package
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
-<div align="center">Wim Pouw (wim.pouw@donders.ru.nl), Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele</div>
+<div align="center">Wim Pouw (w.pouw@tilburguniversity.edu), Sharjeel Shaikh (sharjeel.shaikh@guest.hpi.de), Bosco Yung, James Trujillo, Gerard de Melo, Babajide Owoyele (babajide.owoyele@hpi.de)</div>
 
 <div align="center">
 <img src="images/ex.gif" alt="Hand Gesture Detection Demo">
 </div>
 
 ## Info
-Please go to [envisionbox.org](www.envisionbox.org) for notebook tutorials on how to use this package. This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a convolutional neural network (CNN). We plan to update this package with better predicting network in the near future, and we plan to also make an evaluation report so that it is clear how it performs for several types of videos. For now, feel free to experiment. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by rates will be much superior to this gesture coder.
+Please go to [UsingEnvisionHGDetector](https://envisionbox.org/embedded_UsingEnvisionHGdetector_package.html) for notebook tutorial on how to use this package. This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a pre-trained convolutional neural network (CNN)/ LightGBM classifier. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by human annotators will still be superior as compared to this gesture coder.
 
 The package performs:
 
 * Feature extraction using MediaPipe Holistic (hand, body, and face features)
-* Post-hoc gesture detection using a pre-trained CNN model or LIGHTGBM model, that we trained on SAGA, SAGA+, ECOLANG, TEDM3D dataset, and the zhubo, open gesture annotated datasets.
+* Post-hoc gesture detection using a pre-trained CNN model or LIGHTGBM model, that we trained on SAGA, SAGA++, ECOLANG, TEDM3D, MULTISIMO, GESRES dataset, and the ZHUBO, open gesture annotated datasets.
 * Real-time Webcam Detection: Live gesture detection with configurable parameters
 * Automatic annotation of videos with gesture classifications
 * Output generation in CSV format and ELAN files, and video labeled
@@ -21,16 +21,16 @@ The package performs:
 
 Currently, the detector can identify:
 - Just a general hand gesture, ("Gesture" vs. "NoGesture")
-- Movement patterns ("Move"; this is only trained on SAGA, because these also annotated movements that were not gestures, like nose scratching); it will therefore be an unreliable category perhaps
+- Movement patterns ("Move"; this is only trained on SAGA, SAGA++, and Multisimo, because these are annotated movements that cannot be classified as gestures, ex: nose scratching); it will therefore be a more unreliable category.
 
 ## Installation
-Consider creating a conda environment first (conda create -n envision python==3.9; conda activate envision).
+Consider creating a conda environment first.
 ```bash
-conda create -n envision python==3.9
+conda create -n envision python==3.10
 conda activate envision
 (envision) pip install envisionhgdetector
 ```
-otherwise install like this
+otherwise install like this (Note: Ensure python = 3.10)
 ```bash
 pip install envisionhgdetector
 ```
@@ -45,16 +45,16 @@ from envisionhgdetector import GestureDetector
 
 # Initialize detector with model selection
 detector = GestureDetector(
-    model_type="lightgbm",      # "cnn" or "lightgbm"  
-    motion_threshold=0.5,       # CNN only: sensitivity to motion
-    gesture_threshold=0.6,      # Confidence threshold for gestures
-    min_gap_s=0.3,             # Minimum gap between gestures (post-hoc)
-    min_length_s=0.5,          # Minimum gesture duration (post-hoc)
-    gesture_class_bias=0.0     # CNN only: bias toward gesture vs move
+    model_type="combined",       # "cnn" or "lightgbm" or "combined"
+    cnn_motion_threshold=0.5,    # Motion gate sensitivity
+    cnn_gesture_threshold=0.5,   # CNN gesture confidence
+    lgbm_threshold=0.5,          # LightGBM gesture probability
+    min_gap_s=0.1,               # Merge gaps smaller than this
+    min_length_s=0.1             # Minimum gesture duration
 )
 
 # Process multiple videos
-results = detector.process_folder(
+detector.process_folder(
     input_folder="path/to/videos",
     output_folder="path/to/output"
 )
@@ -114,19 +114,29 @@ detector.prepare_gesture_dashboard(
 # Then run: python app.py (in output folder)
 ```
 
-## Features CNN
+## Features 
 
-The detector uses 29 features extracted from MediaPipe Holistic, including:
+### CNN (41, 61, 92)
+
+We engineer 29 features using pose data from MediaPipe Holistic, including:
 - Head rotations
 - Hand positions and movements
 - Body landmark distances
 - Normalized feature metrics
 
-## LightGBM Model (69 features):
+Then we create 3 feature sets:
+- Basic: 41 -> 29 + 6 visiblity + 6 movement-distinguishing features
+- Extended: 61 -> 41 + 20 hand shape features
+- World: 92 -> World Landmarks data from Mediapipe: [x,y,z visibility]
+
+### LightGBM (100 features):
 - Key joint positions (shoulders, elbows, wrists)
 - Velocities
 - Movement ranges and patterns
-- Index Thumb Middle Finger Distances and Positions
+- Index, Thumb, and Middle Finger Distances and Positions
+- Visibility Scores
+- Symmetry Features
+- Smoothness... and more
 
 ## Output
 
@@ -256,7 +266,7 @@ The detector generates three types of output in your specified output folder:
 The package builds on previous work in gesture detection, particularly focused on using MediaPipe Holistic for comprehensive feature extraction. The CNN model is designed to handle complex temporal patterns in the extracted features.
 
 ## Requirements
-- Python 3.7+
+- Python 3.10
 - tensorflow-cpu
 - mediapipe
 - opencv-python
@@ -267,21 +277,22 @@ The package builds on previous work in gesture detection, particularly focused o
 
 If you use this package, please cite:
 
-Pouw, W., Yung, B., Shaikh, S., Trujillo, J., Rueda-Toicen, A., de Melo, G., Owoyele, B. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 0.0.5.0) [Computer software]. https://pypi.org/project/envisionhgdetector/
+Pouw, W., Yung, B., Shaikh, S., Trujillo, J., Rueda-Toicen, A., de Melo, G., Owoyele, B. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 3.02) [Computer software]. https://pypi.org/project/envisionhgdetector/
+
+### Datasets
+- Lücking et al. (2010). The Bielefeld Speech and Gesture Alignment Corpus (SaGA). LREC 2010.
+- Gu et al. (2025). The ECOLANG Multimodal Corpus. Scientific Data.
+- Koutsombogera & Vogel (2017). The MULTISIMO Multimodal Corpus. ICMI.
+- Bao et al. (2024). Editable Co-Speech Gesture Synthesis. Electronics.
+- Rohrer, P. (2022). TED M3D Labeling System. Dissertation.
+- Hensel, et al. (2025). A richly annotated dataset of co-speech hand gestures across diverse speaker contexts. Scientific Data.
+
+### Methods
+- Lugaresi et al. (2019). MediaPipe: A Framework for Perception Pipelines. arXiv.
+- Trujillo et al. (2019). Markerless Analysis of Kinematic Features. Behavior Research Methods.
+- Pouw & Dixon (2020). Gesture Networks with DTW. Discourse Processes.
 
 ### Additional Citations
-
-Zhubo dataset (used for training):
-* Bao, Y., Weng, D., & Gao, N. (2024). Editable Co-Speech Gesture Synthesis Enhanced with Individual Representative Gestures. Electronics, 13(16), 3315.
-
-SAGA dataset (used for training)
-* Lücking, A., Bergmann, K., Hahn, F., Kopp, S., & Rieser, H. (2010). The Bielefeld speech and gesture alignment corpus (SaGA). In LREC 2010 workshop: Multimodal corpora–advances in capturing, coding and analyzing multimodality.
-
-TED M3D:
-* Rohrer, Patrick. A temporal and pragmatic analysis of gesture-speech association: A corpus-based approach using the novel MultiModal MultiDimensional (M3D) labeling system. Diss. Nantes Université; Universitat Pompeu Fabra (Barcelone, Espagne), 2022.
-
-MediaPipe:
-* Lugaresi, C., Tang, J., Nash, H., McClanahan, C., Uboweja, E., Hays, M., ... & Grundmann, M. (2019). MediaPipe: A framework for building perception pipelines. arXiv preprint arXiv:1906.08172.
 
 Adapted CNN Training and inference code:
 * Pouw, W. (2024). EnvisionBOX modules for social signal processing (Version 1.0.0) [Computer software]. https://github.com/WimPouw/envisionBOX_modulesWP
@@ -289,7 +300,7 @@ Adapted CNN Training and inference code:
 Original Noddingpigeon Training code:
 * Yung, B. (2022). Nodding Pigeon (Version 0.6.0) [Computer software]. https://github.com/bhky/nodding-pigeon
 
-Some code I reused for creating ELAN files came from Cravotta et al., 2022:
+Some code we reused for creating ELAN files came from Cravotta et al., 2022:
 * Ienaga, N., Cravotta, A., Terayama, K., Scotney, B. W., Saito, H., & Busa, M. G. (2022). Semi-automation of gesture annotation by machine learning and human collaboration. Language Resources and Evaluation, 56(3), 673-700.
 
 ## Contributing

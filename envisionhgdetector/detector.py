@@ -8,11 +8,8 @@ import numpy as np
 import cv2
 import shutil
 import time
-from .config import Config
-from .model_cnn import GestureModel  # Renamed CNN model
-from .model_lightgbm import LightGBMGestureModel  # New LightGBM model
 from .model_combined import CombinedGestureModel, CombinedConfig  # Combined model
-from .preprocessing import VideoProcessor, create_sliding_windows
+from .cnn_preprocessing import VideoProcessor, create_sliding_windows
 from .utils import (
     create_segments, get_prediction_at_threshold, create_elan_file, 
     label_video, cut_video_by_segments, retrack_gesture_videos,
@@ -21,6 +18,8 @@ from .utils import (
     calc_volume_size, calc_holds
 )
 from .label_video_combined import label_video_combined  # Dual-panel for combined model
+from src.models.cnn import CNNGestureModel 
+from src.models.lightgbm import LightGBMGestureModel
 
 # Standard library imports
 import json
@@ -38,6 +37,7 @@ from scipy.spatial.distance import euclidean
 from typing import NamedTuple
 from dataclasses import dataclass
 import statistics
+import yaml
 
 # suppress warnings
 import logging
@@ -47,23 +47,24 @@ def apply_smoothing(series: pd.Series, window: int = 5) -> pd.Series:
     """Apply simple moving average smoothing to a series."""
     return series.rolling(window=window, center=True).mean().fillna(series)
     
-
 class GestureDetector:
     """Main class for gesture detection in videos - supports CNN, LightGBM, and Combined models."""
     
     def __init__(
         self,
         model_type: str = "cnn",  # "cnn", "lightgbm", or "combined"
-        motion_threshold: Optional[float] = None,
-        gesture_threshold: Optional[float] = None,
-        min_gap_s: Optional[float] = None,
-        min_length_s: Optional[float] = None,
+        motion_threshold: Optional[float] = 0.7,
+        gesture_threshold: Optional[float] = 0.7,
+        min_gap_s: Optional[float] = 0.5,
+        min_length_s: Optional[float] = 0.5,
         gesture_class_bias: float = 0.0,
         # Combined model specific thresholds
-        cnn_motion_threshold: Optional[float] = None,
-        cnn_gesture_threshold: Optional[float] = None,
-        lgbm_threshold: Optional[float] = None,
-        config: Optional[Config] = None
+        cnn_motion_threshold: Optional[float] = 0.7,
+        cnn_gesture_threshold: Optional[float] = 0.7,
+        lgbm_threshold: Optional[float] = 0.7,
+        # config
+        lightgbm_config: Optional[Dict] = "lgbm_default.yaml",
+        cnn_config: Optional[Dict] = "cnn_default.yaml",
     ):
         """
         Initialize detector with model type selection.
@@ -80,64 +81,58 @@ class GestureDetector:
             lgbm_threshold: Confidence threshold for LightGBM (combined model)
             config: Configuration object
         """
-        self.config = config or Config()
-        self.model_type = model_type.lower()
-        
         # Validate model type
+        self.model_type = model_type.lower()
         if self.model_type not in ["cnn", "lightgbm", "combined"]:
             raise ValueError(f"Unknown model type: {model_type}. Use 'cnn', 'lightgbm', or 'combined'")
         
         self.params = {
-            'motion_threshold': motion_threshold or self.config.default_motion_threshold,
-            'gesture_threshold': gesture_threshold or self.config.default_gesture_threshold,
-            'min_gap_s': min_gap_s or self.config.default_min_gap_s,
-            'min_length_s': min_length_s or self.config.default_min_length_s,
-            'gesture_class_bias': gesture_class_bias
+            'motion_threshold': motion_threshold,
+            'gesture_threshold': gesture_threshold,
+            'min_gap_s': min_gap_s,
+            'min_length_s': min_length_s,
+            'gesture_class_bias': gesture_class_bias,
+            'cnn_gesture_threshold': cnn_gesture_threshold,
+            'cnn_motion_threshold': cnn_motion_threshold,
+            'lgbm_threshold': lgbm_threshold
         }
-        
+        lightgbm_config = yaml.safe_load(lightgbm_config)
+        cnn_config = yaml.safe_load(cnn_config) 
+        self.video_processor = None
+        self.target_fps = 25.0
+
         # Initialize model based on type
         if self.model_type == "combined":
             # Create combined config with separate thresholds
-            combined_config = CombinedConfig(
-                cnn_weights_path=self.config.weights_path,
-                lgbm_weights_path=self.config.lightgbm_weights_path,
-                cnn_motion_threshold=cnn_motion_threshold or self.params['motion_threshold'],
-                cnn_gesture_threshold=cnn_gesture_threshold or self.params['gesture_threshold'],
-                lgbm_threshold=lgbm_threshold or self.params['motion_threshold'],
-                min_gap_s=self.params['min_gap_s'],
-                min_length_s=self.params['min_length_s']
-            )
-            self.model = CombinedGestureModel(combined_config)
-            self.video_processor = None
+            self.model = CombinedGestureModel({'lightgbm': lightgbm_config, 'cnn': cnn_config, 'params': self.params})
             print(f"Initialized Combined (CNN+LightGBM) gesture detector")
-            print(f"  CNN thresholds: motion={combined_config.cnn_motion_threshold}, gesture={combined_config.cnn_gesture_threshold}")
-            print(f"  LightGBM threshold: {combined_config.lgbm_threshold}")
+            
         elif self.model_type == "lightgbm":
-            self.model = LightGBMGestureModel(self.config)
+            self.model = LightGBMGestureModel(lightgbm_config)
             self.video_processor = None  # LightGBM handles its own processing
             print(f"Initialized LightGBM gesture detector")
         else:  # CNN
-            self.model = GestureModel(self.config)
-            self.video_processor = VideoProcessor(self.config.seq_length)
+            # self.model = GestureModel(self.config)
+            self.model = CNNGestureModel(cnn_config)
+            self.video_processor = VideoProcessor(cnn_config)
             print(f"Initialized CNN gesture detector")
-            
-        self.target_fps = 25.0
-    
-    def set_thresholds(
-        self,
-        cnn_motion_threshold: Optional[float] = None,
-        cnn_gesture_threshold: Optional[float] = None,
-        lgbm_threshold: Optional[float] = None
-    ):
-        """Update thresholds (combined model only)."""
-        if self.model_type == "combined":
-            self.model.set_thresholds(
-                cnn_motion_threshold=cnn_motion_threshold,
-                cnn_gesture_threshold=cnn_gesture_threshold,
-                lgbm_threshold=lgbm_threshold
-            )
-        else:
-            print(f"Warning: set_thresholds only applies to combined model")
+
+    # DO WE NEED THIS? MAYBE NOT IF WE PASS THRESHOLDS IN THE CONFIG DURING INITIALIZATION       
+    # def set_thresholds(
+    #     self,
+    #     cnn_motion_threshold: Optional[float] = None,
+    #     cnn_gesture_threshold: Optional[float] = None,
+    #     lgbm_threshold: Optional[float] = None
+    # ):
+    #     """Update thresholds (combined model only)."""
+    #     if self.model_type == "combined":
+    #         self.model.set_thresholds(
+    #             cnn_motion_threshold=cnn_motion_threshold,
+    #             cnn_gesture_threshold=cnn_gesture_threshold,
+    #             lgbm_threshold=lgbm_threshold
+    #         )
+    #     else:
+    #         print(f"Warning: set_thresholds only applies to combined model")
     
     def _create_windows(self, features: List[List[float]], seq_length: int, stride: int) -> np.ndarray:
         """Creates sliding windows from feature sequences (CNN only)."""
@@ -500,6 +495,7 @@ class GestureDetector:
                 gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
                 gesture_name = self.model.standardize_gesture_name(gesture_name)
                 
+                # Note: LightGBM is 2-class (NoGesture vs Gesture) right now, so we will always skip Move condition
                 # Convert LightGBM output to align witht he CNN format
                 if gesture_name == "NOGESTURE":
                     gesture_conf = 1-confidence # gesture confidence is the 1-no gesture confidence                   

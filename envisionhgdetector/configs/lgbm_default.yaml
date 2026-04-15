@@ -1,0 +1,43 @@
+# ============================================================================
+# LightGBM Best Configuration — from sweep run "skilled-sweep-26"
+# Bayesian search over 100 trials, best mean_balanced_accuracy: 75.5%
+# ============================================================================
+
+data:
+  dataset_name: world
+  feature_set: world # "basic" (41), "extended" (61), or "world" (92)
+  num_features: 92
+  n_engineered_features: 100
+  class_labels: [NoGesture, Gesture]
+  gesture_labels: ["Gesture"] 
+  source_labels: [NoGesture, Gesture, Move]
+  move_merge_target: NoGesture
+  window_size: 5
+  stride: 2
+
+model:
+  file_path: best_lightgbm_model.pkl # model in /pre_trained_models
+  num_leaves: 99
+  max_depth: 7
+  learning_rate: 0.025291886418289167
+  n_estimators: 2000
+  min_data_in_leaf: 51
+  feature_fraction: 0.6353523081343048
+  bagging_fraction: 0.718017412636869
+  bagging_freq: 5
+  lambda_l1: 0.3735175994269182
+  lambda_l2: 0.002875191070970131
+  class_weight_power: 0.9902281548263824
+  objective: multiclass
+  boosting_type: gbdt
+  metric: multi_logloss
+  is_unbalance: true
+
+training:
+  early_stopping_rounds: 100
+  min_iterations: 200
+  seed: 42
+
+validation:
+  n_folds: 3
+  strategy: speaker_independent

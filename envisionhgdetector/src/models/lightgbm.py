@@ -1,21 +1,18 @@
 # envisionhgdetector/model_lightgbm.py
 """
 LightGBM-based gesture detection model.
-Updated for Config 13 (World landmarks, 100 features, 2-class).
 
 Classes: NoGesture, Gesture (Move merged into NoGesture)
 Features: 100 engineered features from 92 world landmarks
 Window: 5 frames
 """
-
 import cv2
 import mediapipe as mp
 import numpy as np
 import joblib
 import os
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, Tuple
 from collections import deque
-from .config import Config
 
 # Upper body landmark indices (23 landmarks, matching training)
 UPPER_BODY_INDICES = list(range(23))
@@ -37,25 +34,21 @@ class LightGBMGestureModel:
     2-class model: NoGesture vs Gesture (Move merged into NoGesture)
     """
     
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: dict):
         """Initialize LightGBM model with configuration."""
-        self.config = config or Config()
-        
-        # Default parameters (will be overwritten by model file)
-        self.window_size = 5
-        self.n_features = 100
-        self.gesture_labels = ("NoGesture", "Gesture")
-        
+        self.config = config
+        self.window_size = config.get("data").get("window_size")
+        self.n_features = config.get("data").get("n_engineered_features")
+        self.class_labels = config.get("data").get("class_labels")
+        self.confidence_threshold = 0.5
+
         # Find and load model
-        model_path = self._find_model_path()
-        if model_path:
+        model_path = config.get("model").get("file_path")
+        if os.path.exists(model_path):
             self.load_model(model_path)
         else:
-            print("Warning: LightGBM model not found. Call load_model() manually.")
-            self.model = None
-            self.scaler = None
-            self.label_encoder = None
-        
+            raise FileNotFoundError(f"LightGBM model file not found at {model_path}. Please provide a valid path.")
+                
         # Initialize MediaPipe Holistic for world landmarks
         self.mp_holistic = mp.solutions.holistic
         self.holistic = self.mp_holistic.Holistic(
@@ -76,31 +69,7 @@ class LightGBMGestureModel:
         self.right_fingers_buffer = deque(maxlen=self.window_size)  # Dummy for old code
         self.includes_fingers = True  # Always true for Config 13
         self.expected_features = self.n_features  # Alias
-        
-        # Confidence threshold
-        self.confidence_threshold = 0.5
-    
-    def _find_model_path(self) -> Optional[str]:
-        """Find the LightGBM model file."""
-        # Try config path first
-        if hasattr(self.config, 'lightgbm_weights_path') and self.config.lightgbm_weights_path:
-            if os.path.exists(self.config.lightgbm_weights_path):
-                return self.config.lightgbm_weights_path
-        
-        # Try default paths
-        possible_paths = [
-            os.path.join(os.path.dirname(__file__), 'model', 'best_lightgbm_model.pkl'),
-            os.path.join(os.path.dirname(__file__), 'model', 'lightgbm_gesture_model_v2.pkl'),
-            os.path.join(os.path.dirname(__file__), 'model', 'lightgbm_gesture_model_v1.pkl'),
-            os.path.join(os.path.dirname(__file__), 'best_lightgbm_model.pkl'),
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                return path
-        
-        return None
-    
+            
     def load_model(self, model_path: str):
         """Load LightGBM model from joblib file."""
         print(f"Loading LightGBM model from {model_path}")
@@ -118,10 +87,10 @@ class LightGBMGestureModel:
             # LabelEncoder sorts alphabetically, so classes_ = ['Gesture', 'NoGesture']
             # This means: index 0 = Gesture, index 1 = NoGesture
             if self.label_encoder is not None:
-                self.gesture_labels = tuple(self.label_encoder.classes_)
+                self.class_labels = tuple(self.label_encoder.classes_)
             else:
                 # Fallback: alphabetical order (sklearn default)
-                self.gesture_labels = ("Gesture", "NoGesture")
+                self.class_labels = ("Gesture", "NoGesture")
             
             # Update buffer size
             self.landmarks_buffer = deque(maxlen=self.window_size)
@@ -129,7 +98,7 @@ class LightGBMGestureModel:
             print(f"✓ LightGBM model loaded successfully!")
             print(f"  Window size: {self.window_size} frames")
             print(f"  Features: {self.n_features}")
-            print(f"  Classes (model order): {self.gesture_labels}")
+            print(f"  Classes (model order): {self.class_labels}")
             
         except Exception as e:
             raise RuntimeError(f"Failed to load LightGBM model from {model_path}: {str(e)}")
@@ -139,7 +108,7 @@ class LightGBMGestureModel:
         Extract world landmarks from frame using MediaPipe Holistic.
         
         Returns:
-            Array of 92 features (23 landmarks × 4: x, y, z, visibility)
+            Array of 92 features (23 landmarks x 4: x, y, z, visibility)
             or None if pose not detected
         """
         # Convert BGR to RGB
@@ -163,10 +132,10 @@ class LightGBMGestureModel:
         
         return np.array(features, dtype=np.float32)
     
+    # UPDATE PENDING
     def extract_sequence_features(self, sequence: np.ndarray) -> np.ndarray:
         """
         Extract 100 features from a sequence of world landmarks.
-        MATCHES TRAINING EXACTLY!
         
         Args:
             sequence: Array of shape (window_size, 92) - world landmarks
@@ -336,50 +305,6 @@ class LightGBMGestureModel:
         
         return np.array(features, dtype=np.float32)
     
-    def predict(self, features: np.ndarray) -> np.ndarray:
-        """
-        Run inference on input features.
-        
-        Args:
-            features: Input features of shape (batch_size, 100) or (100,)
-            
-        Returns:
-            Probabilities with shape (batch_size, num_classes)
-        """
-        if self.model is None:
-            raise RuntimeError("Model not loaded. Call load_model() first.")
-        
-        if features.ndim == 1:
-            features = features.reshape(1, -1)
-        
-        # Scale features
-        features_scaled = self.scaler.transform(features)
-        
-        # Get predictions - handle both Booster and Classifier objects
-        if hasattr(self.model, 'predict_proba'):
-            # LGBMClassifier - returns probabilities directly
-            probabilities = self.model.predict_proba(features_scaled)
-        else:
-            # Raw Booster trained with multiclass objective
-            # predict() already returns probabilities with shape (n_samples, n_classes)
-            raw_output = self.model.predict(features_scaled)
-            probabilities = np.array(raw_output)
-            
-            # Ensure 2D output
-            if probabilities.ndim == 1:
-                # Single sample, check if it's already probabilities
-                if len(probabilities) == len(self.gesture_labels):
-                    probabilities = probabilities.reshape(1, -1)
-                else:
-                    # Binary single value - apply sigmoid
-                    gesture_probs = 1.0 / (1.0 + np.exp(-probabilities))
-                    probabilities = np.column_stack([1 - gesture_probs, gesture_probs])
-        
-        if probabilities.ndim == 1:
-            probabilities = probabilities.reshape(1, -1)
-            
-        return probabilities
-    
     def extract_features_from_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
         """
         Extract features from a single frame for real-time prediction.
@@ -435,9 +360,53 @@ class LightGBMGestureModel:
         if confidence < self.confidence_threshold:
             return "NoGesture", 1.0 - probs[1]  # Return NoGesture confidence
         
-        gesture_label = self.gesture_labels[class_idx]
+        class_label = self.class_labels[class_idx]
         
-        return gesture_label, confidence
+        return class_label, confidence
+    
+    def predict(self, features: np.ndarray) -> np.ndarray:
+        """
+        Run inference on input features.
+        
+        Args:
+            features: Input features of shape (batch_size, 100) or (100,)
+            
+        Returns:
+            Probabilities with shape (batch_size, num_classes)
+        """
+        if self.model is None:
+            raise RuntimeError("Model not loaded. Call load_model() first.")
+        
+        if features.ndim == 1:
+            features = features.reshape(1, -1)
+        
+        # Scale features
+        features_scaled = self.scaler.transform(features)
+        
+        # Get predictions - handle both Booster and Classifier objects
+        if hasattr(self.model, 'predict_proba'):
+            # LGBMClassifier - returns probabilities directly
+            probabilities = self.model.predict_proba(features_scaled)
+        else:
+            # Raw Booster trained with multiclass objective
+            # predict() already returns probabilities with shape (n_samples, n_classes)
+            raw_output = self.model.predict(features_scaled)
+            probabilities = np.array(raw_output)
+            
+            # Ensure 2D output
+            if probabilities.ndim == 1:
+                # Single sample, check if it's already probabilities
+                if len(probabilities) == len(self.class_labels):
+                    probabilities = probabilities.reshape(1, -1)
+                else:
+                    # Binary single value - apply sigmoid
+                    gesture_probs = 1.0 / (1.0 + np.exp(-probabilities))
+                    probabilities = np.column_stack([1 - gesture_probs, gesture_probs])
+        
+        if probabilities.ndim == 1:
+            probabilities = probabilities.reshape(1, -1)
+            
+        return probabilities
     
     def reset_buffer(self):
         """Clear the landmark buffer."""

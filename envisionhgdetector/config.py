@@ -22,10 +22,10 @@ class Config:
     
     # CNN model filename (in envisionhgdetector/model/)
     # Set to None to use default based on feature_set
-    cnn_model_filename: Optional[str] = None
+    cnn_model_filename: Optional[str] = "best_cnn_model.h5"
     
     # LightGBM model filename (in envisionhgdetector/model/)
-    lightgbm_model_filename: Optional[str] = "R2_best_lightgbm_model_config13.pkl"
+    lightgbm_model_filename: Optional[str] = "best_lightgbm_model.pkl"
     
     # ========================================================================
     # GESTURE LABELS

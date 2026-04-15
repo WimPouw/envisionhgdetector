@@ -1,0 +1,42 @@
+# ============================================================================
+# CNN Best Configuration — from sweep run "resilient-sweep-15"
+# Bayesian search over 79 trials, best mean_balanced_accuracy: 64.5%
+# ============================================================================
+
+data:
+  dataset_name: world
+  feature_set: world # "basic" (41), "extended" (61), or "world" (92)
+  num_features: 92
+  seq_length: 25 # Window size for classification
+  target_fps: 25
+  class_labels: [NoGesture, Gesture, Move]
+  gesture_labels: ["Gesture", "Move"]
+
+# Set file_path to None to use default based on feature_set
+model:
+  file_path: best_cnn_model.h5 # model in /pre_trained_models
+  conv_filters: [32, 64, 128]
+  conv_kernel_size: 3
+  pool_size: 2
+  dense_units: 256
+  dropout_rate: 0.42760104483381983
+  spatial_dropout_rate: 0.1
+  l2_weight: 0.00021410684753061997
+  preprocessing: enhanced
+  noise_stddev: 0.025
+
+training:
+  learning_rate: 5.363389933203921e-05
+  optimizer: adam
+  clipnorm: 1.0
+  batch_size: 64
+  steps_per_epoch: 2000
+  epochs: 70
+  early_stopping_patience: 12
+  move_oversample_factor: 2.2967165028402663
+  label_smoothing: 0.05
+  seed: 42
+
+validation:
+  n_folds: 3
+  strategy: speaker_independent
