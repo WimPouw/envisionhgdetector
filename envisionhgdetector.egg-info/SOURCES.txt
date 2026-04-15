@@ -13,7 +13,6 @@ envisionhgdetector/model_cnn.py
 envisionhgdetector/model_combined.py
 envisionhgdetector/model_lightgbm.py
 envisionhgdetector/preprocessing.py
-envisionhgdetector/test.py
 envisionhgdetector/test_config.py
 envisionhgdetector/utils.py
 envisionhgdetector.egg-info/PKG-INFO
