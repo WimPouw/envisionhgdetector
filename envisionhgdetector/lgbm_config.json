@@ -1,0 +1,41 @@
+{
+  "data/npz_path": "data/landmarks_world_92_structured_v3.npz",
+  "data/dataset_name": "world",
+  "data/num_features": 92,
+  "data/n_engineered_features": 100,
+  "data/class_labels": [
+    "NoGesture",
+    "Gesture"
+  ],
+  "data/source_labels": [
+    "NoGesture",
+    "Gesture",
+    "Move"
+  ],
+  "data/move_merge_target": "NoGesture",
+  "data/window_size": 5,
+  "data/stride": 2,
+  "model/num_leaves": 92,
+  "model/max_depth": 5,
+  "model/learning_rate": 0.0331947013748239,
+  "model/n_estimators": 2000,
+  "model/min_data_in_leaf": 20,
+  "model/feature_fraction": 0.7096987334384297,
+  "model/bagging_fraction": 0.6178564673148303,
+  "model/bagging_freq": 5,
+  "model/lambda_l1": 0.0014308729181823452,
+  "model/lambda_l2": 0.15763230141279108,
+  "model/class_weight_power": 0.9624940453861448,
+  "model/objective": "multiclass",
+  "model/boosting_type": "gbdt",
+  "model/metric": "multi_logloss",
+  "model/is_unbalance": true,
+  "training/early_stopping_rounds": null,
+  "training/min_iterations": 200,
+  "training/seed": 42,
+  "validation/n_folds": 3,
+  "validation/strategy": "speaker_independent",
+  "n_trees_actual": 4000,
+  "n_samples": 861284,
+  "training_time_seconds": 3812.0315566062927
+}
