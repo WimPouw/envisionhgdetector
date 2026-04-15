@@ -13,7 +13,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name="envisionhgdetector",
-    version="3.0.2",
+    version="3.0.3",
     author="Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele",
     author_email="wim.pouw@donders.ru.nl",
     description="Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.",
