@@ -24,13 +24,13 @@ Currently, the detector can identify:
 - Movement patterns ("Move"; this is only trained on SAGA and SAGA++, because these are annotated movements that cannot be classified as gestures, ex: nose scratching); it will therefore be an unreliable category perhaps
 
 ## Installation
-Consider creating a conda environment first (conda create -n envision python==3.10; conda activate envision).
+Consider creating a conda environment first.
 ```bash
 conda create -n envision python==3.10
 conda activate envision
 (envision) pip install envisionhgdetector
 ```
-otherwise install like this (Note: Ensure python compatibility)
+otherwise install like this (Note: Ensure python = 3.10)
 ```bash
 pip install envisionhgdetector
 ```
@@ -114,15 +114,22 @@ detector.prepare_gesture_dashboard(
 # Then run: python app.py (in output folder)
 ```
 
-## Features CNN
+## Features 
 
-The detector uses 29 features extracted from MediaPipe Holistic, including:
+### CNN (41, 61, 92)
+
+We engineer 29 features using pose data from MediaPipe Holistic, including:
 - Head rotations
 - Hand positions and movements
 - Body landmark distances
 - Normalized feature metrics
 
-## LightGBM Model (100 features):
+Then we create 3 feature sets:
+- Basic: 41 -> 29 + 6 visiblity + 6 movement-distinguishing features
+- Extended: 61 -> 41 + 20 hand shape features
+- World: 92 -> World Landmarks data from Mediapipe: [x,y,z visibility]
+
+### LightGBM (100 features):
 - Key joint positions (shoulders, elbows, wrists)
 - Velocities
 - Movement ranges and patterns
@@ -259,7 +266,7 @@ The detector generates three types of output in your specified output folder:
 The package builds on previous work in gesture detection, particularly focused on using MediaPipe Holistic for comprehensive feature extraction. The CNN model is designed to handle complex temporal patterns in the extracted features.
 
 ## Requirements
-- Python 3.10+
+- Python 3.10
 - tensorflow-cpu
 - mediapipe
 - opencv-python
