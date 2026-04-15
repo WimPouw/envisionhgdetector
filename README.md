@@ -1,13 +1,13 @@
 # EnvisionHGDetector: Co-speech Hand Gesture Detection Python Package
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
-<div align="center">Wim Pouw (wim.pouw@donders.ru.nl), Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele</div>
+<div align="center">Wim Pouw (w.pouw@tilburguniversity.edu), Sharjeel Shaikh (sharjeel.shaikh@guest.hpi.de), Bosco Yung, James Trujillo, Gerard de Melo, Babajide Owoyele (babajide.owoyele@hpi.de)</div>
 
 <div align="center">
 <img src="images/ex.gif" alt="Hand Gesture Detection Demo">
 </div>
 
 ## Info
-Please go to [UsingEnvisionHGDetector](https://envisionbox.org/embedded_UsingEnvisionHGdetector_package.html) for notebook tutorial on how to use this package. This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a pre-trained convolutional neural network (CNN)/ LightGBM classifier. We plan to update this package with better predicting network in the near future. For now, feel free to experiment. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by rates will be much superior to this gesture coder.
+Please go to [UsingEnvisionHGDetector](https://envisionbox.org/embedded_UsingEnvisionHGdetector_package.html) for notebook tutorial on how to use this package. This package provides a straightforward way to detect hand gestures in a variety of videos using a combination of MediaPipe Holistic features and a pre-trained convolutional neural network (CNN)/ LightGBM classifier. If your looking to just quickly generate isolate some gestures into elan, this is the package for you. Do note that annotation by human annotators will still be superior as compared to this gesture coder.
 
 The package performs:
 
@@ -21,7 +21,7 @@ The package performs:
 
 Currently, the detector can identify:
 - Just a general hand gesture, ("Gesture" vs. "NoGesture")
-- Movement patterns ("Move"; this is only trained on SAGA and SAGA++, because these are annotated movements that cannot be classified as gestures, ex: nose scratching); it will therefore be an unreliable category perhaps
+- Movement patterns ("Move"; this is only trained on SAGA, SAGA++, and Multisimo, because these are annotated movements that cannot be classified as gestures, ex: nose scratching); it will therefore be a more unreliable category.
 
 ## Installation
 Consider creating a conda environment first.
@@ -300,7 +300,7 @@ Adapted CNN Training and inference code:
 Original Noddingpigeon Training code:
 * Yung, B. (2022). Nodding Pigeon (Version 0.6.0) [Computer software]. https://github.com/bhky/nodding-pigeon
 
-Some code I reused for creating ELAN files came from Cravotta et al., 2022:
+Some code we reused for creating ELAN files came from Cravotta et al., 2022:
 * Ienaga, N., Cravotta, A., Terayama, K., Scotney, B. W., Saito, H., & Busa, M. G. (2022). Semi-automation of gesture annotation by machine learning and human collaboration. Language Resources and Evaluation, 56(3), 673-700.
 
 ## Contributing
