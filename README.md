@@ -277,7 +277,7 @@ The package builds on previous work in gesture detection, particularly focused o
 
 If you use this package, please cite:
 
-Pouw, W., Yung, B., Shaikh, S., Trujillo, J., Rueda-Toicen, A., de Melo, G., Owoyele, B. (2024). envisionhgdetector: Hand Gesture Detection Using a Convolutional Neural Network (Version 3.02) [Computer software]. https://pypi.org/project/envisionhgdetector/
+Pouw, W., Shaikh, S., Trujillo, J., Yung, B.,   Rueda-Toicen, A., de Melo, G., Owoyele, B. (2026). EnvisionHGDetector: Co-speech Hand Gesture Detection Python Package (Version 3.04) [Computer software]. https://pypi.org/project/envisionhgdetector/
 
 ### Datasets
 - Lücking et al. (2010). The Bielefeld Speech and Gesture Alignment Corpus (SaGA). LREC 2010.
@@ -304,4 +304,4 @@ Some code we reused for creating ELAN files came from Cravotta et al., 2022:
 * Ienaga, N., Cravotta, A., Terayama, K., Scotney, B. W., Saito, H., & Busa, M. G. (2022). Semi-automation of gesture annotation by machine learning and human collaboration. Language Resources and Evaluation, 56(3), 673-700.
 
 ## Contributing
-Feel free to help improve this code. As this is primarily aimed at making automatic gesture detection easily accessible for research purposes, contributions focusing on usability and reliability are especially welcome (happy to collaborate, just reach out to wim.pouw@donders.ru.nl).
+Feel free to help improve this code. As this is primarily aimed at making automatic gesture detection easily accessible for research purposes, contributions focusing on usability and reliability are especially welcome (happy to collaborate, just reach out to w.pouw@tilburguniversity.edu).
