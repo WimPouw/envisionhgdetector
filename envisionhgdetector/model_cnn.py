@@ -30,9 +30,9 @@ class Config:
     conv_filters: Tuple[int, int, int] = (48, 96, 192)
     conv_kernel_size: int = 3
     pool_size: int = 2
-    dense_units: int = 128
-    dropout_rate: float = 0.5
-    l2_weight: float = 0.001
+    dense_units: int = 256
+    dropout_rate: float = 0.36
+    l2_weight: float = 0.0002
     
     # Preprocessing
     preprocessing: str = "basic"
@@ -146,9 +146,9 @@ def make_model(
     seq_length: int = 25,
     preprocessing: str = "basic",
     conv_filters: Tuple[int, int, int] = (48, 96, 192),
-    dense_units: int = 128,
-    dropout_rate: float = 0.5,
-    l2_weight: float = 0.001
+    dense_units: int = 256,
+    dropout_rate: float = 0.36,
+    l2_weight: float = 0.0002
 ) -> Model:
     """
     Create the gesture detection CNN model with residual blocks.

@@ -22,10 +22,10 @@ class Config:
     
     # CNN model filename (in envisionhgdetector/model/)
     # Set to None to use default based on feature_set
-    cnn_model_filename: Optional[str] = None
+    cnn_model_filename: Optional[str] = "cnn_default.h5"
     
     # LightGBM model filename (in envisionhgdetector/model/)
-    lightgbm_model_filename: Optional[str] = "R2_best_lightgbm_model_config13.pkl"
+    lightgbm_model_filename: Optional[str] = "lightgbm_default.pkl"
     
     # ========================================================================
     # GESTURE LABELS
@@ -45,9 +45,9 @@ class Config:
     
     # Model architecture (for world landmarks - best config)
     conv_filters: Tuple[int, int, int] = (48, 96, 192)
-    dense_units: int = 128
-    dropout_rate: float = 0.5
-    l2_weight: float = 0.001
+    dense_units: int = 256
+    dropout_rate: float = 0.36
+    l2_weight: float = 0.0002
     preprocessing: str = "basic"
     
     # ========================================================================

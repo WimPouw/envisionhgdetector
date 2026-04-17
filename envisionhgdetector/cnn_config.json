@@ -1,0 +1,38 @@
+{
+  "data/npz_path": "data/landmarks_world_92_structured_v3.npz",
+  "data/dataset_name": "world",
+  "data/num_features": 92,
+  "data/seq_length": 25,
+  "data/target_fps": 25,
+  "data/class_labels": [
+    "NoGesture",
+    "Gesture",
+    "Move"
+  ],
+  "model/conv_filters": [
+    48,
+    96,
+    192
+  ],
+  "model/conv_kernel_size": 3,
+  "model/pool_size": 2,
+  "model/dense_units": 256,
+  "model/dropout_rate": 0.3613062754089064,
+  "model/spatial_dropout_rate": 0.1,
+  "model/l2_weight": 0.0002028512631088536,
+  "model/preprocessing": "basic",
+  "model/noise_stddev": 0.025,
+  "training/learning_rate": 6.3630976098299e-05,
+  "training/optimizer": "adam",
+  "training/clipnorm": 1.0,
+  "training/batch_size": 32,
+  "training/steps_per_epoch": 2000,
+  "training/epochs": 70,
+  "training/early_stopping_patience": null,
+  "training/move_oversample_factor": 2.38669518473576,
+  "training/label_smoothing": 0.05,
+  "training/val_stride": 5,
+  "training/seed": 42,
+  "validation/n_folds": 3,
+  "validation/strategy": "speaker_independent"
+}

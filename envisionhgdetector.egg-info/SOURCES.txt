@@ -21,7 +21,5 @@ envisionhgdetector.egg-info/dependency_links.txt
 envisionhgdetector.egg-info/requires.txt
 envisionhgdetector.egg-info/top_level.txt
 envisionhgdetector/dashboard/app.py
-envisionhgdetector/model/R2_CNN_world_best_config18.h5
-envisionhgdetector/model/R2_best_lightgbm_model_config13.pkl
-envisionhgdetector/model/lightgbm_gesture_model_v1.pkl
-envisionhgdetector/model/model_weights_20250224_103340.h5
+envisionhgdetector/model/cnn_default.h5
+envisionhgdetector/model/lightgbm_default.pkl

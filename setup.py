@@ -13,9 +13,9 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name="envisionhgdetector",
-    version="3.0.1",
-    author="Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele",
-    author_email="wim.pouw@donders.ru.nl",
+    version="3.0.4",
+    author="Wim Pouw, Sharjeel Ahmed Shaikh, James Trujillo, Bosco Yung,  Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele",
+    author_email="w.pouw@tilburguniversity.edu",
     description="Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -32,6 +32,6 @@ setup(
     install_requires=required,
     include_package_data=True,
     package_data={
-        'envisionhgdetector': ['model/*.h5'],
+        'envisionhgdetector': ['model/*.h5', 'model/*.pkl'],
     },
 )
