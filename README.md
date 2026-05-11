@@ -1,6 +1,6 @@
 # EnvisionHGDetector: Co-speech Hand Gesture Detection Python Package
 A Python package for detecting and classifying hand gestures using MediaPipe Holistic and deep learning.
-<div align="center">Wim Pouw (wim.pouw@donders.ru.nl), Bosco Yung, Sharjeel Shaikh, James Trujillo, Gerard de Melo, Babajide Owoyele</div>
+<div align="center">Wim Pouw (w.pouw@tilburguniversity.edu), Sharjeel Shaikh, James Trujillo, Bosco Yung, Gerard de Melo, Babajide Owoyele</div>
 
 <div align="center">
 <img src="images/ex.gif" alt="Hand Gesture Detection Demo">
