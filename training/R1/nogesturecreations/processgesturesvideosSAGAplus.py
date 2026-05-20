@@ -2,6 +2,7 @@ import os
 import glob
 import subprocess
 import random
+import re
 from moviepy import VideoFileClip
 
 def find_no_gesture_intervals(gestures, duration):
@@ -36,25 +37,37 @@ def find_no_gesture_intervals(gestures, duration):
     
     return gaps
 
+def consume_gap(remaining_gaps, chosen_start, chosen_end):
+    """Remove the chosen no-gesture interval from the remaining gaps
+        This ensures no duplicates"""
+    new_gaps = []
+    for gap in remaining_gaps:
+        if chosen_start >= gap['end_time'] or chosen_end <= gap['start_time']:
+            new_gaps.append(gap)  # unused gap
+        else:
+            # remove the chosen interval from gap
+            if gap['start_time'] < chosen_start:
+                new_gaps.append({'start_time': gap['start_time'], 'end_time': chosen_start})
+            if chosen_end < gap['end_time']:
+                new_gaps.append({'start_time': chosen_end, 'end_time': gap['end_time']})
+    return new_gaps
+
 def find_matching_no_gesture_clip(gaps, gesture_duration):
     """Find a random gap that can accommodate the gesture duration"""
-    valid_gaps = [gap for gap in gaps 
+    valid_gaps = [gap 
+                  for gap in gaps 
                   if (gap['end_time'] - gap['start_time']) >= gesture_duration]
     
     if not valid_gaps:
         return None
-        
+    
     gap = random.choice(valid_gaps)
     max_start = gap['end_time'] - gesture_duration
-    
-    # Pick a random start time within the gap
     random_start = random.uniform(gap['start_time'], max_start)
-    return {
-        'start_time': random_start,
-        'end_time': random_start + gesture_duration
-    }
+    
+    return {'start_time': random_start, 'end_time': random_start + gesture_duration}
 
-def parse_gesture_file(file_path):
+def parse_gesture_file(file_path): # file is txt
     gestures = []
     seen_intervals = set()  # Track unique time intervals
     
@@ -70,7 +83,7 @@ def parse_gesture_file(file_path):
                     end_time = float(parts[3])
                     gesture_type = parts[4]  # e.g., "beat"
                     
-                    # Skip annotations with duplicate start and end times
+                    # Skip annotations with duplicate start and end times -- why would there be duplicates in the first place
                     interval_key = (start_time, end_time)
                     if interval_key in seen_intervals:
                         continue
@@ -109,111 +122,68 @@ def extract_clip(input_file, output_file, start_time, end_time):
         print(f"Error extracting clip: {e}")
         return False
 
-def process_video(txt_file, video_dir, output_dir):
+
+def process_video(annotation_file, video_dir, gesture_dir, no_gesture_dir):
     # Get the base filename without extension
-    base_name = os.path.splitext(os.path.basename(txt_file))[0]
-    
-    # Try different naming patterns for video files
-    potential_video_files = []
-    
+    base_name = os.path.splitext(os.path.basename(annotation_file))[0]
     # Pattern 1: If annotation file is "GrobV9.txt", look for "V9K2_left.mp4"
-    if base_name.startswith("Grob"):
-        video_id = base_name[4:]  # Remove "Grob" prefix
-        potential_video_files.append(os.path.join(video_dir, f"{video_id}K2_left.mp4"))
-    
     # Pattern 2: Direct match - if annotation is "V9.txt", look for "V9K2_left.mp4"
-    potential_video_files.append(os.path.join(video_dir, f"{base_name}K2_left.mp4"))
-    
     # Pattern 3: Extract just the V number (V9 from GrobV9)
-    import re
-    match = re.search(r'([V|v]\d+)', base_name)
-    if match:
-        video_id = match.group(1)
-        potential_video_files.append(os.path.join(video_dir, f"{video_id}K2_left.mp4"))
-    
-    # Try each potential video file
-    video_file = None
-    for potential_file in potential_video_files:
-        if os.path.exists(potential_file):
-            video_file = potential_file
-            break
-            
-    # If no matching file was found, list available files for debugging
-    if video_file is None:
-        print(f"No matching video file found for {txt_file}")
-        print(f"Looked for: {', '.join(potential_video_files)}")
-        print(f"Available files in {video_dir}:")
-        for file in os.listdir(video_dir):
-            if file.endswith(".mp4"):
-                print(f"  - {file}")
+    match = re.search(r'([V|v]\d+)', base_name) # Note if .txt can be part of path. ensure new code matches old code behaviour
+    if not match:
+        print(f"Base name {base_name} does not match expected pattern.")
         return
     
-    if not os.path.exists(video_file):
-        print(f"No matching video file found for {txt_file}")
-        print(f"Looked for: {video_file}")
+    base_name = f"{match.group(1)}K2"
+    video_file = os.path.join(video_dir, f"{base_name}_left.mp4")
+    
+    if not os.path.exists(video_file): # Note: confirm this matches previous code behavior
+        print(f"Video file not found for annotation {annotation_file}: {video_file}")
         return
-    
-    # Create output directories if they don't exist
-    gesture_dir = os.path.join(output_dir, 'Gesture')
-    no_gesture_dir = os.path.join(output_dir, 'NoGesture')
-    os.makedirs(gesture_dir, exist_ok=True)
-    os.makedirs(no_gesture_dir, exist_ok=True)
-    
-    # Get video duration
+
+    # Get video duration -- other files use ffmpeg -- try consistency
     with VideoFileClip(video_file) as video:
         duration = video.duration
     
     # Parse gestures from the annotation file
-    gestures = parse_gesture_file(txt_file)
-    print(f"Found {len(gestures)} unique gestures in {txt_file}")
-    
+    gestures = parse_gesture_file(annotation_file)
+    print(f"Found {len(gestures)} unique gestures in {annotation_file}")
     # Find gaps where no gestures occur
     gaps = find_no_gesture_intervals(gestures, duration)
-    
-    # Extract video_id from the matched video file path for consistent naming
-    video_basename = os.path.basename(video_file)
-    video_id = os.path.splitext(video_basename)[0].replace('_left', '')
-    
-    for idx, gesture in enumerate(gestures):
-        gesture_duration = gesture['end_time'] - gesture['start_time']
-        
-        if gesture['end_time'] <= duration:
-            # Sanitize gesture type for filename
-            safe_type = "".join(c if c.isalnum() else "_" for c in gesture['type'])
-            gesture_output = os.path.join(gesture_dir, 
-                                         f"SAGAplus_{video_id}_{idx:04d}_{safe_type}.mp4")
-            
-            if not os.path.exists(gesture_output):
-                print(f"Extracting gesture {gesture['type']} from {base_name}: "
-                      f"{gesture['start_time']:.2f}s - {gesture['end_time']:.2f}s")
-                
-                if extract_clip(video_file, gesture_output, 
-                               gesture['start_time'], gesture['end_time']):
-                    print(f"Successfully extracted gesture: {gesture_output}")
-                    
-                    # Find and extract matching no-gesture clip
-                    no_gesture = find_matching_no_gesture_clip(gaps, gesture_duration)
-                    if no_gesture:
-                        no_gesture_output = os.path.join(no_gesture_dir,
-                                                        f"SAGAplus_{video_id}_{idx:04d}_no_gesture.mp4")
-                        
-                        print(f"Extracting matching no-gesture clip: "
-                              f"{no_gesture['start_time']:.2f}s - {no_gesture['end_time']:.2f}s")
-                        
-                        if extract_clip(video_file, no_gesture_output,
-                                       no_gesture['start_time'], no_gesture['end_time']):
-                            print(f"Successfully extracted no-gesture clip: {no_gesture_output}")
-                        else:
-                            print(f"Failed to extract no-gesture clip")
-                    else:
-                        print(f"Could not find suitable no-gesture interval of duration {gesture_duration:.2f}s")
-                else:
-                    print(f"Failed to extract gesture clip")
 
+    extracted_gesture_clips = []
+    for idx, gesture in enumerate(gestures):
+        gesture_end_time = gesture['end_time']
+        gesture_start_time = gesture['start_time']
+        gesture_duration = gesture_end_time - gesture_start_time
+        if not gesture_end_time <= duration:
+            print(f"Gesture {gesture['type']} extends beyond video duration.")
+            continue
+        # Sanitize gesture type for filename
+        safe_type = "".join(c if c.isalnum() else "_" for c in gesture['type'])
+        gesture_output = os.path.join(gesture_dir, f"SAGAplus_{base_name}_{idx:04d}_{safe_type}.mp4")
+        # if clip exists or extraction is successful
+        if os.path.exists(gesture_output) or extract_clip(video_file, gesture_output, gesture_start_time, gesture_end_time):
+            print(f"Gesture clip already exist, skipping: {gesture_output}")
+            extracted_gesture_clips.append({
+                'gesture_idx': idx,
+                'duration': gesture_duration,
+                'output': gesture_output
+            })
+
+    for gesture_clip in extracted_gesture_clips:
+        no_gesture_clip = find_matching_no_gesture_clip(gaps, gesture_clip['duration'])
+        if no_gesture_clip:
+            gaps = consume_gap(gaps, no_gesture_clip['start_time'], no_gesture_clip['end_time'])
+            no_gesture_clip_output_path = os.path.join(no_gesture_dir, f"SAGAplus_{base_name}_{gesture_clip['gesture_idx']:04d}_no_gesture.mp4")
+            extract_clip(video_file, no_gesture_clip_output_path, no_gesture_clip['start_time'], no_gesture_clip['end_time'])
+        else:
+            print(f"Could not find suitable no-gesture interval for gesture index {gesture_clip['gesture_idx']} with duration {gesture_clip['duration']:.2f}s")
+        
 def main():
-    annotation_dir = "./annotations"
-    video_dir = "./VideosCentered"
-    output_dir = "./VideosCut"
+    annotation_dir = "./annotations" # assumes .txt files
+    video_dir = "./VideosCentered" # assumes .mp4 files
+    output_dir = "./SAGAplusClips"
     
     # Print available files in directories for debugging
     print(f"Checking directories:")
@@ -222,6 +192,7 @@ def main():
         print(f"  - Contains {len(os.listdir(annotation_dir))} files")
     else:
         print(f"  - Directory doesn't exist!")
+        return
     
     print(f"Video directory ({video_dir}):")
     if os.path.exists(video_dir):
@@ -230,17 +201,15 @@ def main():
         print(f"  - First few video files: {video_files[:5] if video_files else 'None'}")
     else:
         print(f"  - Directory doesn't exist!")
-    
-    if not os.path.exists(annotation_dir):
-        print(f"Input directory {annotation_dir} does not exist!")
-        return
-        
-    if not os.path.exists(video_dir):
-        print(f"Video directory {video_dir} does not exist!")
         return
     
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
+    # Create output directories if they don't exist
+    gesture_dir = os.path.join(output_dir, 'Gesture')
+    no_gesture_dir = os.path.join(output_dir, 'NoGesture')
+    os.makedirs(gesture_dir, exist_ok=True)
+    os.makedirs(no_gesture_dir, exist_ok=True)
     
     # Find all txt files in the annotations directory
     txt_files = glob.glob(f"{annotation_dir}/*.txt")
@@ -251,7 +220,7 @@ def main():
     print(f"Found {len(txt_files)} text files to process")
     for txt_file in txt_files:
         print(f"\nProcessing: {txt_file}")
-        process_video(txt_file, video_dir, output_dir)
+        process_video(txt_file, video_dir, gesture_dir, no_gesture_dir)
 
 if __name__ == "__main__":
     main()
