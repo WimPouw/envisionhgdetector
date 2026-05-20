@@ -3,6 +3,10 @@ import shutil
 import re
 import subprocess
 import sys
+from utils import check_ffmpeg
+import pandas as pd
+import random
+from utils import *
 
 # Mapping of lexemes to gesture types based on your provided data
 LEXEME_TO_TYPE = {
@@ -88,14 +92,6 @@ LEXEME_TO_TYPE = {
     "knock": "iconic",
     "wave": "iconic"
 }
-
-def check_ffmpeg():
-    """Check if ffmpeg is available for video processing."""
-    try:
-        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
-        return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
 
 def get_video_dimensions(video_path):
     """Get video dimensions using ffprobe."""
@@ -206,9 +202,6 @@ def rename_and_split_files(source_dir, destination_dir, file_mapping_log=None):
         destination_dir: Directory where renamed files will be copied
         file_mapping_log: Optional file to log the mapping of old to new names
     """
-    
-    if not os.path.exists(destination_dir):
-        os.makedirs(destination_dir)
     
     # Check if ffmpeg is available for video splitting
     ffmpeg_available = check_ffmpeg()
@@ -331,7 +324,7 @@ def preview_renaming(source_dir, num_examples=10):
                 print()
                 count += 1
 
-def extract_no_gesture_segments(csv_file, full_videos_dir, output_dir, target_duration=2.0):
+def extract_no_gesture_segments(csv_file, full_videos_dir, output_dir):
     """
     Extract no-gesture segments from full videos based on CSV annotations.
     
@@ -340,17 +333,11 @@ def extract_no_gesture_segments(csv_file, full_videos_dir, output_dir, target_du
         full_videos_dir: Directory containing full videos
         output_dir: Directory to save extracted no-gesture segments
         target_duration: Target duration for each no-gesture segment in seconds
-    """
-    import pandas as pd
-    import random
-    
+    """    
     if not check_ffmpeg():
         print("ERROR: ffmpeg is required for video extraction. Please install ffmpeg first.")
         return
-    
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    
+
     # Read CSV data
     try:
         df = pd.read_csv(csv_file)
@@ -359,7 +346,7 @@ def extract_no_gesture_segments(csv_file, full_videos_dir, output_dir, target_du
         print(f"Error reading CSV file: {e}")
         return
     
-    # Video mapping from CSV ID to actual file names
+    # Video mapping from CSV ID to actual file names -- just adding mp4? why not do it directly
     video_mapping = {
         "1Politician_id1_AOC_vid1_speechCongress2019": "1Politician_id1_AOC_vid1_speechCongress2019.mp4",
         "1Politician_id3_Boebert_vid1": "1Politician_id3_Boebert_vid1.mp4",
@@ -391,16 +378,12 @@ def extract_no_gesture_segments(csv_file, full_videos_dir, output_dir, target_du
         video_gestures = video_gestures.sort_values('start_t')
         
         # Get video duration using ffprobe
-        try:
-            cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_entries', 'format=duration', video_path]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            import json
-            probe_data = json.loads(result.stdout)
-            video_duration = float(probe_data['format']['duration'])
-            print(f"  Video duration: {video_duration:.2f} seconds")
-        except Exception as e:
-            print(f"  Error getting video duration: {e}")
+        
+        video_duration = get_video_info(video_path)['duration']
+        if video_duration == 0:
+            print(f"  Warning: Could not determine duration for {video_path}, skipping...")
             continue
+        print(f"  Video duration: {video_duration:.2f} seconds")
         
         # Find no-gesture gaps
         gaps = []
@@ -545,9 +528,7 @@ def extract_no_gesture_segments(csv_file, full_videos_dir, output_dir, target_du
     print(f"\nExtraction complete! {len(extraction_log)} segments extracted.")
     print(f"Log saved to: {log_file}")
 
-if __name__ == "__main__":
-    import sys
-    
+def extract_clips_gesres(corpus_dir, vars):
     print("GESres Dataset Tool")
     print("=" * 30)
     print("1. Rename and split gesture videos")
@@ -557,8 +538,7 @@ if __name__ == "__main__":
     
     if choice == "1":
         # Original functionality
-        SOURCE_DIRECTORY = "./01Gesture_videos/"
-        DESTINATION_DIRECTORY = "./EnvisionRenamed/"
+        SOURCE_DIRECTORY = f"{corpus_dir}/01Gesture_videos/"
         LOG_FILE = "file_renaming_log.csv"
         
         if os.path.exists(SOURCE_DIRECTORY):
@@ -568,7 +548,7 @@ if __name__ == "__main__":
             response = input("\nDo you want to proceed with renaming and splitting? (y/n): ")
             
             if response.lower() == 'y':
-                rename_and_split_files(SOURCE_DIRECTORY, DESTINATION_DIRECTORY, LOG_FILE)
+                rename_and_split_files(SOURCE_DIRECTORY, vars['output_dir'], LOG_FILE)
             else:
                 print("Operation cancelled.")
         else:
@@ -576,10 +556,8 @@ if __name__ == "__main__":
     
     elif choice == "2":
         # New no-gesture extraction functionality
-        CSV_FILE = "./GESRes_dataset.csv"
-        FULL_VIDEOS_DIR = "./02Full_videos/"
-        OUTPUT_DIR = "./EnvisionNoGestureSegments/"
-        TARGET_DURATION = 2.0  # Duration in seconds for each no-gesture segment
+        CSV_FILE = f"{corpus_dir}/GESRes_dataset.csv"
+        FULL_VIDEOS_DIR = f"{corpus_dir}/02Full_videos/"
         
         if not os.path.exists(CSV_FILE):
             print(f"Error: CSV file '{CSV_FILE}' not found.")
@@ -589,8 +567,7 @@ if __name__ == "__main__":
             print(f"Error: Full videos directory '{FULL_VIDEOS_DIR}' not found.")
             sys.exit(1)
         
-        print(f"Extracting no-gesture segments of {TARGET_DURATION} seconds each...")
-        extract_no_gesture_segments(CSV_FILE, FULL_VIDEOS_DIR, OUTPUT_DIR, TARGET_DURATION)
+        extract_no_gesture_segments(CSV_FILE, FULL_VIDEOS_DIR, vars['output_dir'])
         
     else:
         print("Invalid choice. Please run the script again and choose 1 or 2.")
