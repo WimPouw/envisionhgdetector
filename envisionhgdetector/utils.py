@@ -1550,6 +1550,7 @@ def compute_kinematic_features(
         left_total = np.sum(left_speeds) * (len(visibility) / max(left_visible_frames, 1))
         right_total = np.sum(right_speeds) * (len(visibility) / max(right_visible_frames, 1))
     else:
+        print("No visibility data provided, using raw speeds")
         left_total = np.sum(left_speeds)
         right_total = np.sum(right_speeds)
     
@@ -1692,8 +1693,10 @@ def compute_gesture_kinematics_dtw(
     num_gestures = len(gesture_data)
     dtw_dist = np.zeros((num_gestures, num_gestures))
     
-    # Compute DTW distances
+    progress_bar = tqdm(total=num_gestures, desc="Computing DTW Distances", unit="frames")
     for i in range(num_gestures):
+        # print(f" Processing gesture {i+1}/{num_gestures}")
+        progress_bar.update(1)
         for j in range(i + 1, num_gestures):
             try:
                 result = shape_dtw(
@@ -1749,6 +1752,7 @@ def compute_gesture_kinematics_dtw(
     
     np.savetxt(matrix_path, dtw_dist, delimiter=',')
     features_df.to_csv(features_path, index=False)
+    progress_bar.close()
     
     return dtw_dist, gesture_names, features_df
 

@@ -38,6 +38,7 @@ from scipy.spatial.distance import euclidean
 from typing import NamedTuple
 from dataclasses import dataclass
 import statistics
+from tqdm import tqdm
 
 # suppress warnings
 import logging
@@ -457,6 +458,7 @@ class GestureDetector:
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        progress_bar = tqdm(total=total_frames, desc="Processing Video Frames", unit="frames")
         
         print(f"Processing video with LightGBM: {fps:.1f}fps, {total_frames} frames")
         
@@ -525,14 +527,10 @@ class GestureDetector:
                 })
             
             frame_number += 1
-            
-            # Progress update
-            if frame_number % 500 == 0:
-                progress = frame_number / total_frames * 100
-                print(f"Progress: {progress:.1f}%")
+            progress_bar.update(1)
         
         cap.release()
-        
+        progress_bar.close()
         # Convert to DataFrame
         results_df = pd.DataFrame(predictions)
         
