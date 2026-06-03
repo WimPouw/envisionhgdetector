@@ -4,25 +4,25 @@ import pandas as pd
 import glob as glob
 from pathlib import Path
 from utils import ClipInfo, return_file_output_path, get_video_info
-from corpus import Corpus
+from corpora.corpus import Corpus
 
 class TedM3D(Corpus):
     def __init__(self, name: str, directory: str, defaults: dict):
         super().__init__(name, directory, defaults)
 
     def extract(self):
-        annotation_files = self.directory.glob('*.csv')
-        logging.info(f"Corpus {self.name} - Found {len(list(annotation_files))} annotation files in {self.directory}")
+        logging.info(f"Corpus {self.name}: Starting extraction process")
+        annotation_files = list(self.directory.glob('*.csv'))
+        logging.info(f"Corpus {self.name} - Found {len(annotation_files)} annotation files in {self.directory}")
         
-        for annotation_file in annotation_files:
-            self.process_video(annotation_file)
-            break
+        for idx, annotation_file in enumerate(annotation_files):
+            self.process_annotation_file(annotation_file)
+            print(f"Corpus {self.name} - Processed {idx + 1}/{len(annotation_files)} annotation files")
 
     def extract_gesture_clips(self, annotation_file_path: Path, video_duration: float, base_name: str):
         columns = ['tier', 'empty', 'start_segment', 'end_segment', 'label']
         df = pd.read_csv(str(annotation_file_path))
         df.columns = columns
-        df = sorted(df, key=lambda x: x['start_segment'])
         df = df[df['label'] == 'stroke'].copy()
 
         extracted_gestures = []
@@ -36,14 +36,14 @@ class TedM3D(Corpus):
                 or not gesture_end > gesture_start:
                 continue
 
+            gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, idx, self.gesture_label, None)
             clip_info = ClipInfo(
                 id=idx,
                 label=self.gesture_label,
                 start=gesture_start,
-                end=gesture_end
+                end=gesture_end,
+                output_path=gesture_output_path,
             ) 
-            gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, clip_info.id, clip_info.label, clip_info.type)
-            clip_info.output_path = gesture_output_path
             extracted_gestures.append(clip_info)
             
         return extracted_gestures
@@ -71,4 +71,4 @@ class TedM3D(Corpus):
 
         all_clips = gesture_clips + no_gesture_clips
         self.save_clips_info(all_clips, base_name, self.name)
-        self.render_clips(video_file_path, all_clips, video_duration, base_name)
+        self.render_clips(video_file_path, all_clips, video_duration)

@@ -1,7 +1,7 @@
 import os
 import logging
 from pathlib import Path
-from corpus import Corpus
+from corpora.corpus import Corpus
 from utils import ClipInfo, return_file_output_path, get_video_info
 
 class Multisimo(Corpus):
@@ -9,12 +9,13 @@ class Multisimo(Corpus):
         super().__init__(name, directory, defaults)
 
     def extract(self):
-        video_list = self.directory.glob(f"*.mp4")
-        logging.info(f"Corpus {self.name}: Found {len(list(video_list))} videos to process")
+        logging.info(f"Corpus {self.name}: Starting extraction process")
+        video_list = list(self.directory.glob(f"*.mp4"))
+        logging.info(f"Corpus {self.name}: Found {len(video_list)} videos to process")
         
-        for video_path in video_list:
+        for idx, video_path in enumerate(video_list):
             self.process_annotation_file(video_path)
-            break
+            print(f"Corpus {self.name} - Processed {idx + 1}/{len(video_list)} videos")
 
     def extract_gesture_clips(self, annotation_file: Path, video_duration: float, base_name: str):
         """Parse the gesture annotation file and return list of actions"""
@@ -47,7 +48,7 @@ class Multisimo(Corpus):
                             )
                             extracted_clips.append(clip_info)
                     except ValueError as e:
-                        print(f"Error parsing line: {line.strip()}, Error: {e}")
+                        logging.error(f"Corpus {self.name}: Error parsing line: {line.strip()}, Error: {e}")
                         continue
         return extracted_clips
 
@@ -65,10 +66,10 @@ class Multisimo(Corpus):
 
         gaps = self.find_gaps_between_gestures(gesture_clips, video_duration)
         if not gaps:
-            logging.error(f"Corpus: {self.name} - No valid gaps between gestures found for video {video_path}")
+            logging.error(f"Corpus {self.name}: No valid gaps between gestures found for video {video_path}")
             return
         no_gesture_clips = self.extract_no_gesture_clips(gesture_clips, gaps, base_name)
 
         all_clips = gesture_clips + no_gesture_clips
         self.save_clips_info(all_clips, base_name, self.name)
-        self.render_clips(video_path, all_clips, video_duration, base_name)
+        self.render_clips(video_path, all_clips, video_duration)

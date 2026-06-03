@@ -3,21 +3,22 @@ import re
 import logging
 from pathlib import Path
 from utils import ClipInfo, return_file_output_path, get_video_info
-from corpus import Corpus
+from corpora.corpus import Corpus
 
 class SagaPlus(Corpus):
     def __init__(self, name: str, directory: Path, defaults: dict):
         super().__init__(name, directory, defaults)
         self.videos_folder = self.directory / 'VideosCentered'
-        self.annotations_folder = self.directory / 'Annotations'
+        self.annotations_folder = self.directory / 'annotations'
 
     def extract(self):
-        txt_files = self.annotations_folder.glob("*.txt")
+        logging.info(f"Corpus {self.name}: Starting extraction process")
+        txt_files = list(self.annotations_folder.glob("*.txt"))
         logging.info(f"Corpus {self.name} - Found {len(txt_files)} text files to process")
             
-        for txt_file in txt_files:
+        for idx, txt_file in enumerate(txt_files):
             self.process_annotation_file(txt_file)
-            break
+            print(f"Corpus {self.name} - Processed {idx + 1}/{len(txt_files)} annotation files")
 
     def extract_gesture_clips(self, annotation_file_path: str, video_duration: float, base_name: str): # file is txt
         extracted_gestures = []
@@ -43,16 +44,16 @@ class SagaPlus(Corpus):
                         
                         seen_intervals.add(interval_key)
                         
+                        gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, idx, self.gesture_label, gesture_type_clean)
                         if end_time > start_time and start_time >= 0 and end_time <= video_duration:  # Convert video duration to milliseconds
                             clip_info = ClipInfo(
                                 id=idx,
                                 label=self.gesture_label,
                                 type=gesture_type_clean,
                                 start=start_time,
-                                end=end_time
+                                end=end_time,
+                                output_path=gesture_output_path
                             )
-                            gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, clip_info.id, clip_info.label, clip_info.type)
-                            clip_info.output_path = gesture_output_path
                             extracted_gestures.append(clip_info)
 
                 except (ValueError, IndexError) as e:
@@ -89,4 +90,4 @@ class SagaPlus(Corpus):
 
         all_clips = gesture_clips + no_gesture_clips
         self.save_clips_info(all_clips, base_name, self.name)
-        self.render_clips(video_file_path, all_clips, video_duration, base_name)
+        self.render_clips(video_file_path, all_clips, video_duration)

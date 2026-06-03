@@ -1,9 +1,10 @@
 import os
+import re
 import csv
 import logging
 from pathlib import Path
 from utils import ClipInfo, return_file_output_path, get_video_info
-from corpus import Corpus
+from corpora.corpus import Corpus
 
 class Saga(Corpus):
     def __init__(self, name: str, directory: Path, defaults: dict):
@@ -12,12 +13,13 @@ class Saga(Corpus):
         self.annotations_folder = self.directory / 'OriginalCodings'
 
     def extract(self):
-        video_list = self.videos_folder.glob(f'*.mp4')
+        logging.info(f"Corpus {self.name}: Starting extraction process")
+        video_list = list(self.videos_folder.glob(f'*.mp4'))
         logging.info(f"Corpus {self.name}: Found {len(video_list)} videos to process")
         
-        for video_path in video_list:
+        for idx, video_path in enumerate(video_list):
             self.process_annotation_file(video_path)
-            break
+            print(f"Corpus {self.name} - Processed {idx + 1}/{len(video_list)} videos")
 
     def extract_gesture_clips(self, annotation_file_path: Path, video_duration: float, base_name: str):
         """Parse the CSV annotation file and return list of gestures"""
@@ -56,6 +58,7 @@ class Saga(Corpus):
                     gesture_type = row[gesture_col].strip()
                     safe_gesture_type = self.clean_gesture_name(gesture_type)
                     
+                    gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, idx, self.gesture_label, safe_gesture_type)
                     if gesture_type  \
                     and end_time > start_time \
                     and start_time >= 0 \
@@ -66,9 +69,8 @@ class Saga(Corpus):
                             type=safe_gesture_type,
                             start=start_time,
                             end=end_time,
+                            output_path=gesture_output_path
                         )
-                        gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, clip_info.id, clip_info.label, clip_info.type)
-                        clip_info.output_path = gesture_output_path
                         extracted_gestures.append(clip_info)
 
         return extracted_gestures
@@ -76,6 +78,11 @@ class Saga(Corpus):
     def process_annotation_file(self, video_path: Path):
         """Process a single video file with its corresponding annotation file"""
         base_name = video_path.stem
+        match = re.search(r'(\D+)(\d+)', base_name)
+        if match:
+            prefix, number = match.groups()
+            base_name =  f"{prefix}{int(number)}"  # This handles V07 -> V7 conversion. While maintaining V10 as is.
+
         annotation_file_path = self.annotations_folder / f"{base_name}.csv"
         
         if not os.path.exists(annotation_file_path):

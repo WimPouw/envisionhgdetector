@@ -86,7 +86,7 @@ def split_video_horizontally(input_path: Path, output_left: Path, output_right: 
         print(f"  Error: {e}")
         return False
 
-def return_file_output_path(output_dir: Path, corpus_name: str, video_name: str, unique_id: str, label: str, label_type: str) -> Path:
+def return_file_output_path(output_dir: Path, corpus_name: str, video_name: str, unique_id: str, label: str, label_type: str=None) -> Path:
     """Construct output file path for a clip"""
     sanitized_corpus_name = sanitize_filename_component(corpus_name)
     sanitized_video_name = sanitize_filename_component(video_name)
@@ -148,7 +148,7 @@ def get_video_info(video_path: Path):
             '-select_streams', 'v:0', 
             '-show_entries', 'stream=duration,r_frame_rate', 
             '-of', 'json', 
-            video_path.name
+            str(video_path)
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True)

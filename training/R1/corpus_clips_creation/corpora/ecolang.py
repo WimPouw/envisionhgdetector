@@ -1,26 +1,24 @@
 import os
-import glob
-import subprocess
-import random
-from corpus import Corpus
-from utils import *
-
+import logging
+from pathlib import Path
+from corpora.corpus import Corpus
+from utils import ClipInfo, get_video_info, return_file_output_path
 
 class Ecolang(Corpus):
     def __init__(self, name: str, directory: Path, defaults: dict):
         super().__init__(name, directory, defaults)
 
-    def extract(self):    
-        txt_files =  self.directory.glob("*final.txt")
+    def extract(self):
+        logging.info(f"Corpus {self.name}: Starting extraction process")
+        txt_files =  list(self.directory.glob("*final.txt"))
         if not txt_files:
-            print(f"No .txt files found in {self.directory}")
+            logging.error(f"Corpus {self.name} - No .txt files found in {self.directory}")
             return
             
-        print(f"Found {len(txt_files)} text files to process")
-        for txt_file in txt_files:
-            print(f"\nProcessing: {txt_file}")
+        logging.info(f"Corpus {self.name} - Found {len(txt_files)} text files to process")
+        for idx, txt_file in enumerate(txt_files):
             self.process_annotation_file(txt_file)
-            break
+            print(f"Corpus {self.name} - Processed {idx + 1}/{len(txt_files)} annotation files")
         
 
     def extract_gesture_clips(self, annotation_file_path: Path, video_duration: float, base_name: str): # file is txt
@@ -31,12 +29,12 @@ class Ecolang(Corpus):
 
         video_id = base_name[:4]
         if video_id not in offsets:
-            print(f"No offset found for video {video_id}")
+            logging.error(f"Corpus {self.name} - No offset found for video {video_id}")
             return
         
         extracted_gestures = []
         with open(annotation_file_path, 'r', encoding='utf-8') as f:
-            for line in f:
+            for idx, line in enumerate(f):
                 parts = [p.strip() for p in line.strip().split('\t') if p.strip()]
                 try:
                     if len(parts) >= 3:
@@ -45,25 +43,25 @@ class Ecolang(Corpus):
                         start_time = (int(float(parts[1])) + offsets[video_id]) / 1000.0  # Convert to seconds
                         end_time = (int(float(parts[2])) + offsets[video_id]) / 1000.0    # Convert to seconds
                         
+                        gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, idx, self.gesture_label, safe_type)
                         if end_time > start_time and start_time >= 0 and end_time <= video_duration:
                             clip_info = ClipInfo(
-                                id=len(extracted_gestures),
+                                id=idx,
                                 label=self.gesture_label,
                                 type=safe_type,
                                 start=start_time,
-                                end=end_time
+                                end=end_time,
+                                output_path=gesture_output_path
                             )
-                            gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, clip_info.id, clip_info.label, clip_info.type)
-                            clip_info.output_path = gesture_output_path
                             extracted_gestures.append(clip_info)
 
                 except (ValueError, IndexError) as e:
-                    print(f"Corpus: {self.name} - Error parsing line: {line.strip()} - {e}")
+                    logging.error(f"Corpus: {self.name} - Error parsing line: {line.strip()} - {e}")
                     continue
         return extracted_gestures
 
     def process_annotation_file(self, annotation_file: Path):
-        base_name = annotation_file.replace('_final', '')
+        base_name = annotation_file.stem.replace('_final', '')
         video_file_path = self.directory / f"{base_name}_speakerview480480.mp4"
         if not os.path.exists(video_file_path):
             logging.error(f"Corpus:{self.name} - No matching video file found for {annotation_file}")
@@ -80,4 +78,4 @@ class Ecolang(Corpus):
 
         all_clips = gesture_clips + no_gesture_clips
         self.save_clips_info(all_clips, base_name, self.name)
-        self.render_clips(video_file_path, all_clips, video_duration, base_name)
+        self.render_clips(video_file_path, all_clips, video_duration)

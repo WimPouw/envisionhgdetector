@@ -1,10 +1,11 @@
 import yaml
 import importlib
 import logging
+import json
 from datetime import datetime
 from pathlib import Path
-import multiprocessing as mp
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from clips_metadata import ClipsMetadata
 
 from utils import check_ffmpeg
 """
@@ -35,18 +36,24 @@ def main():
     if not defaults:
         raise ValueError("Defaults section is missing in the configuration file.")
     
-    output_base_dir = Path(config.get('output_directory', 'CorpusClips'))
+    output_base_dir = Path(defaults.get('output_directory', 'CorpusClips'))
     output_base_dir.mkdir(exist_ok=True)
-
+    
     current_session = datetime.now().strftime("%Y%m%d_%H%M%S")
     logging_folder = output_base_dir / 'logs'
     logging_folder.mkdir(exist_ok=True)
     logging_file_path = logging_folder / f'corpus_clips_creation_{current_session}.log'
-    logging.basicConfig(level=logging.INFO, filename=logging_file_path, format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(funcName)s:%(lineno)d - %(message)s',)
+    logging.basicConfig(level=logging.INFO, filename=logging_file_path, format='%(levelname)s - %(filename)s:%(funcName)s:%(lineno)d - %(message)s',)
 
     gesture_output_dir = output_base_dir / defaults.get('gesture_output_directory', 'GestureClips')
     no_gesture_output_dir = output_base_dir / defaults.get('no_gesture_output_directory', 'NoGestureClips')
     move_output_dir = output_base_dir / defaults.get('move_output_directory', 'MoveClips')
+    clips_info_dir = output_base_dir / defaults.get('clips_info_directory', 'ClipsInfo')
+    clips_info_dir.mkdir(exist_ok=True)
+    defaults['gesture_output_directory'] = str(gesture_output_dir)
+    defaults['no_gesture_output_directory'] = str(no_gesture_output_dir)
+    defaults['move_output_directory'] = str(move_output_dir)
+    defaults['clips_info_directory'] = str(clips_info_dir)
 
     gesture_output_dir.mkdir(exist_ok=True)
     no_gesture_output_dir.mkdir(exist_ok=True)
@@ -57,6 +64,8 @@ def main():
         raise ValueError("Corpora section is missing or empty in the configuration file.")
     
     corpora_instances = load_corpora(corpora, defaults)
+    if len(corpora_instances) == 0:
+        raise ValueError("No valid corpora instances were created. Please check the configuration file and ensure that at least one corpus is enabled and correctly specified.")
 
     # 1 worker per corpus - Parallel Processing
     with ThreadPoolExecutor(max_workers=len(corpora_instances)) as executor:
@@ -69,6 +78,14 @@ def main():
             except Exception as e:
                 logging.error(f"Faced Exception: {e} while processing corpus: {future_to_corpus[future].name}")
                 print(f"Faced Exception: {e} while processing corpus: {future_to_corpus[future].name}")
+
+    # After all corpora are processed, generate metadata
+    clips_metadata = ClipsMetadata(clips_info_dir)
+    metadata = clips_metadata.save_metadata()
+    with open(output_base_dir / "clips_metadata.json", "w+") as f:
+        json.dump(metadata, f, indent=4)
+
+    print(f"Processing completed. Metadata saved to {output_base_dir / 'clips_metadata.json'}")
 
 def parse_code_file(code_file: str) -> tuple[str, str]:
     if not code_file or '.' not in code_file:

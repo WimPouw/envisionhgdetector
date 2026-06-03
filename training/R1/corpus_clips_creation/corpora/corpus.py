@@ -12,6 +12,7 @@ class Corpus(ABC):
         self.name = name
         self.directory = directory
         self.decreasing_factor = defaults.get('decreasing_factor', 0.9)
+        self.clips_info_dir = Path(defaults.get('clips_info_directory', 'ClipsInfo'))
         self.gesture_output_dir = Path(defaults.get('gesture_output_directory', 'GestureClips'))
         self.no_gesture_output_dir = Path(defaults.get('no_gesture_output_directory', 'NoGestureClips'))
         self.move_output_dir = Path(defaults.get('move_output_directory', 'MoveClips'))
@@ -49,16 +50,19 @@ class Corpus(ABC):
             extract_clip_with_padding(video_file_path, clip.output_path, clip.start, clip.end, video_duration, padding=1.0)
 
     def save_clips_info(self, clips: List[ClipInfo], base_name: str, corpus_name: str):
-        with open(self.gesture_output_dir / f'{corpus_name}_{base_name}_clips_info.json', 'w') as f:
-            for clip in clips:
-                json.dump({
-                    'id': clip.id,
-                    'label': clip.label,
-                    'type': clip.type,
-                    'start': clip.start,
-                    'end': clip.end,
-                    'output_path': str(clip.output_path)
-                }, f)
+        all_clips_info = []
+        for clip in clips:
+            all_clips_info.append({
+                'id': clip.id,
+                'label': clip.label,
+                'type': clip.type,
+                'start': clip.start,
+                'end': clip.end,
+                'output_path': str(clip.output_path)
+            })
+        print(self.clips_info_dir, self.clips_info_dir.exists())
+        with open(self.clips_info_dir / f'{corpus_name}_{base_name}_clips_info.json', 'w+') as f:
+            json.dump(all_clips_info, f, indent=4)
 
     def consume_gap(self, gaps: List[GapInfo], chosen_start: float, chosen_end: float):
         """Remove the chosen interval from the gaps
@@ -75,7 +79,7 @@ class Corpus(ABC):
                     new_gaps.append(GapInfo(start=chosen_end, end=gap.end))
         return new_gaps
     
-    def find_matching_no_gesture_clip(self, id: int, gaps: list, gesture_duration: float):
+    def find_matching_no_gesture_clip(self, id: int, gaps: list, gesture_duration: float, output_path: Path, type: str=None):
         """Find a gap that can accommodate the gesture clip duration
             If no gaps are long enough, reduce the required duration by a factor and check again
             If no gaps are long enough, return None"""
@@ -98,18 +102,19 @@ class Corpus(ABC):
             label=self.no_gesture_label,
             start=random_start,
             end=random_start + gesture_duration,
+            output_path=output_path,
+            type=type
             )
     
     def extract_no_gesture_clips(self, gesture_clips: List[ClipInfo], gaps: List[GapInfo], base_name: str):
         # No-gesture clips are extracted in process_video after finding valid gaps
         no_gesture_clips = []
         for idx, clip in enumerate(gesture_clips):
-            no_gesture_clip = self.find_matching_no_gesture_clip(idx, gaps, (clip.end - clip.start))
+            no_gesture_output = return_file_output_path(self.no_gesture_output_dir, self.name, base_name, idx, self.no_gesture_label) 
+            no_gesture_clip = self.find_matching_no_gesture_clip(idx, gaps, (clip.end - clip.start), no_gesture_output)
             if no_gesture_clip is None:
                 logging.error(f"Corpus: {self.name} - Could not find suitable non-gesture interval for gesture index {clip.id} with duration {(clip.end - clip.start):.2f}s")
             gaps = self.consume_gap(gaps, no_gesture_clip.start, no_gesture_clip.end)
-            no_gesture_output = return_file_output_path(self.no_gesture_output_dir, self.name, base_name, idx, self.no_gesture_label, no_gesture_clip.type) 
-            no_gesture_clip.output_path = no_gesture_output
             no_gesture_clips.append(no_gesture_clip)
 
         return no_gesture_clips

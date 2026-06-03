@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from corpus import Corpus
+from corpora.corpus import Corpus
 from utils import ClipInfo, return_file_output_path, get_video_info
 
 class Zhubo(Corpus):
@@ -9,10 +9,12 @@ class Zhubo(Corpus):
         super().__init__(name, directory, defaults)
     
     def extract(self):
-        video_list = self.directory.glob('*.h264.mp4')  
-        for video_path in video_list:
+        logging.info(f"Corpus {self.name}: Starting extraction process")
+        video_list = list(self.directory.glob('*.h264.mp4'))
+        logging.info(f"Corpus {self.name}: Found {len(video_list)} videos to process")
+        for idx, video_path in enumerate(video_list):
             self.process_annotation_file(video_path)
-            break
+            print(f"Corpus {self.name} - Processed {idx + 1}/{len(video_list)} videos")
 
     def extract_gesture_clips(self, annotation_file: Path, video_duration: float, base_name: str, fps: float):  
         with open(annotation_file, 'r') as f:
@@ -54,7 +56,7 @@ class Zhubo(Corpus):
             gesture_base_id = "unknown"
         
         # Get the actions file path
-        annotation_file = video_file_path.with_suffix('.actions.json')
+        annotation_file = self.directory / f"{base_name}.actions.json"
         
         # Get video information
         video_info = get_video_info(video_file_path)
@@ -68,10 +70,10 @@ class Zhubo(Corpus):
         gesture_clips = self.extract_gesture_clips(annotation_file, video_duration, base_name, fps)
         gaps = self.find_gaps_between_gestures(gesture_clips, video_duration)
         if not gaps:
-            logging.error(f"Corpus: {self.name} - No valid gaps between gestures found for video {video_file_path}")
+            logging.error(f"Corpus {self.name}: No valid gaps between gestures found for video {video_file_path}")
             return
         no_gesture_clips = self.extract_no_gesture_clips(gesture_clips, gaps, base_name)
 
         all_clips = gesture_clips + no_gesture_clips
         self.save_clips_info(all_clips, base_name, self.name)
-        self.render_clips(video_file_path, all_clips, video_duration, base_name)
+        self.render_clips(video_file_path, all_clips, video_duration)
