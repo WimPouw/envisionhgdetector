@@ -1,0 +1,46 @@
+defaults:
+  output_directory: C:/Users/User/Desktop/zipped~/CorpusClips
+  gesture_label: Gesture
+  gesture_output_directory: GestureClips
+  no_gesture_label: NoGesture
+  no_gesture_output_directory: NoGestureClips
+  move_label: Move
+  move_output_directory: MoveClips
+  decreasing_factor: 0.9 # Factor to decrease clip duration for each subsequent attempt when trying to find valid clips
+  # Later add checkpoints?
+  
+corpora:
+  - name: TedM3D
+    directory: C:/Users/User/Desktop/zipped~/M3D_TED/Processed
+    module: corpora.tedm3d.TedM3D
+    enabled: true
+
+  - name: Ecolang
+    directory: C:/Users/User/Desktop/zipped~/ECOLANG/trainingraw/
+    module: corpora.ecolang.Ecolang
+    enabled: false
+
+  - name: SAGA
+    directory: C:/Users/User/Desktop/zipped~/SAGA
+    module: corpora.saga.SAGA
+    enabled: false
+
+  - name: SAGAplus
+    directory: C:/Users/User/Desktop/zipped~/SAGA+
+    module: corpora.saga_plus.SAGAPlus
+    enabled: false
+    
+  - name: Multisimo
+    directory: C:/Users/User/Desktop/zipped~/Multisimo/videos_annotations
+    module: corpora.multisimo.Multisimo
+    enabled: false
+
+  - name: GESRES
+    directory: GESRES/01Gesture_videos/
+    module: corpora.gesres.GESRES 
+    enabled: false
+
+  - name: ZHUBO
+    directory: C:/Users/User/Desktop/zipped~/Zhubo/zhubo_split_9
+    module: corpora.zhubo.ZHUBO
+    enabled: false

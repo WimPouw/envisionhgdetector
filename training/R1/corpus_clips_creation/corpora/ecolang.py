@@ -1,0 +1,83 @@
+import os
+import glob
+import subprocess
+import random
+from corpus import Corpus
+from utils import *
+
+
+class Ecolang(Corpus):
+    def __init__(self, name: str, directory: Path, defaults: dict):
+        super().__init__(name, directory, defaults)
+
+    def extract(self):    
+        txt_files =  self.directory.glob("*final.txt")
+        if not txt_files:
+            print(f"No .txt files found in {self.directory}")
+            return
+            
+        print(f"Found {len(txt_files)} text files to process")
+        for txt_file in txt_files:
+            print(f"\nProcessing: {txt_file}")
+            self.process_annotation_file(txt_file)
+            break
+        
+
+    def extract_gesture_clips(self, annotation_file_path: Path, video_duration: float, base_name: str): # file is txt
+        offsets = {"ad00": 106404, "ad01": 112595, "ad02": 72247, "ad03": 113641,
+           "ad04": 124305, "ad05": 178690, "ad06": 63204, "ad07": 57814,
+           "ad09": 96351, "ad10": 176260, "ad11": 106606, "ad12": 149395,
+           "ad14": 14011, "ad15": 9900, "ad16": 36607, "ad17": 40368}
+
+        video_id = base_name[:4]
+        if video_id not in offsets:
+            print(f"No offset found for video {video_id}")
+            return
+        
+        extracted_gestures = []
+        with open(annotation_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                parts = [p.strip() for p in line.strip().split('\t') if p.strip()]
+                try:
+                    if len(parts) >= 3:
+                        gesture_type = parts[0]
+                        safe_type = "".join(c if c.isalnum() else "_" for c in gesture_type)
+                        start_time = (int(float(parts[1])) + offsets[video_id]) / 1000.0  # Convert to seconds
+                        end_time = (int(float(parts[2])) + offsets[video_id]) / 1000.0    # Convert to seconds
+                        
+                        if end_time > start_time and start_time >= 0 and end_time <= video_duration:
+                            clip_info = ClipInfo(
+                                id=len(extracted_gestures),
+                                label=self.gesture_label,
+                                type=safe_type,
+                                start=start_time,
+                                end=end_time
+                            )
+                            gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, clip_info.id, clip_info.label, clip_info.type)
+                            clip_info.output_path = gesture_output_path
+                            extracted_gestures.append(clip_info)
+
+                except (ValueError, IndexError) as e:
+                    print(f"Corpus: {self.name} - Error parsing line: {line.strip()} - {e}")
+                    continue
+        return extracted_gestures
+
+    def process_annotation_file(self, annotation_file: Path):
+        base_name = annotation_file.replace('_final', '')
+        video_file_path = self.directory / f"{base_name}_speakerview480480.mp4"
+        if not os.path.exists(video_file_path):
+            logging.error(f"Corpus:{self.name} - No matching video file found for {annotation_file}")
+            return
+        
+        video_duration = get_video_info(video_file_path)['duration']
+        
+        gesture_clips = self.extract_gesture_clips(annotation_file, video_duration, base_name)
+        gaps = self.find_gaps_between_gestures(gesture_clips, video_duration)
+        if not gaps:
+            logging.error(f"Corpus: {self.name} - No valid gaps between gestures found for video {video_file_path}")
+            return
+        no_gesture_clips = self.extract_no_gesture_clips(gesture_clips, gaps, base_name)
+
+        all_clips = gesture_clips + no_gesture_clips
+        self.save_clips_info(all_clips, base_name, self.name)
+        self.render_clips(video_file_path, all_clips, video_duration, base_name)
