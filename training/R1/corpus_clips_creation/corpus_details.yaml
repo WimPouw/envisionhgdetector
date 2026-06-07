@@ -41,6 +41,11 @@ corpora:
     module: corpora.gesres.GESRES 
     enabled: false
 
+  - name: GESRES
+    directory: GESRes/
+    module: corpora.gesres.GesRes 
+    enabled: true
+
   - name: ZHUBO
     directory: C:/Users/User/Desktop/zipped~/Zhubo/zhubo_split_9/
     module: corpora.zhubo.Zhubo

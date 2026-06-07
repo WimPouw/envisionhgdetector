@@ -48,7 +48,7 @@ class TedM3D(Corpus):
             
         return extracted_gestures
 
-    def process_annotation_file(self, annotation_file_path):        
+    def process_annotation_file(self, annotation_file_path: Path):        
         # Get corresponding video file
         base_name = annotation_file_path.stem
         video_file_path = self.directory / f"{base_name}.mp4"
