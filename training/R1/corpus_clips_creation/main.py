@@ -29,7 +29,6 @@ def main():
     # Load configuration    
     with open('corpus_details.yaml', 'r') as f:
         config = yaml.safe_load(f)
-    print(f"Loaded configuration: {config}")
     
     # create output directories if they don't exist
     defaults = config.get('defaults', {})
@@ -66,9 +65,11 @@ def main():
     corpora_instances = load_corpora(corpora, defaults)
     if len(corpora_instances) == 0:
         raise ValueError("No valid corpora instances were created. Please check the configuration file and ensure that at least one corpus is enabled and correctly specified.")
-
+    else:
+        logging.info(f"Successfully created {len(corpora_instances)} corpus instances for processing.")
     # 1 worker per corpus - Parallel Processing
-    with ThreadPoolExecutor(max_workers=len(corpora_instances)) as executor:
+    max_workers = min(len(corpora_instances), 4)  # Limit to 4 workers to avoid overwhelming the system
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_corpus = {
             executor.submit(corpus.extract): corpus for corpus in corpora_instances
         }
@@ -114,7 +115,7 @@ def load_corpora(corpora_specifications: dict, defaults: dict) -> list:
             corpus = corpus_class(corpus_name, corpus_dir, defaults)
             corpora.append(corpus)
         except (ImportError, AttributeError, TypeError) as e:
-            print(f"Error instantiating corpus {corpus_name}: {e}")
+            logging.error(f"Error instantiating corpus {corpus_name}: {e}")
 
     return corpora
 

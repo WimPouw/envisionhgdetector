@@ -2,7 +2,7 @@ import os
 import logging
 import pandas as pd
 from pathlib import Path
-from corpus import Corpus
+from corpora.corpus import Corpus
 from utils import ClipInfo, get_video_info, return_file_output_path, split_video_horizontally
 
 class GesRes(Corpus):
@@ -27,18 +27,23 @@ class GesRes(Corpus):
     def extract(self):
         logging.info(f"Corpus {self.name}: Starting extraction process")
         try:
-            df = pd.read_csv(self.csv_file)
+            df = pd.read_csv(self.csv_file, quotechar='"', skipinitialspace=True, on_bad_lines='warn')
+            df.columns = df.columns.str.strip().str.strip('"') # Clean column names -- remove trailing/leading spaces and quotes
+            logging.info(f"Corpus {self.name}: Columns in CSV file: {df.columns.tolist()}")
+            df = df[['id', 'start_t', 'end_t', 'type']]
+            df[['id', 'type']] = df[['id', 'type']].apply(lambda col: col.str.strip().str.strip('"')) # Clean content -- remove trailing/leading spaces and quotes
             logging.info(f"Corpus {self.name}: Successfully read CSV file with {len(df)} rows")
         except Exception as e:
             logging.error(f"Corpus {self.name}: Error reading CSV file: {e}")
             return
 
+        unique_ids = df['id'].unique()
         for idx, video_id in enumerate(self.valid_speakers):
-            if video_id not in df['id'].values:
-                logging.warning(f"Corpus {self.name}: ID {video_id} not found in CSV annotations, skipping...")
+            if video_id not in unique_ids:
+                logging.error(f"Corpus {self.name}: ID {video_id} not found in {unique_ids}, skipping...")
                 continue
 
-            video_gestures = df[df['id'] == video_id][["start_t", "end_t", "type"]].copy()
+            video_gestures = df[df['id'] == video_id].copy()
             if video_id in self.special_speakers:
                 self.process_annotation_file_special(video_gestures, video_id)
             else:
@@ -76,7 +81,7 @@ class GesRes(Corpus):
             logging.error(f"Corpus {self.name}: No gesture data found for {video_id}")
             return
         
-        video_path = self.full_videos_dir /  video_id + ".mp4"
+        video_path = self.full_videos_dir /  f"{video_id}.mp4"
         if not os.path.exists(video_path):
             logging.error(f"Corpus {self.name}: Video file not found: {video_path}")
             return
