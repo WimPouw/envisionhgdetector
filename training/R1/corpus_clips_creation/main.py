@@ -114,7 +114,7 @@ def load_corpora(corpora_specifications: dict, defaults: dict) -> list:
             corpus = corpus_class(corpus_name, corpus_dir, defaults)
             corpora.append(corpus)
         except (ImportError, AttributeError, TypeError) as e:
-            print(f"Error instantiating corpus {corpus_name}: {e}")
+            logging.error(f"Error instantiating corpus {corpus_name}: {e}")
 
     return corpora
 
