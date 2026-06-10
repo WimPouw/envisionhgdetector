@@ -67,9 +67,10 @@ def main():
         raise ValueError("No valid corpora instances were created. Please check the configuration file and ensure that at least one corpus is enabled and correctly specified.")
     else:
         logging.info(f"Successfully created {len(corpora_instances)} corpus instances for processing.")
-    # 1 worker per corpus - Parallel Processing
-    max_workers = min(len(corpora_instances), 4)  # Limit to 4 workers to avoid overwhelming the system
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    
+    # Parallel Processing
+    num_workers = min(len(corpora_instances), config.get('num_workers', 4))
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
         future_to_corpus = {
             executor.submit(corpus.extract): corpus for corpus in corpora_instances
         }

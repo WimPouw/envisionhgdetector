@@ -1,3 +1,5 @@
+num_workers: 4 # max num_workers is num_corpora
+
 defaults:
   output_directory: C:/Users/User/Desktop/zipped~/CorpusClips/
   gesture_label: Gesture
