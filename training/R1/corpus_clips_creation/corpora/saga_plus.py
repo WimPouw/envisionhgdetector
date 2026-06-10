@@ -2,6 +2,7 @@ import os
 import re
 import logging
 from pathlib import Path
+import threading
 from utils import ClipInfo, return_file_output_path, get_video_info
 from corpora.corpus import Corpus
 
@@ -11,12 +12,16 @@ class SagaPlus(Corpus):
         self.videos_folder = self.directory / 'VideosCentered'
         self.annotations_folder = self.directory / 'annotations'
 
-    def extract(self):
+    def extract(self, cancel_event: threading.Event):
         logging.info(f"Corpus {self.name}: Starting extraction process")
         txt_files = list(self.annotations_folder.glob("*.txt"))
         logging.info(f"Corpus {self.name} - Found {len(txt_files)} text files to process")
             
         for idx, txt_file in enumerate(txt_files):
+            if cancel_event.is_set():
+                logging.info("Cancellation event detected. Skipping remaining tasks.")
+                print("Cancellation event detected. Skipping remaining tasks.")
+                break
             self.process_annotation_file(txt_file)
             print(f"Corpus {self.name} - Processed {idx + 1}/{len(txt_files)} annotation files")
 

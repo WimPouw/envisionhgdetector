@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 import pandas as pd
 import glob as glob
 from pathlib import Path
@@ -10,12 +11,16 @@ class TedM3D(Corpus):
     def __init__(self, name: str, directory: str, defaults: dict):
         super().__init__(name, directory, defaults)
 
-    def extract(self):
+    def extract(self, cancel_event: threading.Event):
         logging.info(f"Corpus {self.name}: Starting extraction process")
         annotation_files = list(self.directory.glob('*.csv'))
         logging.info(f"Corpus {self.name} - Found {len(annotation_files)} annotation files in {self.directory}")
         
         for idx, annotation_file in enumerate(annotation_files):
+            if cancel_event.is_set():
+                logging.info("Cancellation event detected. Skipping remaining tasks.")
+                print("Cancellation event detected. Skipping remaining tasks.")
+                break
             self.process_annotation_file(annotation_file)
             print(f"Corpus {self.name} - Processed {idx + 1}/{len(annotation_files)} annotation files")
 

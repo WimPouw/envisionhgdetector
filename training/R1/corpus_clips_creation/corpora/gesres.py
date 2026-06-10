@@ -1,5 +1,6 @@
 import os
 import logging
+import threading
 import pandas as pd
 from pathlib import Path
 from corpora.corpus import Corpus
@@ -24,7 +25,7 @@ class GesRes(Corpus):
             "2Clinician_id1_vid1"
         ]
 
-    def extract(self):
+    def extract(self, cancel_event: threading.Event):
         logging.info(f"Corpus {self.name}: Starting extraction process")
         try:
             df = pd.read_csv(self.csv_file, quotechar='"', skipinitialspace=True, on_bad_lines='warn')
@@ -39,6 +40,10 @@ class GesRes(Corpus):
 
         unique_ids = df['id'].unique()
         for idx, video_id in enumerate(self.valid_speakers):
+            if cancel_event.is_set():
+                logging.info("Cancellation event detected. Skipping remaining tasks.")
+                print("Cancellation event detected. Skipping remaining tasks.")
+                break
             if video_id not in unique_ids:
                 logging.error(f"Corpus {self.name}: ID {video_id} not found in {unique_ids}, skipping...")
                 continue

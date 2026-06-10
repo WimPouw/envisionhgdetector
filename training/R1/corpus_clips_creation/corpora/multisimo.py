@@ -1,6 +1,7 @@
 import os
 import logging
 from pathlib import Path
+import threading
 from corpora.corpus import Corpus
 from utils import ClipInfo, return_file_output_path, get_video_info
 
@@ -8,12 +9,16 @@ class Multisimo(Corpus):
     def __init__(self, name: str, directory: Path, defaults: dict):
         super().__init__(name, directory, defaults)
 
-    def extract(self):
+    def extract(self, cancel_event: threading.Event):
         logging.info(f"Corpus {self.name}: Starting extraction process")
         video_list = list(self.directory.glob(f"*.mp4"))
         logging.info(f"Corpus {self.name}: Found {len(video_list)} videos to process")
         
         for idx, video_path in enumerate(video_list):
+            if cancel_event.is_set():
+                logging.info("Cancellation event detected. Skipping remaining tasks.")
+                print("Cancellation event detected. Skipping remaining tasks.")
+                break
             self.process_annotation_file(video_path)
             print(f"Corpus {self.name} - Processed {idx + 1}/{len(video_list)} videos")
 

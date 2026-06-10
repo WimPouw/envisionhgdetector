@@ -1,6 +1,7 @@
 import os
 import logging
 from pathlib import Path
+import threading
 from corpora.corpus import Corpus
 from utils import ClipInfo, get_video_info, return_file_output_path
 
@@ -8,7 +9,7 @@ class Ecolang(Corpus):
     def __init__(self, name: str, directory: Path, defaults: dict):
         super().__init__(name, directory, defaults)
 
-    def extract(self):
+    def extract(self, cancel_event: threading.Event):
         logging.info(f"Corpus {self.name}: Starting extraction process")
         txt_files =  list(self.directory.glob("*final.txt"))
         if not txt_files:
@@ -17,6 +18,10 @@ class Ecolang(Corpus):
             
         logging.info(f"Corpus {self.name} - Found {len(txt_files)} text files to process")
         for idx, txt_file in enumerate(txt_files):
+            if cancel_event.is_set():
+                logging.info("Cancellation event detected. Skipping remaining tasks.")
+                print("Cancellation event detected. Skipping remaining tasks.")
+                break
             self.process_annotation_file(txt_file)
             print(f"Corpus {self.name} - Processed {idx + 1}/{len(txt_files)} annotation files")
         

@@ -2,21 +2,24 @@ import yaml
 import importlib
 import logging
 import json
+import signal
+import threading
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from clips_metadata import ClipsMetadata
-
 from utils import check_ffmpeg
-"""
-tasks
-- check corupus folder to see naming conventions of videos and annotations
-- update gesres file
-- standardize functions and variable names across files
-- re-read changes to ensure consistency and correctness
-- confirm audio is present in clips
-"""
 
+# Allows user to gracefully shut down all tasks processing in parallel
+cancel_event = threading.Event()
+
+def shutdown_handler(sig, frame):
+    logging.info("Shutdown signal received. Attempting to gracefully shut down...")
+    print("Shutdown signal received. Attempting to gracefully shut down...")
+    cancel_event.set()
+
+signal.signal(signal.SIGINT, shutdown_handler) # Handle Ctrl+C
+signal.signal(signal.SIGTERM, shutdown_handler) # Handle termination signal (e.g., kill command from docker)
 
 def main():
     if not check_ffmpeg():
@@ -72,9 +75,13 @@ def main():
     num_workers = min(len(corpora_instances), config.get('num_workers', 4))
     with ThreadPoolExecutor(max_workers=num_workers) as executor:
         future_to_corpus = {
-            executor.submit(corpus.extract): corpus for corpus in corpora_instances
+            executor.submit(corpus.extract, cancel_event): corpus for corpus in corpora_instances
         }
         for future in as_completed(future_to_corpus):
+            if cancel_event.is_set():
+                logging.info("Cancellation event detected. Skipping remaining tasks.")
+                print("Cancellation event detected. Skipping remaining tasks.")
+                break
             try:
                 future.result()
             except Exception as e:
