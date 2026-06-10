@@ -1,4 +1,4 @@
-num_workers: 4 # max num_workers is num_corpora
+num_workers: 4 # num of workers for parallel processing. adjust based on your system capabilities.
 
 defaults:
   output_directory: C:/Users/User/Desktop/zipped~/CorpusClips/
