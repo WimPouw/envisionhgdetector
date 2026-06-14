@@ -100,6 +100,9 @@ class Saga(Corpus):
             return
                 
         gesture_clips = self.extract_gesture_clips(annotation_file_path, video_duration, base_name)
+        if not gesture_clips:
+            logging.error(f"Corpus: {self.name} - No valid gesture clips extracted from {annotation_file_path}")
+            return
 
         # create non-gesture clips
         gaps = self.find_gaps_between_gestures(gesture_clips, video_duration)

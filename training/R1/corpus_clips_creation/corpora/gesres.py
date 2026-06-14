@@ -99,6 +99,10 @@ class GesRes(Corpus):
         video_gestures = video_gestures.sort_values('start_t')
         # extract clips
         gesture_clips = self.extract_gesture_clips(video_gestures, video_duration, video_id)
+        if not gesture_clips:
+            logging.error(f"Corpus {self.name} - No valid gesture clips extracted from {video_id}")
+            return
+        
         gaps = self.find_gaps_between_gestures(gesture_clips, video_duration)
         if not gaps:
             logging.error(f"Corpus: {self.name} - No valid gaps between gestures found for video {video_path}")
@@ -112,7 +116,7 @@ class GesRes(Corpus):
     def process_annotation_file_special(self, video_gestures: pd.DataFrame, video_id: str):
         # Get gesture annotations for this video
         if len(video_gestures) == 0:
-            logging.error(f"Corpus {self.name}: No gesture data found for {base_name_front} / {base_name_side}")
+            logging.error(f"Corpus {self.name}: No gesture data found for video {video_id}")
             return
         
         input_video_path = self.full_videos_dir / f"{video_id}.mp4"
@@ -138,6 +142,14 @@ class GesRes(Corpus):
         video_gestures = video_gestures.sort_values('start_t')
         gesture_clips_front = self.extract_gesture_clips(video_gestures, video_duration, video_path_front.stem)
         gesture_clips_side = self.extract_gesture_clips(video_gestures, video_duration, video_path_side.stem)
+
+        if not gesture_clips_front:
+            logging.error(f"Corpus {self.name} - No valid front gesture clips extracted from {video_id}")
+            return
+        if not gesture_clips_side:
+            logging.error(f"Corpus {self.name} - No valid side gesture clips extracted from {video_id}")
+            return        
+
 
         # gaps will be identical for both views since they have same timestamps
         gaps = self.find_gaps_between_gestures(gesture_clips_front, video_duration)

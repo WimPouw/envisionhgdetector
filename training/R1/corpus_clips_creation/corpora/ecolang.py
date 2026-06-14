@@ -1,7 +1,8 @@
 import os
 import logging
-from pathlib import Path
 import threading
+from pathlib import Path
+from typing import List
 from corpora.corpus import Corpus
 from utils import ClipInfo, get_video_info, return_file_output_path
 
@@ -26,18 +27,18 @@ class Ecolang(Corpus):
             print(f"Corpus {self.name} - Processed {idx + 1}/{len(txt_files)} annotation files")
         
 
-    def extract_gesture_clips(self, annotation_file_path: Path, video_duration: float, base_name: str): # file is txt
+    def extract_gesture_clips(self, annotation_file_path: Path, video_duration: float, base_name: str) -> List[ClipInfo]: # file is txt
         offsets = {"ad00": 106404, "ad01": 112595, "ad02": 72247, "ad03": 113641,
            "ad04": 124305, "ad05": 178690, "ad06": 63204, "ad07": 57814,
            "ad09": 96351, "ad10": 176260, "ad11": 106606, "ad12": 149395,
            "ad14": 14011, "ad15": 9900, "ad16": 36607, "ad17": 40368}
 
+        extracted_gestures = []
         video_id = base_name[:4]
         if video_id not in offsets:
             logging.error(f"Corpus {self.name} - No offset found for video {video_id}")
-            return
+            return extracted_gestures
         
-        extracted_gestures = []
         with open(annotation_file_path, 'r', encoding='utf-8') as f:
             for idx, line in enumerate(f):
                 parts = [p.strip() for p in line.strip().split('\t') if p.strip()]
@@ -75,6 +76,9 @@ class Ecolang(Corpus):
         video_duration = get_video_info(video_file_path)['duration']
         
         gesture_clips = self.extract_gesture_clips(annotation_file, video_duration, base_name)
+        if not gesture_clips:
+            logging.error(f"Corpus {self.name} - No valid gesture clips extracted from {annotation_file}")
+            return
         gaps = self.find_gaps_between_gestures(gesture_clips, video_duration)
         if not gaps:
             logging.error(f"Corpus: {self.name} - No valid gaps between gestures found for video {video_file_path}")

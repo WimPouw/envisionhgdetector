@@ -87,6 +87,10 @@ class SagaPlus(Corpus):
         video_duration = get_video_info(video_file_path)['duration']
         
         gesture_clips = self.extract_gesture_clips(annotation_file_path, video_duration, base_name)
+        if not gesture_clips:
+            logging.error(f"Corpus {self.name} - No valid gesture clips extracted from {annotation_file_path}")
+            return
+        
         gaps = self.find_gaps_between_gestures(gesture_clips, video_duration)
         if not gaps:
             logging.error(f"Corpus: {self.name} - No valid gaps between gestures found for video {video_file_path}")

@@ -73,6 +73,10 @@ class Zhubo(Corpus):
             return
             
         gesture_clips = self.extract_gesture_clips(annotation_file, video_duration, base_name, fps)
+        if not gesture_clips:
+            logging.error(f"Corpus {self.name} - No valid gesture clips extracted from {annotation_file}")
+            return
+        
         gaps = self.find_gaps_between_gestures(gesture_clips, video_duration)
         if not gaps:
             logging.error(f"Corpus {self.name}: No valid gaps between gestures found for video {video_file_path}")
