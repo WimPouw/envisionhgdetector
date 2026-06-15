@@ -81,8 +81,10 @@ class SagaPlus(Corpus):
         video_file_path = self.videos_folder / f"{base_name}_left.mp4"
         
         if not os.path.exists(video_file_path):
-            logging.error(f"Corpus {self.name} - Video file not found for annotation {annotation_file_path}: {video_file_path}")
-            return
+            video_file_path = self.videos_folder / f"{base_name}.mov_left.mp4" # test videos have an extra .mov in the name
+            if not os.path.exists(video_file_path):
+                logging.error(f"Corpus {self.name} - Video file not found for annotation {annotation_file_path}: {video_file_path}")
+                return
 
         video_duration = get_video_info(video_file_path)['duration']
         

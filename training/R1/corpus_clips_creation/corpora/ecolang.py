@@ -28,10 +28,11 @@ class Ecolang(Corpus):
         
 
     def extract_gesture_clips(self, annotation_file_path: Path, video_duration: float, base_name: str) -> List[ClipInfo]: # file is txt
+        # offsets in milliseconds
         offsets = {"ad00": 106404, "ad01": 112595, "ad02": 72247, "ad03": 113641,
            "ad04": 124305, "ad05": 178690, "ad06": 63204, "ad07": 57814,
-           "ad09": 96351, "ad10": 176260, "ad11": 106606, "ad12": 149395,
-           "ad14": 14011, "ad15": 9900, "ad16": 36607, "ad17": 40368}
+           "ad09": 96351, "ad10": 176260, "ad11": 106606, "ad13": 149395,
+           "ad14": 14011, "ad15": 9900, "ad16": 36607, "ad17": 40368, "ad18": 19942, "ad19": 14048, "ad21": 44016} 
 
         extracted_gestures = []
         video_id = base_name[:4]
@@ -70,8 +71,10 @@ class Ecolang(Corpus):
         base_name = annotation_file.stem.replace('_final', '')
         video_file_path = self.directory / f"{base_name}_speakerview480480.mp4"
         if not os.path.exists(video_file_path):
-            logging.error(f"Corpus:{self.name} - No matching video file found for {annotation_file}")
-            return
+            video_file_path = self.directory / f"{base_name}_final.mp4" # naming convention for test videos
+            if not os.path.exists(video_file_path):
+                logging.error(f"Corpus:{self.name} - No matching video file found for {annotation_file}")
+                return
         
         video_duration = get_video_info(video_file_path)['duration']
         
