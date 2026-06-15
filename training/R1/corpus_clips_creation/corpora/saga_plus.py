@@ -79,6 +79,10 @@ class SagaPlus(Corpus):
         
         base_name = f"{match.group(1)}K2"
         video_file_path = self.videos_folder / f"{base_name}_left.mp4"
+        if self.check_clips_info_exists(base_name, self.name):
+            logging.info(f"Corpus {self.name} - Clips info already exists for {base_name}, skipping processing.")
+            return # Skip processing if clips info already exists for this file
+        
         
         if not os.path.exists(video_file_path):
             video_file_path = self.videos_folder / f"{base_name}.mov_left.mp4" # test videos have an extra .mov in the name

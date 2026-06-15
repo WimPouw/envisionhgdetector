@@ -69,6 +69,10 @@ class Ecolang(Corpus):
 
     def process_annotation_file(self, annotation_file: Path):
         base_name = annotation_file.stem.replace('_final', '')
+        if self.check_clips_info_exists(base_name, self.name):
+            logging.info(f"Corpus {self.name} - Clips info already exists for {base_name}, skipping processing.")
+            return # Skip processing if clips info already exists for this file
+        
         video_file_path = self.directory / f"{base_name}_speakerview480480.mp4"
         if not os.path.exists(video_file_path):
             video_file_path = self.directory / f"{base_name}_final.mp4" # naming convention for test videos

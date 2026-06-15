@@ -89,7 +89,11 @@ class Saga(Corpus):
             base_name =  f"{prefix}{int(number)}"  # This handles V07 -> V7 conversion. While maintaining V10 as is.
 
         annotation_file_path = self.annotations_folder / f"{base_name}.csv"
-        
+
+        if self.check_clips_info_exists(base_name, self.name):
+            logging.info(f"Corpus {self.name} - Clips info already exists for {base_name}, skipping processing.")
+            return # Skip processing if clips info already exists for this file
+
         if not os.path.exists(annotation_file_path):
             logging.error(f"Corpus: {self.name} - Annotation file not found for video {base_name}. Expected at {annotation_file_path}")
             return

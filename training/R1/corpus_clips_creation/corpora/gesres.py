@@ -81,6 +81,10 @@ class GesRes(Corpus):
         return extracted_gestures
 
     def process_annotation_file(self, video_gestures: pd.DataFrame, video_id: str):
+        if self.check_clips_info_exists(video_id, self.name):
+            logging.info(f"Corpus {self.name} - Clips info already exists for {video_id}, skipping processing.")
+            return # Skip processing if clips info already exists for this file
+        
         # Get gesture annotations for this video
         if len(video_gestures) == 0:
             logging.error(f"Corpus {self.name}: No gesture data found for {video_id}")
@@ -122,6 +126,14 @@ class GesRes(Corpus):
         input_video_path = self.full_videos_dir / f"{video_id}.mp4"
         video_path_front = self.full_videos_dir / f"{video_id}_front.mp4"
         video_path_side = self.full_videos_dir / f"{video_id}_side.mp4"
+        base_name_front = video_path_front.stem
+        base_name_side = video_path_side.stem
+
+        if self.check_clips_info_exists(base_name_front, self.name) and self.check_clips_info_exists(base_name_side, self.name):
+            logging.info(f"Corpus {self.name} - Clips info already exists for {base_name_front} and {base_name_side}, skipping processing.")
+            return # Skip processing if clips info already exists for this file
+        
+
         if not os.path.exists(input_video_path):
             logging.error(f"Corpus {self.name}: Special speaker video file not found: {input_video_path}")
             return
@@ -131,8 +143,6 @@ class GesRes(Corpus):
             logging.error(f"Corpus {self.name}: Video file not found: {video_path_front} or {video_path_side}")
             return
 
-        base_name_front = video_path_front.stem
-        base_name_side = video_path_side.stem
         video_duration = get_video_info(video_path_front).get('duration', 0)
         if video_duration == 0:
             logging.error(f"Corpus {self.name}: Could not determine duration for {video_path_front}, skipping...")

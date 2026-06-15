@@ -60,9 +60,18 @@ class Corpus(ABC):
                 'end': clip.end,
                 'output_path': str(clip.output_path)
             })
-        print(self.clips_info_dir, self.clips_info_dir.exists())
         with open(self.clips_info_dir / f'{corpus_name}_{base_name}_clips_info.json', 'w+') as f:
             json.dump(all_clips_info, f, indent=4)
+
+    def check_clips_info_exists(self, base_name: str, corpus_name: str):
+        file_path = self.clips_info_dir / f'{corpus_name}_{base_name}_clips_info.json'
+        if not file_path.exists(): # check if file exists
+            return False
+        with open(file_path, 'r') as f: # check if file is empty
+            if len(json.load(f)) <= 0:
+                return False
+
+        return True
 
     def consume_gap(self, gaps: List[GapInfo], chosen_start: float, chosen_end: float):
         """Remove the chosen interval from the gaps

@@ -53,7 +53,10 @@ class Zhubo(Corpus):
         """Process a single video file"""
         # Get the video identifier (filename without extension)
         base_name = video_file_path.stem.replace('.h264', '')
-        
+        if self.check_clips_info_exists(base_name, self.name):
+            logging.info(f"Corpus {self.name} - Clips info already exists for {base_name}, skipping processing.")
+            return # Skip processing if clips info already exists for this file
+
         # Extract speaker ID and gesture ID from the filename
         # Assuming filename format like "123-456.h264.mp4" where 123 is speakerID and 456 is gestureID
         try:

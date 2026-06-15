@@ -57,6 +57,11 @@ class TedM3D(Corpus):
         # Get corresponding video file
         base_name = annotation_file_path.stem
         video_file_path = self.directory / f"{base_name}.mp4"
+
+        if self.check_clips_info_exists(base_name, self.name):
+            logging.info(f"Corpus {self.name} - Clips info already exists for {base_name}, skipping processing.")
+            return # Skip processing if clips info already exists for this file
+
         if not os.path.exists(video_file_path):
             logging.error(f"Corpus: {self.name} - Video file not found for {annotation_file_path}. Expected at {video_file_path}")
             return
