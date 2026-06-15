@@ -29,8 +29,13 @@ class Zhubo(Corpus):
         # Process gesture clips with 1 second padding
         for idx, action in enumerate(actions):
             # Calculate times with 1 second padding
-            start_time = max(0, (action['start_frame'] / fps) - 1)  # Add 1 sec before, but don't go below 0
-            end_time = min(video_duration, (action['end_frame'] / fps) + 1)  # Add 1 sec after, but don't exceed duration
+            start_time = action['start_frame'] / fps
+            end_time = (action['end_frame'] / fps)
+
+            if not start_time >= 0 \
+                or not end_time <= video_duration \
+                or not end_time > start_time:
+                continue
             
             # Create the new filename using the requested format: ZHUBO_SPEAKERID_GESTUREID_NA
             # Where NA is the index of the gesture in the actions file
