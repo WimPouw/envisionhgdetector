@@ -9,6 +9,7 @@ class ClipsMetadata:
     def traverse_file(self, json_path: Path):
         labels_info = {}
         types_info = {}
+        unique_types = {}
         with open(json_path, "r") as f:
             video_clips = json.load(f) # list
 
@@ -16,6 +17,7 @@ class ClipsMetadata:
             label = clip.get("label")
             type = clip.get("type")
             duration = clip.get("end") - clip.get("start")
+            unique_types[type] = unique_types.get(type, 0) + 1
             if label not in labels_info:
                 labels_info[label] = {
                     "total_clip_duration": duration,
@@ -39,7 +41,7 @@ class ClipsMetadata:
         for type in types_info:
             types_info[type]["avg_clip_duration"] = types_info[type]["total_clip_duration"] / types_info[type]["num_clips"]
 
-        return labels_info, types_info
+        return labels_info, types_info, unique_types
     
     def _merge_info(self, old: dict, new: dict):
         """Merge new info dict into old in place."""
@@ -101,13 +103,15 @@ class ClipsMetadata:
 
         for video_path in json_files:
             corpus_name = video_path.name.split("_")[0]
-            new_labels_info, new_types_info = self.traverse_file(video_path)
+            new_labels_info, new_types_info, new_unique_types = self.traverse_file(video_path)
 
             if corpus_name not in by_corpus:
-                by_corpus[corpus_name] = {"by_label": new_labels_info, "by_type": new_types_info}
+                by_corpus[corpus_name] = {"by_label": new_labels_info, "by_type": new_types_info, "unique_types": new_unique_types}
             else:
                 self._merge_info(by_corpus[corpus_name]["by_label"], new_labels_info)
                 self._merge_info(by_corpus[corpus_name]["by_type"], new_types_info)
+                for type, count in new_unique_types.items():
+                    by_corpus[corpus_name]["unique_types"][type] = by_corpus[corpus_name]["unique_types"].get(type, 0) + count
 
         # Compute per-corpus totals
         for corpus_name, corpus in by_corpus.items():
@@ -132,6 +136,7 @@ class ClipsMetadata:
         metadata["by_corpus"] = by_corpus
         metadata["by_label"] = by_label
         metadata["by_type"] = by_type
+
         return metadata
 
 
