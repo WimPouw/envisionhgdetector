@@ -33,10 +33,11 @@ class Multisimo(Corpus):
                         start_frame = int(parts[2]) / 1000.0  # Convert to seconds
                         end_frame = int(parts[3]) / 1000.0    # Convert to seconds
                         gesture_type = parts[4] if len(parts) > 4 else "Unknown"
-                        safe_type = "".join(c if c.isalnum() else "_" for c in gesture_type)
+                        safe_type = "".join(c if c.isalnum() else "_" for c in gesture_type).lower()
+                        safe_type = ''.join(p.capitalize() for p in safe_type.split('_'))
                         
                         if end_frame > start_frame and start_frame >= 0 and end_frame <= video_duration:
-                            if safe_type == "N/A":
+                            if safe_type == "NA":
                                 label = self.move_label
                                 output_path = return_file_output_path(self.move_output_dir, self.name, base_name, idx, label, safe_type)
                             else:

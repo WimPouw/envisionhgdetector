@@ -60,24 +60,31 @@ class GesRes(Corpus):
         for idx, row in video_gestures.iterrows():
             gesture_start = row['start_t']
             gesture_end = row['end_t']
-            type = row['type']
+            type = row['type'].lower()
+            type = type.replace('(', '').replace(')', '')
+            type = ''.join(p.capitalize() for p in type.split()) 
+
+            if type == "Adaptor":
+                label = self.move_label
+                gesture_output_path = return_file_output_path(self.move_output_dir, self.name, video_id, idx, label, type)
+            else:
+                label = self.gesture_label
+                gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, video_id, idx, label, type)
 
             if not gesture_start >= 0 \
                 or not gesture_end <= video_duration \
                 or not gesture_end > gesture_start:
                 continue
 
-            gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, video_id, idx, self.gesture_label, type)
             clip_info = ClipInfo(
                 id=idx,
-                label=self.gesture_label,
+                label=label,
                 type=type,
                 start=gesture_start,
                 end=gesture_end,
                 output_path=gesture_output_path,
             )
             extracted_gestures.append(clip_info)
-            
         return extracted_gestures
 
     def process_annotation_file(self, video_gestures: pd.DataFrame, video_id: str):

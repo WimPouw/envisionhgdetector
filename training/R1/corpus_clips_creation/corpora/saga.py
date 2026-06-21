@@ -61,16 +61,23 @@ class Saga(Corpus):
                     start_time = int(row[start_col]) / 1000.0  # Convert ms to seconds
                     end_time = int(row[end_col]) / 1000.0      # Convert ms to seconds
                     gesture_type = row[gesture_col].strip()
-                    safe_gesture_type = self.clean_gesture_name(gesture_type)
-                    
-                    gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, idx, self.gesture_label, safe_gesture_type)
+                    safe_gesture_type = self.clean_gesture_name(gesture_type).lower()
+                    safe_gesture_type = ''.join(p.capitalize() for p in safe_gesture_type.split('_'))
+
+                    if safe_gesture_type == "Move":
+                        gesture_output_path = return_file_output_path(self.move_output_dir, self.name, base_name, idx, self.move_label, safe_gesture_type)
+                        label = self.move_label
+                    else:                
+                        gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, idx, self.gesture_label, safe_gesture_type)
+                        label = self.gesture_label
+
                     if gesture_type  \
                     and end_time > start_time \
                     and start_time >= 0 \
                     and end_time <= video_duration:
                         clip_info = ClipInfo(
                             id=idx,
-                            label=self.gesture_label,
+                            label=label,
                             type=safe_gesture_type,
                             start=start_time,
                             end=end_time,

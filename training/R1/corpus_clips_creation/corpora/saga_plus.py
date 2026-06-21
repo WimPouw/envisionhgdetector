@@ -40,20 +40,27 @@ class SagaPlus(Corpus):
                         start_time = float(parts[2]) / 1000.0  # Convert to seconds
                         end_time = float(parts[3]) / 1000.0    # Convert to seconds
                         gesture_type = parts[4]  # e.g., "beat"
-                        gesture_type_clean = self.clean_gesture_name(gesture_type)
-                        
+                        gesture_type_clean = self.clean_gesture_name(gesture_type).lower()
+                        gesture_type_clean = ''.join(p.capitalize() for p in gesture_type_clean.split('_'))
+
                         # Skip annotations with duplicate start and end times -- why would there be duplicates in the first place
                         interval_key = (start_time, end_time)
                         if interval_key in seen_intervals:
                             continue
                         
                         seen_intervals.add(interval_key)
-                        
-                        gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, idx, self.gesture_label, gesture_type_clean)
+
+                        if gesture_type_clean == "Move":
+                            gesture_output_path = return_file_output_path(self.move_output_dir, self.name, base_name, idx, self.move_label, gesture_type_clean)
+                            label = self.move_label
+                        else:
+                            gesture_output_path = return_file_output_path(self.gesture_output_dir, self.name, base_name, idx, self.gesture_label, gesture_type_clean)
+                            label = self.gesture_label
+
                         if end_time > start_time and start_time >= 0 and end_time <= video_duration:  # Convert video duration to milliseconds
                             clip_info = ClipInfo(
                                 id=idx,
-                                label=self.gesture_label,
+                                label=label,
                                 type=gesture_type_clean,
                                 start=start_time,
                                 end=end_time,
@@ -62,7 +69,7 @@ class SagaPlus(Corpus):
                             extracted_gestures.append(clip_info)
 
                 except (ValueError, IndexError) as e:
-                    print(f"Error parsing line: {line.strip()} - {e}")
+                    logging.error(f"Corpus {self.name} - Error parsing line: {line.strip()} - {e}")
                     continue
         
         return extracted_gestures
