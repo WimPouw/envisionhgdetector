@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import List
 from utils import ClipInfo, GapInfo, return_file_output_path, extract_clip_with_padding
 
+import random
+random.seed(42) # set a seed for reproducibility
+
 class Corpus(ABC):
     def __init__(self, name: str, directory: Path, defaults: dict):
         self.name = name
