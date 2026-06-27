@@ -568,8 +568,9 @@ class GestureDetector:
         
         return results_df, stats, segments, np.array(valid_features), valid_timestamps
 
-    def process_video(self, video_path: str, output_folder: str):
+    def process_video(self, video_path: str, output_folder: str, elan_only: bool = False):
         output = dict()
+        print("Elan only flag is set to:", elan_only)
         if not os.path.exists(video_path):
             output["error"] = f"Video not found: {video_path}"
             return output
@@ -578,54 +579,54 @@ class GestureDetector:
 
         video_name = os.path.basename(video_path)
         print(f"\nProcessing {video_name} with {self.model_type.upper()} model...")
-
+        
         try:
             # Process video (automatically routes to correct model)
             print("Extracting features and model inferencing...")
             predictions_df, stats, segments, features, timestamps = self.predict_video(video_path)
-
+            
             if not predictions_df.empty:
                 # Save predictions
-                output_pathpred = os.path.join(
-                    output_folder,
-                    f"{video_name}_predictions.csv"
-                )
-                predictions_df.to_csv(output_pathpred, index=False)
-
-                # Save segments
-                output_pathseg = os.path.join(
-                    output_folder,
-                    f"{video_name}_segments.csv"
-                )
-                segments.to_csv(output_pathseg, index=False)
-
-                # Save features (if available)
-                if len(features) > 0:
-                    output_pathfeat = os.path.join(
+                if not elan_only:
+                    output_pathpred = os.path.join(
                         output_folder,
-                        f"{video_name}_features.npy"
+                        f"{video_name}_predictions.csv"
                     )
-                    feature_array = np.array(features)
-                    np.save(output_pathfeat, feature_array)
+                    predictions_df.to_csv(output_pathpred, index=False)
+                    
+                    # Save segments
+                    output_pathseg = os.path.join(
+                        output_folder,
+                        f"{video_name}_segments.csv"
+                    )
+                    segments.to_csv(output_pathseg, index=False)
+
+                    # Save features (if available)
+                    if len(features) > 0:
+                        output_pathfeat = os.path.join(
+                            output_folder,
+                            f"{video_name}_features.npy"
+                        )
+                        feature_array = np.array(features)
+                        np.save(output_pathfeat, feature_array)
 
                 # Labeled video generation
-                print("Generating labeled video...")
-                output_pathvid = os.path.join(
-                    output_folder,
-                    f"labeled_{video_name}"
-                )
-
-                label_video(
-                    video_path, 
-                    segments, 
-                    output_pathvid,
-                    predictions_df,
-                    valid_timestamps=timestamps,
-                    motion_threshold=self.params['motion_threshold'],
-                    gesture_threshold=self.params['gesture_threshold'],
-                    target_fps=25.0
-                )
-
+                    print("Generating labeled video...")
+                    output_pathvid = os.path.join(
+                        output_folder,
+                        f"labeled_{video_name}"
+                    )
+                    label_video(
+                        video_path, 
+                        segments, 
+                        output_pathvid,
+                        predictions_df,
+                        valid_timestamps=timestamps,
+                        motion_threshold=self.params['motion_threshold'],
+                        gesture_threshold=self.params['gesture_threshold'],
+                        target_fps=25.0
+                    )
+                
                 print("Generating ELAN file...")
                 # Create ELAN file
                 output_path = os.path.join(
@@ -650,8 +651,9 @@ class GestureDetector:
         except Exception as e:
             print(f"Error processing {video_name}: {str(e)}")
             output["error"] =  str(e)
-
+        
         return output
+    
 
     def process_folder(
         self,
@@ -669,7 +671,6 @@ class GestureDetector:
         
         for video_path in videos:
             video_name = os.path.basename(video_path)
-            print(f"\nProcessing {video_name} with {self.model_type.upper()} model...")
             results[video_name] = self.process_video(video_path, output_folder)
             
         return results
