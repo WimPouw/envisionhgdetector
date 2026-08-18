@@ -604,6 +604,31 @@ class LightGBMGestureModel:
         features = self.extract_sequence_features(sequence)
         
         return features
+
+    def extract_features_from_landmarks(self, landmarks: np.ndarray) -> np.ndarray:
+        """
+        Extract features from a single frame landmarks.
+        
+        Args:
+            landmarks: Input landmarks array
+            
+        Returns:
+            100-dimensional feature array, or None if not enough data
+        """
+        if landmarks is None:
+            return None
+        # Add to buffer
+        self.landmarks_buffer.append(landmarks)
+        
+        # Check if we have enough frames
+        if len(self.landmarks_buffer) < self.window_size:
+            return None
+        
+        # Extract features from sequence
+        sequence = np.array(list(self.landmarks_buffer))
+        features = self.extract_sequence_features(sequence)
+        
+        return features
     
     def predict_frame(self, frame: np.ndarray) -> Tuple[Optional[str], Optional[float]]:
         """
