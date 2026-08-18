@@ -1,7 +1,5 @@
 # setup.py
-
 from setuptools import setup, find_packages
-import os
 
 # Read requirements
 with open('requirements.txt') as f:
@@ -13,7 +11,7 @@ with open('README.md', 'r', encoding='utf-8') as f:
 
 setup(
     name="envisionhgdetector",
-    version="3.0.6",
+    version="3.0.8",
     author="Wim Pouw, Sharjeel Ahmed Shaikh, James Trujillo, Bosco Yung,  Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele",
     author_email="w.pouw@tilburguniversity.edu",
     description="Hand gesture detection using MediaPipe and CNN, kinematic analysis, and visualization.",

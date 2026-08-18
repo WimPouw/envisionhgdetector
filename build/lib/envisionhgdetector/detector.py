@@ -448,6 +448,75 @@ class GestureDetector:
         
         return results_df, stats, segments, features, timestamps
     
+    def _predict_video_cnn_from_features(
+        self,
+        features: np.ndarray,
+        stride: int = 1
+    ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray]:
+        """CNN prediction from landmarks."""
+        windows = self._create_windows(features, self.config.seq_length, stride)
+        
+        if len(windows) == 0:
+            return pd.DataFrame(), {"error": "No valid windows created"}, pd.DataFrame(), np.array([])
+
+        # Get predictions
+        predictions = self.model.predict(windows)
+        
+        # Create results DataFrame - use the actual timestamps for frames with valid skeleton data
+        rows = []
+        gesture_class_bias = self.params['gesture_class_bias']
+        
+        for i, (pred) in enumerate(predictions):
+            has_motion = pred[0]
+            gesture_probs = pred[1:]
+            
+            # Apply bias if configured
+            if gesture_class_bias is not None and abs(gesture_class_bias) >= 1e-9:
+                gesture_confidence = float(gesture_probs[0])
+                move_confidence = float(gesture_probs[1])
+                
+                if has_motion > 0:
+                    total_conf = gesture_confidence + move_confidence
+                    if total_conf > 0:
+                        adjustment = gesture_class_bias * move_confidence * 0.5
+                        adjusted_gesture = gesture_confidence + adjustment
+                        adjusted_move = move_confidence - adjustment
+                        
+                        if adjusted_gesture + adjusted_move > 0:
+                            norm_factor = total_conf / (adjusted_gesture + adjusted_move)
+                            adjusted_gesture *= norm_factor
+                            adjusted_move *= norm_factor
+                        
+                        gesture_confidence = adjusted_gesture
+                        move_confidence = adjusted_move
+
+                rows.append({
+                    'has_motion': float(has_motion),
+                    'NoGesture_confidence': float(1 - has_motion),
+                    'Gesture_confidence': gesture_confidence,
+                    'Move_confidence': move_confidence
+                })
+            else:
+                rows.append({
+                    'has_motion': float(has_motion),
+                    'NoGesture_confidence': float(1 - has_motion),
+                    'Gesture_confidence': float(gesture_probs[0]),
+                    'Move_confidence': float(gesture_probs[1])
+                })
+        
+        results_df = pd.DataFrame(rows)
+
+        # Apply thresholds
+        results_df['label'] = results_df.apply(
+            lambda row: get_prediction_at_threshold(
+                row,
+                self.params['motion_threshold'],
+                self.params['gesture_threshold']
+            ),
+            axis=1
+        )
+        return results_df
+    
     def _predict_video_lightgbm(
         self,
         video_path: str,
@@ -568,31 +637,111 @@ class GestureDetector:
         
         return results_df, stats, segments, np.array(valid_features), valid_timestamps
 
-    def process_folder(
+    def _predict_video_lightgbm_from_features(
         self,
-        input_folder: str,
-        output_folder: str,
-        video_pattern: str = "*.mp4"
-    ) -> Dict[str, Dict]:
-        """Process all videos in a folder (works with both CNN and LightGBM)."""
-        # Create output directories
-        os.makedirs(output_folder, exist_ok=True)
+        landmarks_per_frame: np.ndarray,
+        fps: float,
+    ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray]:
+        """LightGBM prediction from landmarks method with CNN-compatible output."""
+
+        # Reset model state
+        self.model.key_joints_buffer.clear()
+        if hasattr(self.model, 'left_fingers_buffer'):
+            self.model.left_fingers_buffer.clear()
+            self.model.right_fingers_buffer.clear()
         
-        # Get all videos
-        videos = glob.glob(os.path.join(input_folder, video_pattern))
-        results = {}
-        
-        for video_path in videos:
-            video_name = os.path.basename(video_path)
-            print(f"\nProcessing {video_name} with {self.model_type.upper()} model...")
-            
-            try:
-                # Process video (automatically routes to correct model)
-                print("Extracting features and model inferencing...")
-                predictions_df, stats, segments, features, timestamps = self.predict_video(video_path)
+        predictions = []
+        frame_number = 0
+
+        for landmarks in landmarks_per_frame:
+            timestamp = frame_number / fps
+            features = self.model.extract_features_from_landmarks(landmarks)
+            if features is not None:                
+                pred_probs = self.model.predict(features.reshape(1, -1))[0]
+                predicted_class = np.argmax(pred_probs)
+                confidence = pred_probs[predicted_class]
                 
-                if not predictions_df.empty:
-                    # Save predictions
+                # Convert to gesture name
+                gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
+                gesture_name = self.model.standardize_gesture_name(gesture_name)
+                
+                # Convert LightGBM output to align witht he CNN format
+                if gesture_name == "NOGESTURE":
+                    gesture_conf = 1-confidence # gesture confidence is the 1-no gesture confidence                   
+                    nogesture_conf = confidence # no gesture confidence is the confidence of the no gesture class
+                    move_conf = 0.0
+                else:
+                    # Distribute confidence based on gesture type
+                    if "move" in gesture_name.lower() or "MOVE" in gesture_name:
+                        gesture_conf = 0.0
+                        move_conf = confidence
+                        nogesture_conf = 1-confidence
+                    else: #then its a a gesture
+                        gesture_conf = confidence
+                        move_conf = 0.0
+                        nogesture_conf = 1-confidence
+                
+                predictions.append({
+                    'time': timestamp,
+                    'has_motion': gesture_conf,
+                    'NoGesture_confidence': nogesture_conf,
+                    'Gesture_confidence': gesture_conf,
+                    'Move_confidence': move_conf
+                })
+            
+            frame_number += 1
+            
+            # Progress update
+            if frame_number % 500 == 0:
+                progress = frame_number / len(landmarks_per_frame) * 100
+                print(f"Progress: {progress:.1f}%")
+                
+        # Convert to DataFrame
+        results_df = pd.DataFrame(predictions)
+        
+        if results_df.empty:
+            return pd.DataFrame(), {"error": "No predictions generated"}, pd.DataFrame(), np.array([])
+        
+        # Apply thresholds (reuse existing logic)
+        results_df['label'] = results_df.apply(
+            lambda row: get_prediction_at_threshold(
+                row,
+                self.params['motion_threshold'],
+                self.params['gesture_threshold']
+            ),
+            axis=1
+        )
+
+        return results_df
+
+    def predict_labels_from_landmarks(self, landmarks_per_frame: np.ndarray, fps: float) -> pd.DataFrame:
+        if self.model_type == "lightgbm":
+            results_df = self._predict_video_lightgbm_from_features(landmarks_per_frame, fps)
+        elif self.model_type == "cnn":
+            results_df = self._predict_video_cnn_from_features(landmarks_per_frame)
+
+        return results_df
+
+    def process_video(self, video_path: str, output_folder: str, elan_only: bool = False):
+        output = dict()
+        print("Elan only flag is set to:", elan_only)
+        if not os.path.exists(video_path):
+            output["error"] = f"Video not found: {video_path}"
+            return output
+
+        os.makedirs(output_folder, exist_ok=True)
+
+        video_name = os.path.basename(video_path)
+        print(f"\nProcessing {video_name} with {self.model_type.upper()} model...")
+        
+        try:
+            # Process video (automatically routes to correct model)
+            print("Extracting features and model inferencing...")
+            predictions_df, stats, segments, features, timestamps = self.predict_video(video_path)
+            
+            if not predictions_df.empty:
+                # Save predictions
+                if not elan_only:
                     output_pathpred = os.path.join(
                         output_folder,
                         f"{video_name}_predictions.csv"
@@ -615,68 +764,69 @@ class GestureDetector:
                         feature_array = np.array(features)
                         np.save(output_pathfeat, feature_array)
 
-                    # Labeled video generation
+                # Labeled video generation
                     print("Generating labeled video...")
                     output_pathvid = os.path.join(
                         output_folder,
                         f"labeled_{video_name}"
                     )
- 
-                    if self.model_type == "combined":
-                        # Use dual-panel animation for combined model
-                        from .label_video_combined import label_video_combined
-                        label_video_combined(
-                            video_path,
-                            predictions_df,
-                            output_pathvid,
-                            cnn_motion_threshold=self.model.config.cnn_motion_threshold,
-                            cnn_gesture_threshold=self.model.config.cnn_gesture_threshold,
-                            lgbm_threshold=self.model.config.lgbm_threshold,
-                            min_gap_s=self.params['min_gap_s'],
-                            min_length_s=self.params['min_length_s'],
-                            window_duration=10.0,
-                            target_fps=25.0
-                        )
-                    else:
-                        # Use standard label_video for single models
-                        label_video(
-                            video_path, 
-                            segments, 
-                            output_pathvid,
-                            predictions_df,
-                            valid_timestamps=timestamps,
-                            motion_threshold=self.params['motion_threshold'],
-                            gesture_threshold=self.params['gesture_threshold'],
-                            target_fps=25.0
-                        )
-                    
-                    print("Generating ELAN file...")
-                    # Create ELAN file
-                    output_path = os.path.join(
-                        output_folder,
-                        f"{video_name}.eaf"
+                    label_video(
+                        video_path, 
+                        segments, 
+                        output_pathvid,
+                        predictions_df,
+                        valid_timestamps=timestamps,
+                        motion_threshold=self.params['motion_threshold'],
+                        gesture_threshold=self.params['gesture_threshold'],
+                        target_fps=25.0
                     )
-                    fps = self._get_video_fps(video_path)
-                    create_elan_file(
-                        video_path,
-                        segments,
-                        output_path,
-                        fps=fps,
-                        include_ground_truth=False
-                    )
+                
+                print("Generating ELAN file...")
+                # Create ELAN file
+                output_path = os.path.join(
+                    output_folder,
+                    f"{video_name}.eaf"
+                )
+                fps = self._get_video_fps(video_path)
+                create_elan_file(
+                    video_path,
+                    segments,
+                    output_path,
+                    fps=fps,
+                    include_ground_truth=False
+                )
 
-                    results[video_name] = {
-                        "stats": stats,
-                        "output_path": output_path
-                    }
-                    print(f"Done processing {video_name} with {self.model_type.upper()}")
-                else:
-                    results[video_name] = {"error": "No predictions generated"}
-                    
-            except Exception as e:
-                print(f"Error processing {video_name}: {str(e)}")
-                results[video_name] = {"error": str(e)}
+                output['stats'] = stats
+                output['output_path'] = output_path
+                print(f"Done processing {video_name} with {self.model_type.upper()}")
+            else:
+                output["error"] = "No predictions generated"
+
+        except Exception as e:
+            print(f"Error processing {video_name}: {str(e)}")
+            output["error"] =  str(e)
         
+        return output
+    
+
+    def process_folder(
+        self,
+        input_folder: str,
+        output_folder: str,
+        video_pattern: str = "*.mp4"
+    ) -> Dict[str, Dict]:
+        """Process all videos in a folder (works with both CNN and LightGBM)."""
+        # Create output directories
+        os.makedirs(output_folder, exist_ok=True)
+        
+        # Get all videos
+        videos = glob.glob(os.path.join(input_folder, video_pattern))
+        results = {}
+        
+        for video_path in videos:
+            video_name = os.path.basename(video_path)
+            results[video_name] = self.process_video(video_path, output_folder)
+            
         return results
         
     def retrack_gestures(
