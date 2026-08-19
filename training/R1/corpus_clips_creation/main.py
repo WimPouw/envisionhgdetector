@@ -63,32 +63,34 @@ def main():
     no_gesture_output_dir.mkdir(exist_ok=True)
     move_output_dir.mkdir(exist_ok=True)
 
-    corpora = config.get('corpora', [])
-    if not corpora:
-        raise ValueError("Corpora section is missing or empty in the configuration file.")
-    
-    corpora_instances = load_corpora(corpora, defaults)
-    if len(corpora_instances) == 0:
-        raise ValueError("No valid corpora instances were created. Please check the configuration file and ensure that at least one corpus is enabled and correctly specified.")
-    else:
-        logging.info(f"Successfully created {len(corpora_instances)} corpus instances for processing.")
-    
-    # Parallel Processing
-    num_workers = min(len(corpora_instances), config.get('num_workers', 4))
-    with ThreadPoolExecutor(max_workers=num_workers) as executor:
-        future_to_corpus = {
-            executor.submit(corpus.extract, cancel_event): corpus for corpus in corpora_instances
-        }
-        for future in as_completed(future_to_corpus):
-            if cancel_event.is_set():
-                logging.info("Cancellation event detected. Skipping remaining tasks.")
-                print("Cancellation event detected. Skipping remaining tasks.")
-                break
-            try:
-                future.result()
-            except Exception as e:
-                logging.error(f"Faced Exception: {e} while processing corpus: {future_to_corpus[future].name}")
-                print(f"Faced Exception: {e} while processing corpus: {future_to_corpus[future].name}")
+    create_clips = config.get('create_clips', True)
+    if create_clips:
+        corpora = config.get('corpora', [])
+        if not corpora:
+            raise ValueError("Corpora section is missing or empty in the configuration file.")
+        
+        corpora_instances = load_corpora(corpora, defaults)
+        if len(corpora_instances) == 0:
+            raise ValueError("No valid corpora instances were created. Please check the configuration file and ensure that at least one corpus is enabled and correctly specified.")
+        else:
+            logging.info(f"Successfully created {len(corpora_instances)} corpus instances for processing.")
+        
+        # Parallel Processing
+        num_workers = min(len(corpora_instances), config.get('num_workers', 4))
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            future_to_corpus = {
+                executor.submit(corpus.extract, cancel_event): corpus for corpus in corpora_instances
+            }
+            for future in as_completed(future_to_corpus):
+                if cancel_event.is_set():
+                    logging.info("Cancellation event detected. Skipping remaining tasks.")
+                    print("Cancellation event detected. Skipping remaining tasks.")
+                    break
+                try:
+                    future.result()
+                except Exception as e:
+                    logging.error(f"Faced Exception: {e} while processing corpus: {future_to_corpus[future].name}")
+                    print(f"Faced Exception: {e} while processing corpus: {future_to_corpus[future].name}")
 
     # After all corpora are processed, generate metadata
     clips_metadata = ClipsMetadata(clips_info_dir)

@@ -1,4 +1,5 @@
 num_workers: 4 # num of workers for parallel processing. adjust based on your system capabilities.
+create_clips: true # set to false if you only want to create metadata and summary plots without re-creating clips
 
 defaults:
   # output_directory: C:/Users/User/Desktop/zipped~/CorpusClips/
