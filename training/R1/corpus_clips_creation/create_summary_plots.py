@@ -39,10 +39,68 @@ class CreatePlotsandTables:
         self.create_video_distributions()
         self.create_speaker_distributions()
         self.create_avg_time_distributions()
+        self.create_total_time_distributions()
 
     # ============================================================================
     # DISTRIBUTION FUNCTIONS
     # ============================================================================
+
+    def create_total_time_distributions(self):
+        total_time_distribution_corpora_rows = [ # combined
+            {
+                'Corpus': corpus,
+                'Total Duration (h)': corpus_data.get('total_clip_duration', 0.0) / 3600  # convert seconds to hours
+            }
+            for corpus, corpus_data in self.by_corpus.items()
+        ]
+        total_time_distribution_corpora = pd.DataFrame(total_time_distribution_corpora_rows)
+        total_time_distribution_corpora.to_csv(self.tables_dir / 'total_time_distribution_corpora.csv', index=False)
+        self.plot_bar(
+            x=total_time_distribution_corpora['Corpus'],
+            y=total_time_distribution_corpora['Total Duration (h)'],
+            xlabel='Corpus',
+            ylabel='Total Duration (h)',
+            title='Total Clip Duration Distribution Across All Corpora',
+            output_path=self.plots_dir / 'total_time_distribution_corpora.png'
+        )
+
+        # per label
+        total_time_distribution_label_rows = [ # combined
+            {
+                'Label': label,
+                'Total Duration (h)': label_data.get('total_clip_duration', 0.0) / 3600  # convert seconds to hours
+            }
+            for label, label_data in self.by_label.items()
+        ]
+        total_time_distribution_label = pd.DataFrame(total_time_distribution_label_rows)
+        total_time_distribution_label.to_csv(self.tables_dir / 'total_time_distribution_label.csv', index=False)
+        self.plot_bar(
+            x=total_time_distribution_label['Label'],
+            y=total_time_distribution_label['Total Duration (h)'],
+            xlabel='Label',
+            ylabel='Total Duration (h)',
+            title='Total Clip Duration Distribution Across All Labels',
+            output_path=self.plots_dir / 'total_time_distribution_label.png'
+        )
+
+        # per type
+        total_time_distribution_type_rows = [ # combined
+            {
+                'Type': type,
+                'Total Duration (h)': type_data.get('total_clip_duration', 0.0) / 3600  # convert seconds to hours
+            }
+            for type, type_data in self.by_type.items()
+        ]
+        total_time_distribution_type = pd.DataFrame(total_time_distribution_type_rows)
+        total_time_distribution_type.to_csv(self.tables_dir / 'total_time_distribution_type.csv', index=False)
+        self.plot_bar(
+            x=total_time_distribution_type['Type'],
+            y=total_time_distribution_type['Total Duration (h)'],
+            xlabel='Type',
+            ylabel='Total Duration (h)',
+            title='Total Clip Duration Distribution Across All Types',
+            output_path=self.plots_dir / 'total_time_distribution_type.png'
+        )
 
     def create_avg_time_distributions(self):
         avg_time_distribution_corpora_rows = [ # combined
