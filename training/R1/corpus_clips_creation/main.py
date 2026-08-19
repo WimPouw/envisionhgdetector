@@ -7,8 +7,10 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from clips_metadata import ClipsMetadata
+
 from utils import check_ffmpeg
+from clips_metadata import ClipsMetadata
+from create_summary_plots import CreatePlotsandTables
 
 # Allows user to gracefully shut down all tasks processing in parallel
 cancel_event = threading.Event()
@@ -90,11 +92,18 @@ def main():
 
     # After all corpora are processed, generate metadata
     clips_metadata = ClipsMetadata(clips_info_dir)
+    clips_metadata_path = output_base_dir / "clips_metadata.json"
     metadata = clips_metadata.save_metadata()
-    with open(output_base_dir / "clips_metadata.json", "w+") as f:
+    with open(clips_metadata_path, "w+") as f:
         json.dump(metadata, f, indent=4)
-
     print(f"Processing completed. Metadata saved to {output_base_dir / 'clips_metadata.json'}")
+
+    plots_tables_output_path = output_base_dir / "summary_plots_tables"
+    plots_tables_output_path.mkdir(exist_ok=True)
+    summary_plots_tables = CreatePlotsandTables(clips_metadata_path, plots_tables_output_path)
+    summary_plots_tables.generate_summary_plots_and_tables()
+    print(f"Summary plots and tables generated. Saved to {plots_tables_output_path}")
+
 
 def parse_code_file(code_file: str) -> tuple[str, str]:
     if not code_file or '.' not in code_file:
