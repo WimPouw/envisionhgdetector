@@ -78,7 +78,7 @@ class Ecolang(Corpus):
             return # Skip processing if clips info already exists for this file
         
         # video_file_path = self.directory / f"{base_name}_speakerview480480.mp4"
-        video_file_path = self.directory / f"{base_name}_speakerview480480_matting.mp4"
+        video_file_path = self.directory / f"{base_name}_speakerview480480.mp4"
         if not os.path.exists(video_file_path):
             video_file_path = self.directory / f"{base_name}_final.mp4" # naming convention for test videos
             if not os.path.exists(video_file_path):
