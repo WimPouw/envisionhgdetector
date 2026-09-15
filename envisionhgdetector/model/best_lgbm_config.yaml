@@ -1,0 +1,37 @@
+machine: x86_64
+platform: Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35
+gpu_count: 1
+lambda_l1: 0.0038442917945291006
+lambda_l2: 0.011491846463936277
+max_depth: 5
+processor: x86_64
+num_leaves: 47
+data:
+  stride: 2
+  npz_path: data\world_landmarks_v1.npz
+  window_size: 5
+  class_labels: [NoGesture, Gesture]
+  dataset_name: world
+  num_features: 92
+  num_landmarks: 23
+  source_labels: [NoGesture, Gesture, Move]
+  move_merge_target: NoGesture
+  n_engineered_features: 100
+gpu_devices: ['/physical_device:GPU:0']
+model: {metric: multi_logloss, lambda_l1: 0.0038442917945291006, lambda_l2: 0.011491846463936277,
+  max_depth: 5, objective: multiclass, num_leaves: 47, bagging_freq: 5, is_unbalance: true,
+  n_estimators: 1500, boosting_type: gbdt, learning_rate: 0.021826140917055, bagging_fraction: 0.5036602572218941,
+  feature_fraction: 0.8906356544993048, min_data_in_leaf: 81, class_weight_power: 0.7345093152061501}
+n_estimators: 1500
+learning_rate: 0.021826140917055
+numpy_version: 2.2.6
+training: {seed: 42, min_iterations: 200, early_stopping_rounds: 100}
+python_version: 3.10.21 | packaged by conda-forge | (main, Aug 21 2026, 22:42:31)
+  [GCC 14.4.0]
+bagging_fraction: 0.5036602572218941
+feature_fraction: 0.8906356544993048
+lightgbm_version: 4.7.0
+min_data_in_leaf: 81
+class_weight_power: 0.7345093152061501
+tensorflow_version: 2.21.0
+validation: {n_folds: 3, strategy: speaker_independent}

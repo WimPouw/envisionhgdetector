@@ -6,6 +6,7 @@ Supports CNN, LightGBM, and Combined models for gesture detection.
 from .config import Config
 from .detector import GestureDetector, RealtimeGestureDetector
 from .model_cnn import GestureModel
+from .model_cnn_b import GestureModel as BinaryGestureModel
 from .model_lightgbm import LightGBMGestureModel
 from .model_combined import CombinedGestureModel, CombinedConfig, load_combined_model
 
@@ -22,6 +23,7 @@ __all__ = [
     "CombinedConfig",
     
     # Individual models
+    "BinaryGestureModel",     # Binary CNN model
     "GestureModel",           # CNN model
     "LightGBMGestureModel",   # LightGBM model
     "CombinedGestureModel",   # Combined CNN + LightGBM

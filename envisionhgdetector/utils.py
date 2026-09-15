@@ -25,6 +25,8 @@ from dataclasses import dataclass
 import statistics
 from tqdm import tqdm
 
+from .state import Row
+
 def create_segments(
     annotations: pd.DataFrame,
     label_column: str,
@@ -130,8 +132,8 @@ def create_segments(
 
 def get_prediction_at_threshold(
     row: pd.Series,
-    motion_threshold: float = 0.6,
-    gesture_threshold: float = 0.6
+    motion_threshold: float,
+    gesture_threshold: float
 ) -> str:
     """Apply thresholds to get final prediction."""
     has_motion = 1 - row['NoGesture_confidence']
@@ -139,6 +141,31 @@ def get_prediction_at_threshold(
     if has_motion >= motion_threshold:
         gesture_conf = row['Gesture_confidence']
         move_conf = row['Move_confidence']
+        
+        valid_gestures = []
+        if gesture_conf >= gesture_threshold:
+            valid_gestures.append(('Gesture', gesture_conf))
+        if move_conf >= gesture_threshold:
+            valid_gestures.append(('Move', move_conf))
+            
+        if valid_gestures:
+            return max(valid_gestures, key=lambda x: x[1])[0]
+    
+    return 'NoGesture'
+
+def get_label_from_prediction(
+    no_gesture_confidence: float,
+    gesture_confidence: float,
+    move_confidence: float,
+    motion_threshold: float,
+    gesture_threshold: float
+) -> str:
+    """Apply thresholds to get final prediction."""
+    has_motion = 1 - no_gesture_confidence
+    
+    if has_motion >= motion_threshold:
+        gesture_conf = gesture_confidence
+        move_conf = move_confidence
         
         valid_gestures = []
         if gesture_conf >= gesture_threshold:

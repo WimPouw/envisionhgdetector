@@ -26,7 +26,7 @@ Currently, the detector can identify:
 ## Installation
 Consider creating a conda environment first.
 ```bash
-conda create -n envision python==3.10
+conda create -n envision python=3.10
 conda activate envision
 (envision) pip install envisionhgdetector
 ```

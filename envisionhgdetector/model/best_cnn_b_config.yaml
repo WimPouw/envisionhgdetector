@@ -1,0 +1,40 @@
+machine: x86_64
+platform: Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.35
+gpu_count: 1
+l2_weight: 0.0002821872523770295
+processor: x86_64
+batch_size: 64
+dense_units: 128
+gpu_devices: ['/physical_device:GPU:0']
+conv_filters: [16, 32, 64]
+dropout_rate: 0.3703989069749887
+data:
+  npz_path: data\world_landmarks_v1.npz
+  seq_length: 25
+  target_fps: 25
+  class_labels: [NoGesture, Gesture]
+  dataset_name: world
+  num_features: 92
+  num_landmarks: 23
+learning_rate: 3.7010468699401054e-05
+numpy_version: 2.2.6
+preprocessing: enhanced
+training: {seed: 42, epochs: 70, clipnorm: 1, optimizer: adam, batch_size: 64, learning_rate: 3.7010468699401054e-05,
+  label_smoothing: 0.05, steps_per_epoch: 2000, move_oversample_factor: 1.538170135324571,
+  early_stopping_patience: 12}
+python_version: 3.10.21 | packaged by conda-forge | (main, Aug 21 2026, 22:42:31)
+  [GCC 14.4.0]
+model:
+  l2_weight: 0.0002821872523770295
+  pool_size: 2
+  dense_units: 128
+  conv_filters: [16, 32, 64]
+  dropout_rate: 0.3703989069749887
+  noise_stddev: 0.025
+  preprocessing: enhanced
+  conv_kernel_size: 3
+  spatial_dropout_rate: 0.1
+lightgbm_version: 4.7.0
+tensorflow_version: 2.21.0
+validation: {n_folds: 3, strategy: speaker_independent}
+move_oversample_factor: 1.538170135324571

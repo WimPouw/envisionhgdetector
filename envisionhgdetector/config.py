@@ -23,9 +23,12 @@ class Config:
     # CNN model filename (in envisionhgdetector/model/)
     # Set to None to use default based on feature_set
     cnn_model_filename: Optional[str] = "cnn_default.h5"
+
+    # CNN B model filename (in envisionhgdetector/model/)
+    cnn_b_model_filename: Optional[str] = "best_cnn_b.weights.h5"
     
     # LightGBM model filename (in envisionhgdetector/model/)
-    lightgbm_model_filename: Optional[str] = "lightgbm_default.pkl"
+    lightgbm_model_filename: Optional[str] = "best_lightgbm.pkl"
     
     # ========================================================================
     # GESTURE LABELS
@@ -44,11 +47,11 @@ class Config:
     num_original_features: int = 92
     
     # Model architecture (for world landmarks - best config)
-    conv_filters: Tuple[int, int, int] = (48, 96, 192)
-    dense_units: int = 256
-    dropout_rate: float = 0.36
-    l2_weight: float = 0.0002
-    preprocessing: str = "basic"
+    conv_filters: Tuple[int, int, int] = (16, 32, 64)
+    dense_units: int = 128
+    dropout_rate: float = 0.3703989069749887
+    l2_weight: float = 0.0002821872523770295
+    preprocessing: str = "enhanced"
     
     # ========================================================================
     # DEFAULT THRESHOLDS
@@ -125,6 +128,8 @@ class Config:
             return self.lightgbm_weights_path
         elif model_type.lower() == "cnn":
             return self.weights_path
+        elif model_type.lower() == "cnn_b":
+            return self.cnn_b_weights_path
         else:
             raise ValueError(f"Unknown model type: {model_type}")
     
@@ -141,6 +146,8 @@ class Config:
             models.append("cnn")
         if self.is_model_available("lightgbm"):
             models.append("lightgbm")
+        if self.is_model_available("cnn_b"):
+            models.append("cnn_b")
         return models
     
     @property

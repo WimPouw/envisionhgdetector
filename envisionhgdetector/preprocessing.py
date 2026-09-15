@@ -371,7 +371,7 @@ def video_to_landmarks(
     end_padding: bool = True,
     drop_consecutive_duplicates: bool = False,
     feature_set: Optional[str] = None
-) -> Tuple[List[List[float]], List[float]]:
+) -> Tuple[List[List[float]], List[float], List[int]]:
     """
     Extract landmarks from video frames at 25 fps.
     
@@ -384,7 +384,7 @@ def video_to_landmarks(
         feature_set: "basic" (41), "extended" (61), or "world" (92)
 
     Returns:
-        Tuple of (features_list, timestamps)
+        Tuple of (features_list, timestamps, frame_indices)
     """
     if feature_set is None:
         feature_set = FEATURE_SET
@@ -395,6 +395,7 @@ def video_to_landmarks(
     valid_frame_count = 0
     prev_features: List[float] = []
     landmarks: List[List[float]] = []
+    frame_indices: List[int] = []
     cap = cv2.VideoCapture(video_path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_interval = max(1, round(fps / 25)) if fps > 0 else 1
@@ -437,8 +438,6 @@ def video_to_landmarks(
             # ================================================================
             if feature_set == "world":
                 if results.pose_world_landmarks:
-                    frame_timestamps.append(processed_frame_count / 25.0)
-                    
                     features = extract_world_landmarks(results)
                     
                     if features is not None:
@@ -450,6 +449,8 @@ def video_to_landmarks(
                             continue
 
                         landmarks.append(features)
+                        frame_timestamps.append(frame_number / fps if fps > 0 else 0.0)
+                        frame_indices.append(frame_number)
                         prev_features = features
                         valid_frame_count += 1
                 
@@ -461,8 +462,6 @@ def video_to_landmarks(
             # BASIC/EXTENDED LANDMARKS (41/61 features)
             # ================================================================
             if results.face_landmarks and results.pose_landmarks:
-                frame_timestamps.append(processed_frame_count / 25.0)
-                
                 # Head rotation calculation
                 face_2d, face_3d = [], []
                 nose_2d, nose_3d = None, None
@@ -626,6 +625,8 @@ def video_to_landmarks(
                     continue
 
                 landmarks.append(features)
+                frame_timestamps.append(frame_number / fps if fps > 0 else 0.0)
+                frame_indices.append(frame_number)
                 prev_features = features
                 valid_frame_count += 1
                 
@@ -636,11 +637,12 @@ def video_to_landmarks(
         cap.release()
 
         if not landmarks:
-            return [], []
+            return [], [], []
 
         if max_num_frames and video_segment == VideoSegment.LAST:
             landmarks = landmarks[-max_num_frames:]
             frame_timestamps = frame_timestamps[-max_num_frames:]
+            frame_indices = frame_indices[-max_num_frames:]
 
         if max_num_frames and end_padding and len(landmarks) < max_num_frames:
             last = landmarks[-1]
@@ -650,8 +652,9 @@ def video_to_landmarks(
                 time_step = 1.0 / 25.0
                 for i in range(1, max_num_frames - len(frame_timestamps) + 1):
                     frame_timestamps.append(last_time + i * time_step)
+                    frame_indices.append(frame_indices[-1])
 
-        return landmarks, frame_timestamps
+        return landmarks, frame_timestamps, frame_indices
 
 
 # ============================================================================
@@ -673,18 +676,18 @@ class VideoProcessor:
         self.feature_set = feature_set or FEATURE_SET
         self.mp_holistic = mp.solutions.holistic
         
-    def process_video(self, video_path: str) -> Tuple[List[List[float]], List[float]]:
+    def process_video(self, video_path: str) -> Tuple[List[List[float]], List[float], List[int]]:
         """
         Process video and extract landmarks features.
         """
-        features_list, timestamps = video_to_landmarks(
+        features_list, timestamps, frame_indices = video_to_landmarks(
             video_path=video_path, 
             max_num_frames=None,
             video_segment=VideoSegment.BEGINNING,
             feature_set=self.feature_set
         )
         
-        return features_list, timestamps
+        return features_list, timestamps, frame_indices
 
 
 def create_sliding_windows(

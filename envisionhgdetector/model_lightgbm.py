@@ -15,19 +15,7 @@ import joblib
 import os
 from typing import Optional, List, Dict, Any, Tuple
 from collections import deque
-from .config import Config
-
-# Upper body landmark indices (23 landmarks, matching training)
-UPPER_BODY_INDICES = list(range(23))
-
-# Key joint indices for feature extraction
-KEY_JOINT_INDICES = [11, 12, 13, 14, 15, 16]  # Shoulders, elbows, wrists
-LEFT_WRIST_IDX = 15
-RIGHT_WRIST_IDX = 16
-
-# Visibility landmark indices
-VISIBILITY_LANDMARKS = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]
-UPPER_BODY_VIS = np.array([11, 12, 13, 14, 15, 16])
+from .state import LIGHTGBM_Config
 
 class LightGBMGestureModel:
     """
@@ -37,39 +25,13 @@ class LightGBMGestureModel:
     2-class model: NoGesture vs Gesture (Move merged into NoGesture)
     """
     
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[LIGHTGBM_Config] = None):
         """Initialize LightGBM model with configuration."""
-        self.config = config or Config()
-        
-        # Default parameters (will be overwritten by model file)
-        self.window_size = 5
-        self.n_features = 100
-        self.gesture_labels = ("NoGesture", "Gesture")
-        
-        # Find and load model
-        model_path = self._find_model_path()
-        if model_path:
-            self.load_model(model_path)
-        else:
-            print("Warning: LightGBM model not found. Call load_model() manually.")
-            self.model = None
-            self.scaler = None
-            self.label_encoder = None
-        
+        self.config = config
+
+        self.load_model(config.weights_path)
         # Initialize MediaPipe Holistic for world landmarks
         self.mp_holistic = mp.solutions.holistic
-        self.holistic = self.mp_holistic.Holistic(
-            static_image_mode=False,
-            model_complexity=1,
-            enable_segmentation=False,
-            smooth_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
-        
-        # Buffer for world landmarks (window_size frames)
-        self.landmarks_buffer = deque(maxlen=self.window_size)
-        
         # Backward compatibility aliases
         self.key_joints_buffer = self.landmarks_buffer  # Alias for old code
         self.left_fingers_buffer = deque(maxlen=self.window_size)  # Dummy for old code
@@ -78,28 +40,8 @@ class LightGBMGestureModel:
         self.expected_features = self.n_features  # Alias
         
         # Confidence threshold
-        self.confidence_threshold = 0.5
-    
-    def _find_model_path(self) -> Optional[str]:
-        """Find the LightGBM model file."""
-        # Try config path first
-        if hasattr(self.config, 'lightgbm_weights_path') and self.config.lightgbm_weights_path:
-            if os.path.exists(self.config.lightgbm_weights_path):
-                return self.config.lightgbm_weights_path
-        
-        # Try default paths
-        possible_paths = [
-            os.path.join(os.path.dirname(__file__), 'model', 'best_lightgbm_model.pkl'),
-            os.path.join(os.path.dirname(__file__), 'model', 'lightgbm_gesture_model_v2.pkl'),
-            os.path.join(os.path.dirname(__file__), 'model', 'lightgbm_gesture_model_v1.pkl'),
-            os.path.join(os.path.dirname(__file__), 'best_lightgbm_model.pkl'),
-        ]
-        
-        for path in possible_paths:
-            if os.path.exists(path):
-                return path
-        
-        return None
+        # TODO check -- is this lgbm threshold or smth else?
+        self.confidence_threshold = self.config.thresholds.gesture_threshold
     
     def load_model(self, model_path: str):
         """Load LightGBM model from joblib file."""
@@ -111,8 +53,8 @@ class LightGBMGestureModel:
             self.model = model_data['model']
             self.scaler = model_data['scaler']
             self.label_encoder = model_data['label_encoder']
-            self.window_size = model_data.get('window_size', 5)
-            self.n_features = model_data.get('n_features', 100)
+            self.window_size = model_data.get('window_size', self.config.window_size)
+            self.n_features = model_data.get('n_features', self.config.n_features)
             
             # IMPORTANT: Use label_encoder.classes_ for correct label order
             # LabelEncoder sorts alphabetically, so classes_ = ['Gesture', 'NoGesture']
@@ -121,7 +63,7 @@ class LightGBMGestureModel:
                 self.gesture_labels = tuple(self.label_encoder.classes_)
             else:
                 # Fallback: alphabetical order (sklearn default)
-                self.gesture_labels = ("Gesture", "NoGesture")
+                self.gesture_labels = tuple(sorted(self.config.gesture_labels))
             
             # Update buffer size
             self.landmarks_buffer = deque(maxlen=self.window_size)
@@ -147,14 +89,22 @@ class LightGBMGestureModel:
         rgb_frame.flags.writeable = False
         
         # Process with MediaPipe
-        results = self.holistic.process(rgb_frame)
+        with self.mp_holistic.Holistic(
+            static_image_mode=False,
+            model_complexity=1,
+            enable_segmentation=False,
+            smooth_landmarks=True,
+            min_detection_confidence=self.config.min_detection_confidence,
+            min_tracking_confidence=self.config.min_tracking_confidence
+        ) as holistic:
+            results = holistic.process(rgb_frame)
         
         if not results.pose_world_landmarks:
             return None
         
         # Extract upper body world landmarks (23 × 4 = 92 features)
         features = []
-        for idx in UPPER_BODY_INDICES:
+        for idx in self.config.UPPER_BODY_INDICES:
             if idx < len(results.pose_world_landmarks.landmark):
                 lm = results.pose_world_landmarks.landmark[idx]
                 features.extend([lm.x, lm.y, lm.z, lm.visibility])
@@ -164,7 +114,7 @@ class LightGBMGestureModel:
         return np.array(features, dtype=np.float32)
     
     # OLD IMPLEMENTATION
-    # def extract_sequence_features(self, sequence: np.ndarray) -> np.ndarray:
+    '''# def extract_sequence_features(self, sequence: np.ndarray) -> np.ndarray:
     #     """
     #     Extract 100 features from a sequence of world landmarks.
     #     MATCHES TRAINING EXACTLY!
@@ -336,7 +286,7 @@ class LightGBMGestureModel:
     #     assert len(features) == 100, f"Expected 100 features, got {len(features)}"
         
     #     return np.array(features, dtype=np.float32)
-    
+    '''
     def extract_sequence_features(
         self,
         video: np.ndarray,
@@ -366,7 +316,7 @@ class LightGBMGestureModel:
         visibility = seq_4d[:, :, 3]     # (n_frames, 23)
 
         # Key joints: (n_frames, 6, 3) → (n_frames, 18)
-        key_joints = seq_3d[:, KEY_JOINT_INDICES, :]
+        key_joints = seq_3d[:, self.config.KEY_JOINT_INDICES, :]
         kj_flat = key_joints.reshape(n_frames, -1)
 
         # Window start indices
@@ -419,8 +369,8 @@ class LightGBMGestureModel:
 
         # --- 4. Finger features (18) --- mean over window ---
         # Per-frame finger positions relative to wrist
-        l_wrist_seq = seq_3d[:, LEFT_WRIST_IDX, :]   # (n_frames, 3)
-        r_wrist_seq = seq_3d[:, RIGHT_WRIST_IDX, :]
+        l_wrist_seq = seq_3d[:, self.config.LEFT_WRIST_IDX, :]   # (n_frames, 3)
+        r_wrist_seq = seq_3d[:, self.config.RIGHT_WRIST_IDX, :]
 
         l_has_seq = np.any(l_wrist_seq, axis=1, keepdims=True)  # (n_frames, 1)
         r_has_seq = np.any(r_wrist_seq, axis=1, keepdims=True)
@@ -468,8 +418,8 @@ class LightGBMGestureModel:
         # --- 8. Wrist height (y coordinate) (2) --- mean over window ---
         l_shoulder_seq = seq_3d[:, 11, :]
         r_shoulder_seq = seq_3d[:, 12, :]
-        l_wrist_pos_seq = seq_3d[:, LEFT_WRIST_IDX, :]
-        r_wrist_pos_seq = seq_3d[:, RIGHT_WRIST_IDX, :]
+        l_wrist_pos_seq = seq_3d[:, self.config.LEFT_WRIST_IDX, :]
+        r_wrist_pos_seq = seq_3d[:, self.config.RIGHT_WRIST_IDX, :]
 
         l_sh_has_seq = np.any(l_shoulder_seq, axis=1, keepdims=True)
         r_sh_has_seq = np.any(r_shoulder_seq, axis=1, keepdims=True)
@@ -494,8 +444,8 @@ class LightGBMGestureModel:
 
         # --- 11. Total motion (1) --- sum of wrist displacements over window ---
         if n_frames > 1:
-            lw_disp = np.linalg.norm(np.diff(seq_3d[:, LEFT_WRIST_IDX, :], axis=0), axis=1)
-            rw_disp = np.linalg.norm(np.diff(seq_3d[:, RIGHT_WRIST_IDX, :], axis=0), axis=1)
+            lw_disp = np.linalg.norm(np.diff(seq_3d[:, self.config.LEFT_WRIST_IDX, :], axis=0), axis=1)
+            rw_disp = np.linalg.norm(np.diff(seq_3d[:, self.config.RIGHT_WRIST_IDX, :], axis=0), axis=1)
             total_disp = lw_disp + rw_disp # n_frames-1
             cs = np.concatenate([[0.0], np.cumsum(total_disp)])
             out[:, 77] = cs[ends] - cs[starts] # no need to do ends+1 since already offset by 1 due to total_disp being n_frames-1
@@ -518,8 +468,8 @@ class LightGBMGestureModel:
             out[:, 79] = np.abs(lm_sum - rm_sum) / (lm_sum + rm_sum + 1e-6)
 
         # --- 14. Visibility (20) --- mean for current ---
-        upper_vis = visibility[:, UPPER_BODY_VIS] # (n_frames, 6)
-        out[:, 80:92] = window_mean(visibility[:, VISIBILITY_LANDMARKS])
+        upper_vis = visibility[:, self.config.UPPER_BODY_VIS] # (n_frames, 6)
+        out[:, 80:92] = window_mean(visibility[:, self.config.VISIBILITY_LANDMARKS])
         out[:, 92:98] = window_mean(upper_vis)
         
         # Min wrist visibility over window (2)
@@ -550,27 +500,29 @@ class LightGBMGestureModel:
         
         # Scale features
         features_scaled = self.scaler.transform(features)
-        
-        # Get predictions - handle both Booster and Classifier objects
-        if hasattr(self.model, 'predict_proba'):
-            # LGBMClassifier - returns probabilities directly
-            probabilities = self.model.predict_proba(features_scaled)
-        else:
-            # Raw Booster trained with multiclass objective
-            # predict() already returns probabilities with shape (n_samples, n_classes)
-            raw_output = self.model.predict(features_scaled)
-            probabilities = np.array(raw_output)
-            
-            # Ensure 2D output
-            if probabilities.ndim == 1:
-                # Single sample, check if it's already probabilities
-                if len(probabilities) == len(self.gesture_labels):
-                    probabilities = probabilities.reshape(1, -1)
-                else:
-                    # Binary single value - apply sigmoid
-                    gesture_probs = 1.0 / (1.0 + np.exp(-probabilities))
-                    probabilities = np.column_stack([1 - gesture_probs, gesture_probs])
-        
+        try:
+            # Get predictions - handle both Booster and Classifier objects
+            if hasattr(self.model, 'predict_proba'):
+                # LGBMClassifier - returns probabilities directly
+                probabilities = self.model.predict_proba(features_scaled)
+            else:
+                # Raw Booster trained with multiclass objective
+                # predict() already returns probabilities with shape (n_samples, n_classes)
+                raw_output = self.model.predict(features_scaled)
+                probabilities = np.array(raw_output)
+                
+                # Ensure 2D output
+                if probabilities.ndim == 1:
+                    # Single sample, check if it's already probabilities
+                    if len(probabilities) == len(self.gesture_labels):
+                        probabilities = probabilities.reshape(1, -1)
+                    else:
+                        # Binary single value - apply sigmoid
+                        gesture_probs = 1.0 / (1.0 + np.exp(-probabilities))
+                        probabilities = np.column_stack([1 - gesture_probs, gesture_probs])
+        except:
+            raise RuntimeError("Prediction failed. Check model and input features.")
+                
         if probabilities.ndim == 1:
             probabilities = probabilities.reshape(1, -1)
             
@@ -678,8 +630,3 @@ class LightGBMGestureModel:
         if not gesture or gesture.lower() in ['no_gesture', 'nogesture', 'none', '']:
             return "NOGESTURE"
         return gesture.upper().replace('_', '').replace(' ', '')
-    
-    def __del__(self):
-        """Cleanup MediaPipe resources."""
-        if hasattr(self, 'holistic') and self.holistic:
-            self.holistic.close()
