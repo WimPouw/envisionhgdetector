@@ -312,8 +312,8 @@ class GestureDetector:
         in_gesture = False
         start_idx = 0
         
-        min_length_s = self.params['min_length_s']
-        min_gap_s = self.params['min_gap_s']
+        min_length_s = self.config.thresholds.min_length_s
+        min_gap_s = self.config.thresholds.min_gap_s
         
         for idx, row in raw_df.iterrows():
             is_gesture = row[class_column] != 'NoGesture'
@@ -397,7 +397,7 @@ class GestureDetector:
         # Create results DataFrame - use the actual timestamps for frames with valid skeleton data
         fps = self._get_video_fps(video_path)
         rows = []
-        gesture_class_bias = self.params['gesture_class_bias']
+        gesture_class_bias = self.config.thresholds.gesture_class_bias
         
         for i, (pred, time) in enumerate(zip(predictions, timestamps[::stride])):
             has_motion = pred[0]
@@ -517,7 +517,7 @@ class GestureDetector:
         
         # Create results DataFrame - use the actual timestamps for frames with valid skeleton data
         rows = []
-        gesture_class_bias = self.params['gesture_class_bias']
+        gesture_class_bias = self.config.thresholds.gesture_class_bias
         
         for i, (pred) in enumerate(predictions):
             has_motion = pred[0]
@@ -590,11 +590,15 @@ class GestureDetector:
             start = window_index * stride
             end = start + self.config.seq_length
             gesture_probability = float(gesture_probability)
+            no_gesture_probability = 1 - gesture_probability
+            move_probability = 0.0  # CNN-B does not predict move probability
 
-            label = (
-                "Gesture"
-                if gesture_probability >= self.config.thresholds.gesture_threshold
-                else "NoGesture"
+            label = get_label_from_prediction(
+                no_gesture_probability,
+                gesture_probability,
+                move_probability,
+                self.config.thresholds.motion_threshold,
+                self.config.thresholds.gesture_threshold
             )
 
             for frame_index in range(start, min(end, len(features))):
@@ -782,74 +786,55 @@ class GestureDetector:
             timestamp = frame_number / fps
             features = self.model.extract_features_from_landmarks(landmarks)
             if features is not None:
-
                 try:
                     pred_probs = self.model.predict(features.reshape(1, -1))[0]
                 except Exception as e:
-                    print(f"Error during prediction: {e}")
-                    raise RuntimeError(f"Prediction failed for frame {frame_number} at timestamp {timestamp:.2f}s")
+                    raise RuntimeError(f"Prediction failed for frame {frame_number} at timestamp {timestamp:.2f}s: \n{e}")
                 
                 predicted_class = np.argmax(pred_probs)
                 confidence = pred_probs[predicted_class]
                 
                 # Convert to gesture name
                 gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
-                gesture_name = self.model.standardize_gesture_name(gesture_name)
-                
+
                 # Convert LightGBM output to align witht he CNN format
-                if gesture_name.lower() == "nogesture":
+                if gesture_name == "NoGesture":
                     gesture_conf = 1-confidence # gesture confidence is the 1-no gesture confidence                   
                     nogesture_conf = confidence # no gesture confidence is the confidence of the no gesture class
                     move_conf = 0.0
+                elif gesture_name == "Gesture":
+                    gesture_conf = confidence
+                    move_conf = 0.0
+                    nogesture_conf = 1-confidence
+                elif gesture_name == "Move": # TODO - do we need this?
+                    gesture_conf = 0.0
+                    move_conf = confidence
+                    nogesture_conf = 1-confidence
                 else:
-                    # Distribute confidence based on gesture type
-                    if "move" in gesture_name.lower() or "MOVE" in gesture_name:
-                        gesture_conf = 0.0
-                        move_conf = confidence
-                        nogesture_conf = 1-confidence
-                    else: #then its a a gesture
-                        gesture_conf = confidence
-                        move_conf = 0.0
-                        nogesture_conf = 1-confidence
-                
-                prediction = get_label_from_prediction(
-                    nogesture_conf,
-                    gesture_conf,
-                    move_conf,
-                    self.model.config.thresholds.motion_threshold,
-                    self.model.config.thresholds.gesture_threshold
-                )
-                predictions.append(Row(
-                    frame_index=frame_number,
-                    prediction=prediction,
-                    confidence=confidence,
-                    gesture_confidence=gesture_conf,
-                    no_gesture_confidence=nogesture_conf,
-                    move_confidence=move_conf,
-                    motion_confidence=gesture_conf,
-                    timestamp=timestamp
-                ))
+                    raise ValueError(f"Unexpected gesture name '{gesture_name}' for frame {frame_number} at timestamp {timestamp:.2f}s")
+                    
             else:
-                no_gesture_conf = 1.0
+                nogesture_conf = 1.0
                 gesture_conf = 0.0
                 move_conf = 0.0
-                prediction = get_label_from_prediction(
-                    no_gesture_conf,
-                    gesture_conf,
-                    move_conf,
-                    self.model.config.thresholds.motion_threshold,
-                    self.model.config.thresholds.gesture_threshold
-                )
-                predictions.append(Row(
-                    frame_index=frame_number,
-                    prediction=prediction,
-                    confidence=0.0,
-                    gesture_confidence=0.0,
-                    no_gesture_confidence=1.0,
-                    move_confidence=0.0,
-                    motion_confidence=0.0,
-                    timestamp=timestamp
-                ))
+
+            prediction = get_label_from_prediction(
+                nogesture_conf,
+                gesture_conf,
+                move_conf,
+                self.model.config.thresholds.motion_threshold,
+                self.model.config.thresholds.gesture_threshold
+            )
+            predictions.append(Row(
+                frame_index=frame_number,
+                prediction=prediction,
+                confidence=gesture_conf,
+                gesture_confidence=gesture_conf,
+                no_gesture_confidence=nogesture_conf,
+                move_confidence=move_conf,
+                motion_confidence=gesture_conf,
+                timestamp=timestamp
+            ))
             
             frame_number += 1
             

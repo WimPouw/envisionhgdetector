@@ -24,16 +24,24 @@ class Thresholds:
         gesture_class_bias: Optional[float] = None,
         cnn_motion_threshold: Optional[float] = None,
         cnn_gesture_threshold: Optional[float] = None,
-        lgbm_threshold: Optional[float] = None
+        lgbm_threshold: Optional[float] = None,
+        mediapipe_min_detection_confidence: Optional[float] = None,
+        mediapipe_min_tracking_confidence: Optional[float] = None
     ):
         self.motion_threshold =  motion_threshold or 0.5
         self.gesture_threshold = gesture_threshold or 0.5
-        self.lgbm_threshold = lgbm_threshold or 0.5
         self.min_gap_s = min_gap_s or 0.3
         self.min_length_s = min_length_s or 0.5
         self.gesture_class_bias = gesture_class_bias or 0.0
+
+        # combined model specific thresholds
         self.cnn_motion_threshold = cnn_motion_threshold or 0.5
         self.cnn_gesture_threshold = cnn_gesture_threshold or 0.5
+        self.lgbm_threshold = lgbm_threshold or 0.5
+
+        # lightgbm specific thresholds
+        self.mediapipe_min_detection_confidence = mediapipe_min_detection_confidence or 0.5
+        self.mediapipe_min_tracking_confidence = mediapipe_min_tracking_confidence or 0.5
 
 
 class CNN_B_Config:
@@ -71,15 +79,14 @@ class LIGHTGBM_Config:
         self.thresholds = thresholds
 
         data_dict = config.get('data', {})
-        model_dict = config.get('model', {})
 
         self.window_size = data_dict.get('window_size')
         self.n_features = data_dict.get('num_features')
         self.gesture_labels = data_dict.get('class_labels')
 
         # Mediapipe
-        self.min_detection_confidence = 0.5
-        self.min_tracking_confidence = 0.5
+        self.min_detection_confidence = thresholds.mediapipe_min_detection_confidence
+        self.min_tracking_confidence = thresholds.mediapipe_min_tracking_confidence
 
         # Defaults for LightGBM model parameters
         # Upper body landmark indices (23 landmarks, matching training)

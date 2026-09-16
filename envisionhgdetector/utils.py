@@ -162,6 +162,7 @@ def get_label_from_prediction(
 ) -> str:
     """Apply thresholds to get final prediction."""
     has_motion = 1 - no_gesture_confidence
+    prediction = 'NoGesture'
     
     if has_motion >= motion_threshold:
         gesture_conf = gesture_confidence
@@ -174,9 +175,9 @@ def get_label_from_prediction(
             valid_gestures.append(('Move', move_conf))
             
         if valid_gestures:
-            return max(valid_gestures, key=lambda x: x[1])[0]
-    
-    return 'NoGesture'
+            prediction = max(valid_gestures, key=lambda x: x[1])[0]
+            
+    return prediction
 
 def create_elan_file(
     video_path: str, 

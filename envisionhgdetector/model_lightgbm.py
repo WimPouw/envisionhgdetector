@@ -25,7 +25,7 @@ class LightGBMGestureModel:
     2-class model: NoGesture vs Gesture (Move merged into NoGesture)
     """
     
-    def __init__(self, config: Optional[LIGHTGBM_Config] = None):
+    def __init__(self, config: LIGHTGBM_Config):
         """Initialize LightGBM model with configuration."""
         self.config = config
 
@@ -34,10 +34,10 @@ class LightGBMGestureModel:
         self.mp_holistic = mp.solutions.holistic
         # Backward compatibility aliases
         self.key_joints_buffer = self.landmarks_buffer  # Alias for old code
-        self.left_fingers_buffer = deque(maxlen=self.window_size)  # Dummy for old code
-        self.right_fingers_buffer = deque(maxlen=self.window_size)  # Dummy for old code
+        self.left_fingers_buffer = deque(maxlen=self.config.window_size)  # Dummy for old code
+        self.right_fingers_buffer = deque(maxlen=self.config.window_size)  # Dummy for old code
         self.includes_fingers = True  # Always true for Config 13
-        self.expected_features = self.n_features  # Alias
+        self.expected_features = self.config.n_features  # Alias
         
         # Confidence threshold
         # TODO check -- is this lgbm threshold or smth else?
