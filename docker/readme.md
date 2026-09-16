@@ -1,6 +1,6 @@
 ## To build and run the docker container
 ```bash
-docker build -t -f docker/dockerfile envisionhg_detector_docker .
+docker build -t envisionhg_detector_docker -f docker/dockerfile .
 ```
 Model Options: 'cnn_b' or 'lightgbm'
 ```bash
