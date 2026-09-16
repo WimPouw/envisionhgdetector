@@ -1,0 +1,20 @@
+FROM python:3.10-slim
+
+RUN apt-get update && apt-get install -y \
+    libgl1 ffmpeg curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# All paths are relative to build context (parent directory)
+COPY requirements_new_2.txt requirements.txt
+RUN pip install --upgrade pip 
+
+# remove windows specific package
+RUN sed -i '/tensorflow-intel/d' requirements.txt \
+    && pip install --no-cache-dir -r requirements.txt
+
+# we need to copy all files main.py needed - docker container is isolated
+WORKDIR /app
+COPY ./docker/main.py .
+COPY envisionhgdetector/ ./envisionhgdetector/ 
+
+ENTRYPOINT ["python", "main.py"]
