@@ -26,14 +26,14 @@ class Thresholds:
         cnn_gesture_threshold: Optional[float] = None,
         lgbm_threshold: Optional[float] = None
     ):
-        self.motion_threshold =  motion_threshold or 0.7
-        self.gesture_threshold = gesture_threshold or 0.7
+        self.motion_threshold =  motion_threshold or 0.5
+        self.gesture_threshold = gesture_threshold or 0.5
+        self.lgbm_threshold = lgbm_threshold or 0.5
         self.min_gap_s = min_gap_s or 0.3
         self.min_length_s = min_length_s or 0.5
         self.gesture_class_bias = gesture_class_bias or 0.0
-        self.cnn_motion_threshold = cnn_motion_threshold or 0.7
-        self.cnn_gesture_threshold = cnn_gesture_threshold or 0.7
-        self.lgbm_threshold = lgbm_threshold or 0.5
+        self.cnn_motion_threshold = cnn_motion_threshold or 0.5
+        self.cnn_gesture_threshold = cnn_gesture_threshold or 0.5
 
 
 class CNN_B_Config:
