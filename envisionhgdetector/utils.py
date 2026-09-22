@@ -27,6 +27,37 @@ from tqdm import tqdm
 
 from .state import Row
 
+def get_video_fps(video_path: str) -> int:
+        """Get video FPS."""
+        cap = cv2.VideoCapture(video_path)
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        cap.release()
+        return fps
+
+def expand_predictions_to_frames(
+        self,
+        predictions: pd.DataFrame,
+        total_frames: int,
+        fps: float
+    ) -> pd.DataFrame:
+        """Return one dataframe row for every source video frame.
+        filled unavailable data with NoGesture and prediction_available=False
+        """
+        frame_df = pd.DataFrame({
+            'frame_idx': np.arange(total_frames, dtype=np.int64),
+        })
+        frame_df['time'] = frame_df['frame_idx'] / fps if fps > 0 else np.nan
+
+        if predictions.empty:
+            frame_df['prediction'] = Labels.NOGESTURE
+            frame_df['prediction_available'] = False
+            return frame_df
+
+        dense_df = frame_df.merge(predictions, on=['frame_idx', 'time'], how='left')
+        dense_df['prediction_available'] = dense_df['prediction'].notna()
+        dense_df['prediction'] = dense_df['prediction'].fillna(Labels.NOGESTURE)
+        return dense_df
+    
 def create_segments(
     annotations: pd.DataFrame,
     label_column: str,
@@ -153,6 +184,7 @@ def get_prediction_at_threshold(
     
     return 'NoGesture'
 
+# TODO - this should be done by the models themselves, they already have the thresholds
 def get_label_from_prediction(
     no_gesture_confidence: float,
     gesture_confidence: float,
