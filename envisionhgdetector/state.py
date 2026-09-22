@@ -1,19 +1,40 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 import numpy as np
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, get_args
+from enum import Enum
+
+class Labels(str, Enum):
+    GESTURE = "Gesture"
+    NOGESTURE = "NoGesture"
+    MOVE = "Move"
+
+LABELS_LITERAL = Literal[Labels.GESTURE, Labels.NOGESTURE, Labels.MOVE]
+LABELS = get_args(LABELS_LITERAL)
+
+VALID_MODEL_NAMES_LITERAL = Literal["cnn", "cnn_b", "lightgbm"]
+VALID_MODEL_NAMES = get_args(VALID_MODEL_NAMES_LITERAL)
 
 @dataclass
 class Row:
     frame_index: int
-    prediction: Literal["Gesture", "NoGesture", "Move"]
+    prediction: LABELS_LITERAL
     confidence: float
     motion_confidence: float
     gesture_confidence: float
     no_gesture_confidence: float
     move_confidence: float
     timestamp: Optional[float] = None
+
+@dataclass
+class Segment:
+    start_time: float
+    end_time: float
+    prediction: LABELS_LITERAL
+    prediction_id: int
+    duration: float
+
 
 class Thresholds:
     def __init__(self, 
@@ -72,6 +93,13 @@ class CNN_B_Config:
         self.scale_range = (0.995, 1.005)
         self.drop_prob = 0.01
 
+class CNN_Config(CNN_B_Config):
+    def __init__(self, config: dict, weights_path: Path, thresholds: Thresholds):
+        super().__init__(config, weights_path, thresholds)        
+
+        # TODO - hardcoded for now - since last run was cnn_b only
+        self.gesture_labels = Tuple[str, str] = ("Gesture", "Move")  # Motion classes (excluding NoGesture)
+        self.all_labels: Tuple[str, str, str] = ("NoGesture", "Gesture", "Move")
 
 class LIGHTGBM_Config:
     def __init__(self, config: dict, weights_path: Path, thresholds: Thresholds):
