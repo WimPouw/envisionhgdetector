@@ -1,0 +1,7 @@
+__pycache__/
+
+build/
+dist/
+envisionhgdetector/output_realtime/
+envisionhgdetector.egg-info/
+
