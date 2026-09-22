@@ -67,7 +67,7 @@ class GestureDetector:
         Initialize detector with model type selection.
         
         Args:
-            model_type: "cnn", "cnn_b", "lightgbm", or "combined"
+            model_type: "cnn", "cnn_b", "lightgbm"
             config_path: Optional path to model config file
             weights_path: Optional path to model weights file
             thresholds: Optional Thresholds object for model thresholds
@@ -81,25 +81,7 @@ class GestureDetector:
         if self.model_type not in VALID_MODEL_NAMES:
             raise ValueError(f"Unknown model type: {model_type}. Use one of {VALID_MODEL_NAMES}.")
         
-        # Initialize model based on type
-        if self.model_type == "combined":
-            raise NotImplementedError("Combined model is not implemented yet. Please use 'cnn_b' or 'lightgbm'.")
-            # # Create combined config with separate thresholds
-            # combined_config = CombinedConfig(
-            #     cnn_weights_path=self.config.weights_path,
-            #     lgbm_weights_path=self.config.lightgbm_weights_path,
-            #     cnn_motion_threshold=cnn_motion_threshold or self.params['motion_threshold'],
-            #     cnn_gesture_threshold=cnn_gesture_threshold or self.params['gesture_threshold'],
-            #     lgbm_threshold=lgbm_threshold or self.params['motion_threshold'],
-            #     min_gap_s=self.params['min_gap_s'],
-            #     min_length_s=self.params['min_length_s']
-            # )
-            # self.model = CombinedGestureModel(combined_config)
-            # self.video_processor = None
-            # print(f"Initialized Combined (CNN+LightGBM) gesture detector")
-            # print(f"  CNN thresholds: motion={combined_config.cnn_motion_threshold}, gesture={combined_config.cnn_gesture_threshold}")
-            # print(f"  LightGBM threshold: {combined_config.lgbm_threshold}")
-        elif self.model_type == "lightgbm":
+        if self.model_type == "lightgbm":
             self.config = DefaultConfig("lightgbm", self.thresholds, config_path, weights_path).get_config()
             self.model = LightGBMGestureModel(self.config)
             self.video_processor = None  # LightGBM handles its own processing
