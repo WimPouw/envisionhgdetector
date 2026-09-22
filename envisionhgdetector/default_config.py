@@ -35,7 +35,7 @@ class DefaultConfig:
         
     def get_default_weights(self, model_name: str) -> Path:
         """Get the default weights path based on model name."""
-        model_dir = Path(__file__).parent / "model"
+        model_dir = Path(__file__).parent / "pre_built_models"
         default_weights = {
             "cnn_b":  "best_cnn_b.h5",
             "cnn":  "cnn_weights.h5",
