@@ -1,8 +1,0 @@
-corpus,n_speakers,n_videos,videos_per_speaker_mean,videos_per_speaker_std,videos_per_speaker_min,videos_per_speaker_max
-ECOLANG,15,20035,1335.67,537.49,580,2496
-GESres,12,2392,199.33,230.88,30,824
-MULTISIMO,18,4202,233.44,129.01,56,498
-SAGA,4,1480,370.0,257.08,146,730
-SAGAplus,12,2911,242.58,225.91,11,804
-TEDM3D,2,1551,775.5,398.1,494,1057
-ZHUBO,1,2414,2414.0,,2414,2414

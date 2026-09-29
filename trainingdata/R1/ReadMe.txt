@@ -1,1 +1,0 @@
-This data will be published on www.envisionbox.org.

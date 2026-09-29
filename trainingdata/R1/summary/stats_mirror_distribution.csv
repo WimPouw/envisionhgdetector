@@ -1,9 +1,0 @@
-training_label,count,type
-Gesture,7774,Original
-Gesture,8122,Mirrored
-Move,402,Original
-Move,433,Mirrored
-NoGesture,7843,Original
-NoGesture,8001,Mirrored
-Objman,1201,Original
-Objman,1209,Mirrored
