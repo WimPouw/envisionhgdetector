@@ -2,11 +2,11 @@ import yaml
 from typing import Literal
 from pathlib import Path
 
-from .state import CNN_B_Config, LIGHTGBM_Config, Thresholds
+from .state import CNN_B_Config, LIGHTGBM_Config, ModelNames, Thresholds
 
 class DefaultConfig:
     def __init__(self, model_name: Literal["cnn_b", "cnn", "lightgbm"], thresholds: dict, config_path: Path, weights_path: Path):
-        if model_name == "cnn":
+        if model_name == ModelNames.CNN:
             raise NotImplementedError("The 'cnn' model is not implemented yet. Please use 'cnn_b' or 'lightgbm'.")
         
         self.config_path = config_path or self.get_default_config(model_name)
@@ -23,7 +23,7 @@ class DefaultConfig:
 
     def get_default_config(self, model_name: str) -> Path:
         """Get the default config path based on model name."""
-        model_dir = Path(__file__).parent / "model"
+        model_dir = Path(__file__).parent / "pre_built_models"
         default_configs = {
             "cnn_b":  "best_cnn_b_config.yaml",
             "cnn":  "cnn_config.yaml",
