@@ -25,7 +25,11 @@ from dataclasses import dataclass
 import statistics
 from tqdm import tqdm
 
-from .state import Row
+from .state import Labels, MoveMode, PredictionColumns, Row, SegmentColumns
+from .state import *
+
+def valid_float(value: float) -> bool:
+    return value >= 0 and value <= 1.0
 
 def get_video_fps(video_path: str) -> int:
         """Get video FPS."""
@@ -35,7 +39,6 @@ def get_video_fps(video_path: str) -> int:
         return fps
 
 def expand_predictions_to_frames(
-        self,
         predictions: pd.DataFrame,
         total_frames: int,
         fps: float
@@ -44,25 +47,29 @@ def expand_predictions_to_frames(
         filled unavailable data with NoGesture and prediction_available=False
         """
         frame_df = pd.DataFrame({
-            'frame_idx': np.arange(total_frames, dtype=np.int64),
+            PredictionColumns.FRAME_INDEX: np.arange(total_frames, dtype=np.int64),
         })
-        frame_df['time'] = frame_df['frame_idx'] / fps if fps > 0 else np.nan
+        frame_df[PredictionColumns.TIMESTAMP] = frame_df[PredictionColumns.FRAME_INDEX] / fps if fps > 0 else np.nan
 
         if predictions.empty:
-            frame_df['prediction'] = Labels.NOGESTURE
-            frame_df['prediction_available'] = False
+            frame_df[PredictionColumns.PREDICTION] = Labels.NOGESTURE
+            frame_df[PredictionColumns.PREDICTION_AVAILABLE] = False
             return frame_df
 
-        dense_df = frame_df.merge(predictions, on=['frame_idx', 'time'], how='left')
-        dense_df['prediction_available'] = dense_df['prediction'].notna()
-        dense_df['prediction'] = dense_df['prediction'].fillna(Labels.NOGESTURE)
+        dense_df = frame_df.merge(
+            predictions,
+            on=[PredictionColumns.FRAME_INDEX, PredictionColumns.TIMESTAMP],
+            how='left',
+        )
+        dense_df[PredictionColumns.PREDICTION_AVAILABLE] = dense_df[PredictionColumns.PREDICTION].notna()
+        dense_df[PredictionColumns.PREDICTION] = dense_df[PredictionColumns.PREDICTION].fillna(Labels.NOGESTURE)
         return dense_df
     
 def create_segments(
     annotations: pd.DataFrame,
     label_column: str,
-    min_gap_s: float = 0.3,
-    min_length_s: float = 0.5
+    min_gap_s: float,
+    min_length_s: float
 ) -> pd.DataFrame:
     """
     Create segments from frame-by-frame annotations, merging segments that are close in time.
@@ -75,116 +82,168 @@ def create_segments(
         min_length_s: Minimum segment length in seconds
         
     Returns:
-        DataFrame with columns: start_time, end_time, labelid, label, duration
+        DataFrame with columns: start_time, end_time, labelid, label, duration.
+        Input annotations must contain a ``timestamp`` column.
     """
-    is_gesture = annotations[label_column] == 'Gesture'
-    is_move = annotations[label_column] == 'Move'
+    output_columns = ['start_time', 'end_time', 'labelid', 'label', 'duration']
+    if annotations.empty:
+        return pd.DataFrame(columns=output_columns)
+    if 'timestamp' not in annotations.columns:
+        raise ValueError("Annotations must contain 'timestamp'.")
+
+    is_gesture = annotations[label_column] == Labels.GESTURE
+    is_move = annotations[label_column] == Labels.MOVE
     is_any_gesture = is_gesture | is_move
-    
     if not is_any_gesture.any():
-        return pd.DataFrame(
-            columns=['start_time', 'end_time', 'labelid', 'label', 'duration']
-        )
-    
-    # Find state changes
+        return pd.DataFrame(columns=output_columns)
+
     changes = np.diff(is_any_gesture.astype(int), prepend=0)
     start_idxs = np.where(changes == 1)[0]
     end_idxs = np.where(changes == -1)[0]
-    
     if len(start_idxs) > len(end_idxs):
         end_idxs = np.append(end_idxs, len(annotations) - 1)
-    
-    # Create initial segments
+
     initial_segments = []
-    for i in range(len(start_idxs)):
-        start_idx = start_idxs[i]
-        end_idx = end_idxs[i]
-        
-        start_time = annotations.iloc[start_idx]['time']
-        end_time = annotations.iloc[end_idx]['time']
-        
-        segment_labels = annotations.loc[
-            start_idx:end_idx,
-            label_column
-        ]
+    for start_idx, end_idx in zip(start_idxs, end_idxs):
+        segment_labels = annotations.iloc[start_idx:end_idx + 1][label_column]
         current_label = segment_labels.mode()[0]
-        
-        # Only add segments with valid labels
-        if current_label != 'NoGesture':
+        if current_label != Labels.NOGESTURE:
             initial_segments.append({
-                'start_time': start_time,
-                'end_time': end_time,
-                'label': current_label
+                'start_time': annotations.iloc[start_idx]['timestamp'],
+                'end_time': annotations.iloc[end_idx]['timestamp'],
+                'label': current_label,
             })
-    
+
     if not initial_segments:
-        return pd.DataFrame(
-            columns=['start_time', 'end_time', 'labelid', 'label', 'duration']
-        )
-    
-    # Sort segments by start time
-    initial_segments.sort(key=lambda x: x['start_time'])
-    
-    # Merge close segments
+        return pd.DataFrame(columns=output_columns)
+
     merged_segments = []
     current_segment = initial_segments[0]
-    
     for next_segment in initial_segments[1:]:
         time_gap = next_segment['start_time'] - current_segment['end_time']
-        
-        # If segments are close enough and have the same label, merge them
-        if (time_gap <= min_gap_s and 
-            current_segment['label'] == next_segment['label']):
+        same_label = current_segment['label'] == next_segment['label']
+        if time_gap <= min_gap_s and same_label:
             current_segment['end_time'] = next_segment['end_time']
         else:
-            # Check if current segment meets minimum length requirement
-            if (current_segment['end_time'] - 
-                current_segment['start_time']) >= min_length_s:
+            if current_segment['end_time'] - current_segment['start_time'] >= min_length_s:
                 merged_segments.append(current_segment)
             current_segment = next_segment
-    
-    # Add the last segment if it meets the minimum length requirement
-    if (current_segment['end_time'] - 
-        current_segment['start_time']) >= min_length_s:
+
+    if current_segment['end_time'] - current_segment['start_time'] >= min_length_s:
         merged_segments.append(current_segment)
-    
-    # Create final DataFrame with all required columns
-    final_segments = []
-    for idx, segment in enumerate(merged_segments, 1):
-        final_segments.append({
+
+    return pd.DataFrame([
+        {
             'start_time': segment['start_time'],
             'end_time': segment['end_time'],
-            'labelid': idx,
+            'labelid': index,
             'label': segment['label'],
-            'duration': segment['end_time'] - segment['start_time']
-        })
-    
-    return pd.DataFrame(final_segments)
+            'duration': segment['end_time'] - segment['start_time'],
+        }
+        for index, segment in enumerate(merged_segments, start=1)
+    ], columns=output_columns)
+
+
+def create_segments_from_labels(
+    times: np.ndarray,
+    labels: List[str],
+    min_gap_s: float = 0.3,
+    min_length_s: float = 0.5,
+    move_mode: MoveMode | str = MoveMode.SEPARATE,
+) -> pd.DataFrame:
+    """Create canonical segments from timestamped labels.
+
+    ``move_mode`` controls whether ``Move`` remains a separate label, is
+    normalized to ``Gesture``, or is treated as ``NoGesture``.
+    """
+    columns = [
+        SegmentColumns.START_TIME,
+        SegmentColumns.END_TIME,
+        SegmentColumns.PREDICTION,
+        SegmentColumns.PREDICTION_ID,
+        SegmentColumns.DURATION,
+    ]
+    if len(times) == 0 or len(labels) == 0:
+        return pd.DataFrame(columns=columns)
+    if len(times) != len(labels):
+        raise ValueError("times and labels must have the same length.")
+
+    mode = MoveMode(move_mode)
+    normalized_labels = []
+    for label in labels:
+        value = label.value if isinstance(label, Labels) else str(label)
+        if value == Labels.MOVE.value:
+            if mode is MoveMode.AS_GESTURE:
+                value = Labels.GESTURE.value
+            elif mode is MoveMode.IGNORE:
+                value = Labels.NOGESTURE.value
+        normalized_labels.append(value)
+
+    segments = []
+    start_time = None
+    current_label = None
+    for index, (time_value, label) in enumerate(zip(times, normalized_labels)):
+        is_active = label in (Labels.GESTURE.value, Labels.MOVE.value)
+        if is_active and start_time is None:
+            start_time = time_value
+            current_label = label
+        elif start_time is not None and (not is_active or label != current_label):
+            end_time = times[index - 1]
+            if end_time - start_time >= min_length_s:
+                segments.append({
+                    SegmentColumns.START_TIME: start_time,
+                    SegmentColumns.END_TIME: end_time,
+                    SegmentColumns.PREDICTION: current_label,
+                    SegmentColumns.DURATION: end_time - start_time,
+                })
+            start_time = time_value if is_active else None
+            current_label = label if is_active else None
+
+    if start_time is not None:
+        end_time = times[-1]
+        if end_time - start_time >= min_length_s:
+            segments.append({
+                SegmentColumns.START_TIME: start_time,
+                SegmentColumns.END_TIME: end_time,
+                SegmentColumns.PREDICTION: current_label,
+                SegmentColumns.DURATION: end_time - start_time,
+            })
+
+    if not segments:
+        return pd.DataFrame(columns=columns)
+
+    merged = [segments[0]]
+    for segment in segments[1:]:
+        current = merged[-1]
+        gap = segment[SegmentColumns.START_TIME] - current[SegmentColumns.END_TIME]
+        same_label = segment[SegmentColumns.PREDICTION] == current[SegmentColumns.PREDICTION]
+        if gap <= min_gap_s and same_label:
+            current[SegmentColumns.END_TIME] = segment[SegmentColumns.END_TIME]
+            current[SegmentColumns.DURATION] = (
+                current[SegmentColumns.END_TIME] - current[SegmentColumns.START_TIME]
+            )
+        else:
+            merged.append(segment)
+
+    for prediction_id, segment in enumerate(merged, start=1):
+        segment[SegmentColumns.PREDICTION_ID] = prediction_id
+    return pd.DataFrame(merged, columns=columns)
 
 def get_prediction_at_threshold(
     row: pd.Series,
     motion_threshold: float,
     gesture_threshold: float
 ) -> str:
-    """Apply thresholds to get final prediction."""
-    has_motion = 1 - row['NoGesture_confidence']
-    
-    if has_motion >= motion_threshold:
-        gesture_conf = row['Gesture_confidence']
-        move_conf = row['Move_confidence']
-        
-        valid_gestures = []
-        if gesture_conf >= gesture_threshold:
-            valid_gestures.append(('Gesture', gesture_conf))
-        if move_conf >= gesture_threshold:
-            valid_gestures.append(('Move', move_conf))
-            
-        if valid_gestures:
-            return max(valid_gestures, key=lambda x: x[1])[0]
-    
-    return 'NoGesture'
+    """Apply thresholds to a prediction row using the scalar helper."""
+    return get_label_from_prediction(
+        no_gesture_confidence=row[PredictionColumns.NO_GESTURE_CONFIDENCE],
+        gesture_confidence=row[PredictionColumns.GESTURE_CONFIDENCE],
+        move_confidence=row[PredictionColumns.MOVE_CONFIDENCE],
+        motion_threshold=motion_threshold,
+        gesture_threshold=gesture_threshold,
+    )
 
-# TODO - this should be done by the models themselves, they already have the thresholds
+
 def get_label_from_prediction(
     no_gesture_confidence: float,
     gesture_confidence: float,
@@ -192,9 +251,9 @@ def get_label_from_prediction(
     motion_threshold: float,
     gesture_threshold: float
 ) -> str:
-    """Apply thresholds to get final prediction."""
+    """Apply motion and gesture thresholds to confidence values."""
     has_motion = 1 - no_gesture_confidence
-    prediction = 'NoGesture'
+    prediction = Labels.NOGESTURE
     
     if has_motion >= motion_threshold:
         gesture_conf = gesture_confidence
@@ -202,9 +261,9 @@ def get_label_from_prediction(
         
         valid_gestures = []
         if gesture_conf >= gesture_threshold:
-            valid_gestures.append(('Gesture', gesture_conf))
+            valid_gestures.append((Labels.GESTURE, gesture_conf))
         if move_conf >= gesture_threshold:
-            valid_gestures.append(('Move', move_conf))
+            valid_gestures.append((Labels.MOVE, move_conf))
             
         if valid_gestures:
             prediction = max(valid_gestures, key=lambda x: x[1])[0]
@@ -360,19 +419,12 @@ def label_video(
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     video_duration = total_frames / input_fps
     
-    # Calculate frame sampling
+    # Calculate frame sampling - TODO not used
     frame_interval = max(1, round(input_fps / target_fps)) if input_fps > target_fps else 1
     
     # Create VideoWriter object at target FPS
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
-    
-    # Color mapping for labels
-    color_map = {
-        'NoGesture': (50, 50, 50),      # Dark gray
-        'Gesture': (0, 204, 204),        # Vibrant teal
-        'Move': (255, 94, 98)            # Soft coral red
-    }
     
     # Fixed y-axis parameters for absolute scale
     y_min = 0.0
@@ -387,29 +439,33 @@ def label_video(
     has_predictions = predictions_df is not None and not predictions_df.empty
     
     if has_predictions:
-        # Ensure time column exists
-        if 'time' not in predictions_df.columns:
+        # Ensure timestamp column exists
+        if PredictionColumns.TIMESTAMP not in predictions_df.columns:
             has_predictions = False
-            print("Warning: predictions_df doesn't have a 'time' column")
+            print(f"Warning: predictions_df doesn't have a '{PredictionColumns.TIMESTAMP}' column")
             
     if has_predictions:
         # Get confidence data
-        times = predictions_df['time'].values
+        times = predictions_df[PredictionColumns.TIMESTAMP].values
         predictions_start_time = times.min() if len(times) > 0 else None
-        gesture_conf = predictions_df['Gesture_confidence'].values if 'Gesture_confidence' in predictions_df.columns else None
-        move_conf = predictions_df['Move_confidence'].values if 'Move_confidence' in predictions_df.columns else None
-        motion_conf = predictions_df['has_motion'].values if 'has_motion' in predictions_df.columns else None
+        gesture_conf = predictions_df[PredictionColumns.GESTURE_CONFIDENCE].values
+        move_conf = predictions_df[PredictionColumns.MOVE_CONFIDENCE].values
+        motion_conf = predictions_df[PredictionColumns.MOTION_CONFIDENCE].values
         
     # Prepare segment lookup
     def get_label_at_time(time: float) -> str:
         if segments.empty:
-            return 'NoGesture'
+            return Labels.NOGESTURE
             
         matching_segments = segments[
-            (segments['start_time'] <= time) & 
-            (segments['end_time'] >= time)
+            (segments[SegmentColumns.START_TIME] <= time) & 
+            (segments[SegmentColumns.END_TIME] >= time)
         ]
-        return matching_segments['label'].iloc[0] if len(matching_segments) > 0 else 'NoGesture'
+        # TODO shoudlnt this be prediction? why is it label
+        if SegmentColumns.LABEL not in matching_segments.columns:
+            return matching_segments[SegmentColumns.PREDICTION].iloc[0] if len(matching_segments) > 0 else Labels.NOGESTURE
+        else:
+            return matching_segments[SegmentColumns.LABEL].iloc[0] if len(matching_segments) > 0 else Labels.NOGESTURE
     
     # Calculate total output frames at target FPS
     output_frames = int(video_duration * target_fps)
@@ -438,7 +494,7 @@ def label_video(
             current_label = get_label_at_time(output_time)
         except Exception as e:
             print(f"Error getting label at time {output_time}: {str(e)}")
-            current_label = 'NoGesture'
+            current_label = Labels.NOGESTURE
         
         # Add text label to frame
         cv2.putText(
@@ -546,6 +602,7 @@ def label_video(
             mask = (times >= window_start) & (times <= window_end)
             if np.any(mask):
                 window_times = times[mask]
+
                 
                 # Plot confidence lines
                 if gesture_conf is not None:
@@ -553,6 +610,8 @@ def label_video(
                     prev_point = None
                     
                     for i, (t, conf) in enumerate(zip(window_times, window_gesture)):
+                        if conf is None or np.isnan(conf):
+                            continue # TODO why is conf nan - lightgbm - could it be due to 5 frame window? - yes, it is due to the 5 frame window in lightgbm, which can produce NaN values at the edges of the data
                         x = graph_pos_x + int(((t - window_start) / window_duration) * graph_width)
                         conf_clamped = max(min(conf, y_max), y_min)
                         y = graph_pos_y + graph_height - int((conf_clamped - y_min) / (y_max - y_min) * graph_height)
@@ -566,6 +625,8 @@ def label_video(
                     prev_point = None
                     
                     for i, (t, conf) in enumerate(zip(window_times, window_move)):
+                        if conf is None or np.isnan(conf):
+                            continue # TODO why is conf nan - lightgbm
                         x = graph_pos_x + int(((t - window_start) / window_duration) * graph_width)
                         conf_clamped = max(min(conf, y_max), y_min)
                         y = graph_pos_y + graph_height - int((conf_clamped - y_min) / (y_max - y_min) * graph_height)
@@ -579,6 +640,8 @@ def label_video(
                     prev_point = None
                     
                     for i, (t, conf) in enumerate(zip(window_times, window_motion)):
+                        if conf is None or np.isnan(conf):
+                            continue # TODO why is conf nan - lightgbm
                         x = graph_pos_x + int(((t - window_start) / window_duration) * graph_width)
                         conf_clamped = max(min(conf, y_max), y_min)
                         y = graph_pos_y + graph_height - int((conf_clamped - y_min) / (y_max - y_min) * graph_height)
@@ -728,44 +791,6 @@ def cut_video_by_segments(
             continue
     
     return results
-
-def create_sliding_windows(
-    features: List[List[float]],
-    seq_length: int,
-    stride: int = 1,
-    input_fps: Optional[float] = None,
-    target_fps: float = 25.0
-) -> np.ndarray:
-    """
-    Create sliding windows from feature sequence.
-    
-    Args:
-        features: List of feature vectors
-        seq_length: Length of each window
-        stride: Step size between windows (default: 1)
-        input_fps: Original video FPS (if provided, will adjust stride)
-        target_fps: Target FPS for analysis
-        
-    Returns:
-        NumPy array of windowed features
-    """
-    if len(features) < seq_length:
-        return np.array([])
-    
-    # If input_fps is provided and different from target, adjust stride
-    if input_fps is not None and input_fps > target_fps:
-        # Don't override stride here - it's already been sampled at ~25fps
-        # The features are already at the target rate from video_to_landmarks
-        pass
-    
-    windows = []
-    for i in range(0, len(features) - seq_length + 1, stride):
-        window = features[i:i + seq_length]
-        if len(window) == seq_length:
-            windows.append(window)
-    
-    return np.array(windows)
-
 
 def create_gesture_visualization(
     dtw_matrix: np.ndarray,
@@ -1014,6 +1039,11 @@ def compute_limb_kinematics(positions: np.ndarray, fps: float) -> ArmKinematics:
     
     # Find submovements
     peaks, peak_heights = find_submovements(speed, fps)
+
+    # If no peaks were found, use zero-arrays of appropriate shape
+    if len(peaks) == 0:
+        peaks = np.array([0])
+        peak_heights = np.array([0])
     
     return ArmKinematics(
         velocity=velocity,
@@ -1099,33 +1129,6 @@ def find_submovements(speed_profile: np.ndarray, fps: float) -> Tuple[np.ndarray
         peak_heights = np.array([smoothed[max_idx]])
     
     return peaks, peak_heights
-
-def compute_limb_kinematics(positions: np.ndarray, fps: float) -> ArmKinematics:
-    """
-    Compute kinematics for a limb segment.
-    """
-    # Calculate derivatives
-    velocity, acceleration, jerk = calculate_derivatives(positions, fps)
-    
-    # Calculate speed (magnitude of velocity)
-    speed = np.linalg.norm(velocity, axis=1)
-    
-    # Find submovements (ensure we handle no peaks case)
-    peaks, peak_heights = find_submovements(speed, fps)
-    
-    # If no peaks were found, use zero-arrays of appropriate shape
-    if len(peaks) == 0:
-        peaks = np.array([0])
-        peak_heights = np.array([0])
-    
-    return ArmKinematics(
-        velocity=velocity,
-        acceleration=acceleration,
-        jerk=jerk,
-        speed=speed,
-        peaks=peaks,
-        peak_heights=peak_heights
-    )
 
 def define_mcneillian_grid(df, frame):
     """Define the grid based on original implementation."""
