@@ -7,23 +7,24 @@ Shows both models' confidence timeseries and segmented labels side-by-side.
 import cv2
 import numpy as np
 import pandas as pd
-from typing import Optional, Tuple, List
 from tqdm import tqdm
+from envisionhgdetector.state import Labels, MoveMode, PredictionColumns, SegmentColumns
+from envisionhgdetector.utils import create_segments_from_labels
 
 
 def get_label_at_time(segments_df: pd.DataFrame, time: float) -> str:
     """Get the label at a specific time from segments."""
     if segments_df.empty:
-        return 'NoGesture'
+        return Labels.NOGESTURE
     
     matching = segments_df[
-        (segments_df['start_time'] <= time) & 
-        (segments_df['end_time'] >= time)
+        (segments_df[SegmentColumns.START_TIME] <= time) &
+        (segments_df[SegmentColumns.END_TIME] >= time)
     ]
     
     if len(matching) > 0:
-        return matching['label'].iloc[0]
-    return 'NoGesture'
+        return matching[SegmentColumns.PREDICTION].iloc[0]
+    return Labels.NOGESTURE
 
 
 def draw_confidence_graph(
@@ -129,106 +130,6 @@ def draw_confidence_graph(
                   (100, 100, 100), 1)
 
 
-def create_segments_with_postprocessing(
-    times: np.ndarray,
-    labels: List[str],
-    min_gap_s: float,
-    min_length_s: float
-) -> pd.DataFrame:
-    """
-    Create segments from frame-by-frame labels with post-processing.
-    
-    Args:
-        times: Array of timestamps
-        labels: List of labels per frame ('Gesture', 'Move', 'NoGesture')
-        min_gap_s: Minimum gap between segments to merge
-        min_length_s: Minimum segment length to keep
-        
-    Returns:
-        DataFrame with segments (start_time, end_time, label, duration)
-    """
-    if len(times) == 0 or len(labels) == 0:
-        return pd.DataFrame(columns=['start_time', 'end_time', 'label', 'duration'])
-    
-    # Create initial segments
-    segments_list = []
-    in_segment = False
-    start_time = 0
-    current_label = 'NoGesture'
-    
-    for i, (t, label) in enumerate(zip(times, labels)):
-        is_gesture = label in ['Gesture', 'Move']
-        
-        if is_gesture and not in_segment:
-            # Start new segment
-            start_time = t
-            current_label = label
-            in_segment = True
-        elif not is_gesture and in_segment:
-            # End segment
-            end_time = times[i-1] if i > 0 else t
-            segments_list.append({
-                'start_time': start_time,
-                'end_time': end_time,
-                'label': current_label,
-                'duration': end_time - start_time
-            })
-            in_segment = False
-        elif in_segment and is_gesture and label != current_label:
-            # Label changed within gesture (Gesture <-> Move)
-            end_time = times[i-1] if i > 0 else t
-            segments_list.append({
-                'start_time': start_time,
-                'end_time': end_time,
-                'label': current_label,
-                'duration': end_time - start_time
-            })
-            start_time = t
-            current_label = label
-    
-    # Handle segment extending to end
-    if in_segment:
-        segments_list.append({
-            'start_time': start_time,
-            'end_time': times[-1],
-            'label': current_label,
-            'duration': times[-1] - start_time
-        })
-    
-    if not segments_list:
-        return pd.DataFrame(columns=['start_time', 'end_time', 'label', 'duration'])
-    
-    segments_df = pd.DataFrame(segments_list)
-    
-    # Apply minimum length filter
-    segments_df = segments_df[segments_df['duration'] >= min_length_s].copy()
-    
-    if segments_df.empty:
-        return pd.DataFrame(columns=['start_time', 'end_time', 'label', 'duration'])
-    
-    # Apply gap merging (same label only)
-    segments_df = segments_df.sort_values('start_time').reset_index(drop=True)
-    
-    merged = []
-    current = segments_df.iloc[0].to_dict()
-    
-    for i in range(1, len(segments_df)):
-        next_seg = segments_df.iloc[i]
-        gap = next_seg['start_time'] - current['end_time']
-        
-        if gap <= min_gap_s and next_seg['label'] == current['label']:
-            # Merge same-label segments
-            current['end_time'] = next_seg['end_time']
-            current['duration'] = current['end_time'] - current['start_time']
-        else:
-            merged.append(current)
-            current = next_seg.to_dict()
-    
-    merged.append(current)
-    
-    return pd.DataFrame(merged)
-
-
 def label_video_combined(
     video_path: str,
     predictions_df: pd.DataFrame,
@@ -239,7 +140,8 @@ def label_video_combined(
     min_gap_s: float = 0.1,
     min_length_s: float = 0.1,
     window_duration: float = 10.0,
-    target_fps: float = 25.0
+    target_fps: float = 25.0,
+    move_mode: MoveMode | str = MoveMode.SEPARATE,
 ) -> None:
     """
     Create a labeled video with dual-panel display for CNN and LightGBM comparison.
@@ -264,6 +166,7 @@ def label_video_combined(
         min_length_s: Minimum segment length (for post-processing)
         window_duration: Width of confidence graph window in seconds
         target_fps: Output video frame rate
+        move_mode: Whether Move is separate, treated as Gesture, or ignored.
     """
     # Open video
     cap = cv2.VideoCapture(video_path)
@@ -290,8 +193,11 @@ def label_video_combined(
     COLOR_DIFFER = (0, 165, 255)       # Orange
     
     # Check available columns
-    has_cnn = all(col in predictions_df.columns for col in ['has_motion', 'Gesture_confidence'])
-    has_lgbm = 'lgbm_gesture_prob' in predictions_df.columns
+    has_cnn = all(col in predictions_df.columns for col in [
+        'cnn_motion_confidence',
+        'cnn_gesture_confidence',
+    ])
+    has_lgbm = 'lgbm_gesture_confidence' in predictions_df.columns
     
     if not has_cnn and not has_lgbm:
         print("Warning: No CNN or LightGBM predictions found in DataFrame")
@@ -300,60 +206,67 @@ def label_video_combined(
         return
     
     # Get time array
-    times = predictions_df['time'].values
+    times = predictions_df[PredictionColumns.TIMESTAMP].to_numpy()
     
     # === Create CNN segments ===
     print(f"Creating CNN segments (motion_thresh={cnn_motion_threshold}, gesture_thresh={cnn_gesture_threshold})...")
-    cnn_segments = pd.DataFrame(columns=['start_time', 'end_time', 'label', 'duration'])
+    segment_columns = [
+        SegmentColumns.START_TIME,
+        SegmentColumns.END_TIME,
+        SegmentColumns.PREDICTION,
+        SegmentColumns.PREDICTION_ID,
+        SegmentColumns.DURATION,
+    ]
+    cnn_segments = pd.DataFrame(columns=segment_columns)
     
     if has_cnn:
         # Compute CNN labels per frame
         cnn_labels = []
         for _, row in predictions_df.iterrows():
-            has_motion = row.get('has_motion', 0)
-            gesture_conf = row.get('Gesture_confidence', 0)
-            move_conf = row.get('Move_confidence', 0) if 'Move_confidence' in predictions_df.columns else 0
+            has_motion = row.get('cnn_motion_confidence', 0)
+            gesture_conf = row.get('cnn_gesture_confidence', 0)
+            move_conf = row.get('cnn_move_confidence', 0)
             
             if has_motion < cnn_motion_threshold:
-                cnn_labels.append('NoGesture')
+                cnn_labels.append(Labels.NOGESTURE)
             elif gesture_conf >= cnn_gesture_threshold:
-                cnn_labels.append('Gesture')
+                cnn_labels.append(Labels.GESTURE)
             elif move_conf > gesture_conf:
-                cnn_labels.append('Move')
+                cnn_labels.append(Labels.MOVE)
             else:
                 # When gesture_conf < threshold but move_conf is not higher, 
                 # classify based on which is higher
-                cnn_labels.append('Move')
+                cnn_labels.append(Labels.MOVE)
         
-        cnn_segments = create_segments_with_postprocessing(
-            times, cnn_labels, min_gap_s, min_length_s
+        cnn_segments = create_segments_from_labels(
+            times, cnn_labels, min_gap_s, min_length_s, move_mode
         )
         print(f"  CNN segments: {len(cnn_segments)}")
     
     # === Create LightGBM segments ===
     print(f"Creating LightGBM segments (threshold={lgbm_threshold})...")
-    lgbm_segments = pd.DataFrame(columns=['start_time', 'end_time', 'label', 'duration'])
+    lgbm_segments = pd.DataFrame(columns=segment_columns)
     
     if has_lgbm:
         # Compute LightGBM labels per frame
         lgbm_labels = []
         for _, row in predictions_df.iterrows():
-            lgbm_prob = row.get('lgbm_gesture_prob', 0)
+            lgbm_prob = row.get('lgbm_gesture_confidence', 0)
             if lgbm_prob >= lgbm_threshold:
-                lgbm_labels.append('Gesture')
+                lgbm_labels.append(Labels.GESTURE)
             else:
-                lgbm_labels.append('NoGesture')
+                lgbm_labels.append(Labels.NOGESTURE)
         
-        lgbm_segments = create_segments_with_postprocessing(
-            times, lgbm_labels, min_gap_s, min_length_s
+        lgbm_segments = create_segments_from_labels(
+            times, lgbm_labels, min_gap_s, min_length_s, move_mode
         )
         print(f"  LightGBM segments: {len(lgbm_segments)}")
     
     # Get confidence arrays for plotting
-    gesture_conf = predictions_df['Gesture_confidence'].values if has_cnn else None
-    move_conf = predictions_df['Move_confidence'].values if has_cnn and 'Move_confidence' in predictions_df.columns else None
-    motion_conf = predictions_df['has_motion'].values if has_cnn else None
-    lgbm_conf = predictions_df['lgbm_gesture_prob'].values if has_lgbm else None
+    gesture_conf = predictions_df['cnn_gesture_confidence'].values if has_cnn else None
+    move_conf = predictions_df['cnn_move_confidence'].values if has_cnn else None
+    motion_conf = predictions_df['cnn_motion_confidence'].values if has_cnn else None
+    lgbm_conf = predictions_df['lgbm_gesture_confidence'].values if has_lgbm else None
     
     # Graph dimensions
     graph_width = int(width * 0.28)
@@ -385,18 +298,18 @@ def label_video_combined(
         lgbm_label = get_label_at_time(lgbm_segments, output_time) if has_lgbm else "N/A"
         
         # Determine colors for labels
-        if cnn_label == 'Gesture':
+        if cnn_label == Labels.GESTURE:
             cnn_color = COLOR_GESTURE
-        elif cnn_label == 'Move':
+        elif cnn_label == Labels.MOVE:
             cnn_color = COLOR_MOVE
         else:
             cnn_color = COLOR_NOGESTURE
         
-        lgbm_color = COLOR_LGBM_GESTURE if lgbm_label == 'Gesture' else COLOR_NOGESTURE
+        lgbm_color = COLOR_LGBM_GESTURE if lgbm_label == Labels.GESTURE else COLOR_NOGESTURE
         
         # Check agreement (both detecting gesture/move or both not)
-        cnn_is_gesture = cnn_label in ['Gesture', 'Move']
-        lgbm_is_gesture = lgbm_label == 'Gesture'
+        cnn_is_gesture = cnn_label in [Labels.GESTURE, Labels.MOVE]
+        lgbm_is_gesture = lgbm_label == Labels.GESTURE
         agree = cnn_is_gesture == lgbm_is_gesture
         
         # Draw labels on left side

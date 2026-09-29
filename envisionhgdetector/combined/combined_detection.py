@@ -1,13 +1,13 @@
-import pandas as pd
-import numpy as np
-import glob
 import os
-from typing import Dict, List, Optional, Tuple
+import glob
+import numpy as np
+import pandas as pd
 from pathlib import Path
+from typing import Dict, Optional
 
 from envisionhgdetector import GestureDetector
-from .state import Thresholds
-from .utils import create_elan_file, create_segments, get_video_fps, label_video
+from envisionhgdetector.state import Labels, ModelNames, PredictionColumns, StatsKeys, Thresholds
+from envisionhgdetector.utils import create_elan_file, create_segments, get_video_fps, label_video
 
 class CombinedGestureDetector:
     """
@@ -26,8 +26,8 @@ class CombinedGestureDetector:
         cnn_thresholds: Optional[Thresholds] = None,
         lightgbm_thresholds: Optional[Thresholds] = None
         ):
-        self.cnn_detector = GestureDetector(model_type="cnn", config_path=cnn_config_path, weights_path=cnn_weights_path, thresholds=cnn_thresholds)
-        self.lgbm_detector = GestureDetector(model_type="lightgbm", config_path=lightgbm_config_path, weights_path=lightgbm_weights_path, thresholds=lightgbm_thresholds)
+        self.cnn_detector = GestureDetector(model_type=ModelNames.CNN_B, config_path=cnn_config_path, weights_path=cnn_weights_path, thresholds=cnn_thresholds)
+        self.lgbm_detector = GestureDetector(model_type=ModelNames.LIGHTGBM, config_path=lightgbm_config_path, weights_path=lightgbm_weights_path, thresholds=lightgbm_thresholds)
         self.cnn_weight = cnn_weight
         self.lgbm_weight = lgbm_weight
 
@@ -57,10 +57,10 @@ class CombinedGestureDetector:
         )
 
         segment_input = combined_results.copy()
-        segment_input["time"] = segment_input["timestamp"]
         segments = create_segments(
             segment_input,
             label_column="prediction",
+            # Use the more conservative thresholds from both models for segmenting
             min_gap_s=max(
                 self.cnn_detector.config.thresholds.min_gap_s,
                 self.lgbm_detector.config.thresholds.min_gap_s,
@@ -72,14 +72,14 @@ class CombinedGestureDetector:
         )
 
         stats = {
-            "model_type": "combined",
+            StatsKeys.MODEL_TYPE: "combined",
             "cnn_stats": cnn_stats,
             "lightgbm_stats": lgbm_stats,
-            "average_motion": float(combined_results["motion_confidence"].mean()),
-            "average_gesture": float(combined_results["gesture_confidence"].mean()),
-            "average_move": float(combined_results["move_confidence"].mean()),
-            "cnn_weight": self.cnn_weight,
-            "lgbm_weight": self.lgbm_weight,
+            StatsKeys.AVERAGE_MOTION: float(combined_results["motion_confidence"].mean()),
+            StatsKeys.AVERAGE_GESTURE: float(combined_results["gesture_confidence"].mean()),
+            StatsKeys.AVERAGE_MOVE: float(combined_results["move_confidence"].mean()),
+            StatsKeys.CNN_WEIGHT: self.cnn_weight,
+            StatsKeys.LIGHTGBM_WEIGHT: self.lgbm_weight,
         }
 
         raw_predictions = combined_results[[
@@ -156,7 +156,7 @@ class CombinedGestureDetector:
                 video_path,
                 segments,
                 elan_path,
-                fps=get_video_fps(None, video_path),
+                fps=get_video_fps(video_path),
                 include_ground_truth=False,
             )
 
@@ -198,54 +198,19 @@ class CombinedGestureDetector:
             raise ValueError("Expected landmarks with shape (n_frames, 92).")
         if fps <= 0:
             raise ValueError("fps must be greater than zero.")
-
-        cnn_results = self.cnn_detector.model._predict_video_from_landmarks(
+        cnn_results = self.cnn_detector.model.predict_video_from_landmarks(
             landmarks,
             stride=stride,
+            fps=fps,
         )
         cnn_results = cnn_results.copy()
         cnn_results["timestamp"] = cnn_results["frame_index"] / fps
 
-        lightgbm_model = self.lgbm_detector.model
-        lightgbm_model.reset_buffer()
-        lgbm_rows = []
-        for frame_index, frame_landmarks in enumerate(landmarks[::stride]):
-            features = lightgbm_model.extract_features_from_landmarks(frame_landmarks)
-            if features is None:
-                continue
-
-            probabilities = lightgbm_model.predict(features)[0]
-            class_names = list(lightgbm_model.gesture_labels)
-            probability_by_label = dict(zip(class_names, probabilities))
-            gesture_probability = float(probability_by_label.get("Gesture", 0.0))
-            no_gesture_probability = float(
-                probability_by_label.get("NoGesture", 0.0)
-            )
-            prediction = (
-                "Gesture"
-                if gesture_probability >= lightgbm_model.confidence_threshold
-                else "NoGesture"
-            )
-
-            source_frame_index = frame_index * stride
-            lgbm_rows.append({
-                "frame_index": source_frame_index,
-                "prediction": prediction,
-                "confidence": max(gesture_probability, no_gesture_probability),
-                "motion_confidence": gesture_probability,
-                "gesture_confidence": gesture_probability,
-                "no_gesture_confidence": no_gesture_probability,
-                "move_confidence": 0.0,
-                "timestamp": source_frame_index / fps,
-            })
-
-        lgbm_results = pd.DataFrame(lgbm_rows)
-        if lgbm_results.empty:
-            lgbm_results = pd.DataFrame(columns=[
-                "frame_index", "prediction", "confidence",
-                "motion_confidence", "gesture_confidence",
-                "no_gesture_confidence", "move_confidence", "timestamp",
-            ])
+        lgbm_results = self.lgbm_detector.model.predict_video_from_landmarks(
+            landmarks,
+            fps=fps,
+            stride=stride,
+        )
 
         return self.combine_frame_predictions(
             cnn_results,
@@ -312,24 +277,24 @@ class CombinedGestureDetector:
         def prepare_results(results: pd.DataFrame, prefix: str) -> pd.DataFrame:
             prepared = results.copy()
 
-            if "frame_index" not in prepared.columns:
-                raise ValueError(f"{prefix} results must contain 'frame_index'")
+            if PredictionColumns.FRAME_INDEX not in prepared.columns:
+                raise ValueError(f"{prefix} results must contain '{PredictionColumns.FRAME_INDEX}' column.")
 
             renamed = {
                 column: f"{prefix}_{column}"
                 for column in prepared.columns
-                if column not in {"frame_index", "timestamp"}
+                if column not in {PredictionColumns.FRAME_INDEX, PredictionColumns.TIMESTAMP}
             }
             return prepared.rename(columns=renamed)
 
-        cnn = prepare_results(cnn_results, "cnn")
-        lgbm = prepare_results(lgbm_results, "lgbm")
-        merged = pd.merge(cnn, lgbm, on="frame_index", how="outer", suffixes=("", "_lgbm"))
+        cnn = prepare_results(cnn_results, ModelNames.CNN_B)
+        lgbm = prepare_results(lgbm_results, ModelNames.LIGHTGBM)
+        merged = pd.merge(cnn, lgbm, on=PredictionColumns.FRAME_INDEX, how="outer", suffixes=("", f"_{ModelNames.LIGHTGBM}"))
 
-        if "timestamp" not in merged.columns:
-            merged["timestamp"] = np.nan
-        if "timestamp_lgbm" in merged.columns:
-            merged["timestamp"] = merged["timestamp"].fillna(merged["timestamp_lgbm"])
+        if PredictionColumns.TIMESTAMP not in merged.columns:
+            merged[PredictionColumns.TIMESTAMP] = np.nan
+        if f"{PredictionColumns.TIMESTAMP}_{ModelNames.LIGHTGBM}" in merged.columns:
+            merged[PredictionColumns.TIMESTAMP] = merged[PredictionColumns.TIMESTAMP].fillna(merged[f"{PredictionColumns.TIMESTAMP}_{ModelNames.LIGHTGBM}"])
 
         def get_probability(prefix: str, *names: str) -> pd.Series:
             for name in names:
@@ -339,15 +304,15 @@ class CombinedGestureDetector:
             return pd.Series(np.nan, index=merged.index, dtype=float)
 
         cnn_no_gesture = get_probability(
-            "cnn", "no_gesture_confidence", "NoGesture_confidence"
+            ModelNames.CNN_B, PredictionColumns.NO_GESTURE_CONFIDENCE
         )
-        cnn_gesture = get_probability("cnn", "gesture_confidence", "Gesture_confidence")
-        cnn_move = get_probability("cnn", "move_confidence", "Move_confidence")
+        cnn_gesture = get_probability(ModelNames.CNN_B, PredictionColumns.GESTURE_CONFIDENCE)
+        cnn_move = get_probability(ModelNames.CNN_B, PredictionColumns.MOVE_CONFIDENCE)
         lgbm_no_gesture = get_probability(
-            "lgbm", "no_gesture_confidence", "NoGesture_confidence", "nogesture_prob"
+            ModelNames.LIGHTGBM, PredictionColumns.NO_GESTURE_CONFIDENCE
         )
         lgbm_gesture = get_probability(
-            "lgbm", "gesture_confidence", "Gesture_confidence", "gesture_prob"
+            ModelNames.LIGHTGBM, PredictionColumns.GESTURE_CONFIDENCE
         )
 
         cnn_available = cnn_gesture.notna() | cnn_no_gesture.notna() | cnn_move.notna()
@@ -367,27 +332,33 @@ class CombinedGestureDetector:
         probability_total = combined_no_gesture + combined_gesture + combined_move
         probability_total = probability_total.replace(0.0, np.nan)
 
-        merged["no_gesture_confidence"] = combined_no_gesture / active_weight
-        merged["gesture_confidence"] = combined_gesture / active_weight
-        merged["move_confidence"] = combined_move / active_weight
-        merged["combined_confidence"] = probability_total / active_weight
+        merged[PredictionColumns.NO_GESTURE_CONFIDENCE] = combined_no_gesture / active_weight
+        merged[PredictionColumns.GESTURE_CONFIDENCE] = combined_gesture / active_weight
+        merged[PredictionColumns.MOVE_CONFIDENCE] = combined_move / active_weight
+        merged['COMBINED_CONFIDENCE'] = probability_total / active_weight
 
         probabilities = merged[[
-            "no_gesture_confidence",
-            "gesture_confidence",
-            "move_confidence",
+            PredictionColumns.NO_GESTURE_CONFIDENCE,
+            PredictionColumns.GESTURE_CONFIDENCE,
+            PredictionColumns.MOVE_CONFIDENCE,
         ]].fillna(0.0)
-        labels = np.array(["NoGesture", "Gesture", "Move"])
+        NoGesture_label = Labels.NOGESTURE
+        Gesture_label = Labels.GESTURE
+        Move_label = Labels.MOVE
+        labels = np.array([NoGesture_label, Gesture_label, Move_label]) # array so we can index into it with argmax
+        print(f"Labels for combined predictions: {labels}")
         # Current fusion policy: select the highest combined probability.
         # TODO: evaluate a calibrated combined threshold or model-agreement rule.
-        merged["prediction"] = labels[probabilities.to_numpy().argmax(axis=1)]
-        merged["confidence"] = probabilities.max(axis=1)
-        merged["motion_confidence"] = (
-            merged["gesture_confidence"].fillna(0.0)
-            + merged["move_confidence"].fillna(0.0)
+        print(probabilities.to_numpy().argmax(axis=1))
+        merged[PredictionColumns.PREDICTION] = labels[probabilities.to_numpy().argmax(axis=1)]
+        print('done')
+        merged[PredictionColumns.CONFIDENCE] = probabilities.max(axis=1)
+        merged[PredictionColumns.MOTION_CONFIDENCE] = (
+            merged[PredictionColumns.GESTURE_CONFIDENCE].fillna(0.0)
+            + merged[PredictionColumns.MOVE_CONFIDENCE].fillna(0.0)
         )
 
-        if "timestamp" not in merged.columns:
-            merged["timestamp"] = np.nan
+        if PredictionColumns.TIMESTAMP not in merged.columns:
+            merged[PredictionColumns.TIMESTAMP] = np.nan
 
-        return merged.sort_values("frame_index").reset_index(drop=True)
+        return merged.sort_values(PredictionColumns.FRAME_INDEX).reset_index(drop=True)

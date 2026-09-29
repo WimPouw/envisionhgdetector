@@ -16,8 +16,8 @@ import joblib
 import os
 from typing import Optional, List, Dict, Any, Tuple
 from collections import deque
-from .state import LIGHTGBM_Config, Row, Labels
-from .utils import get_label_from_prediction, create_segments, get_prediction_at_threshold, expand_predictions_to_frames
+from envisionhgdetector.state import LIGHTGBM_Config, Row, Labels, ModelNames, PredictionColumns
+from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_prediction_at_threshold, expand_predictions_to_frames
 
 class LightGBMGestureModel:
     """
@@ -618,6 +618,7 @@ class LightGBMGestureModel:
         """Clear the landmark buffer."""
         self.landmarks_buffer.clear()
         # Clear backward compatibility buffers too
+        self.key_joints_buffer.clear()
         if hasattr(self, 'left_fingers_buffer'):
             self.left_fingers_buffer.clear()
         if hasattr(self, 'right_fingers_buffer'):
@@ -627,27 +628,30 @@ class LightGBMGestureModel:
         """Update confidence threshold."""
         self.confidence_threshold = max(0.0, min(1.0, threshold))
     
-    def _predict_video_from_landmarks(
+    def predict_video_from_landmarks(
         self,
         landmarks_per_frame: np.ndarray,
         fps: float,
+        stride: int = 1,
     ) -> pd.DataFrame:
         """LightGBM prediction from landmarks method with CNN-compatible output."""
-        # Reset model state
-        self.model.key_joints_buffer.clear()
-        if hasattr(self.model, 'left_fingers_buffer'):
-            self.model.left_fingers_buffer.clear()
-            self.model.right_fingers_buffer.clear()
+        if fps <= 0:
+            raise ValueError("fps must be greater than zero.")
+        if stride < 1:
+            raise ValueError("stride must be at least 1.")
+
+        self.reset_buffer()
         
         predictions = []
-        frame_number = 0
+        sampled_landmarks = landmarks_per_frame[::stride]
 
-        for landmarks in landmarks_per_frame:
+        for sampled_frame_number, landmarks in enumerate(sampled_landmarks):
+            frame_number = sampled_frame_number * stride
             timestamp = frame_number / fps
-            features = self.model.extract_features_from_landmarks(landmarks)
+            features = self.extract_features_from_landmarks(landmarks)
             if features is not None:
                 try:
-                    pred_probs = self.model.predict(features.reshape(1, -1))[0]
+                    pred_probs = self.predict(features.reshape(1, -1))[0]
                 except Exception as e:
                     raise RuntimeError(f"Prediction failed for frame {frame_number} at timestamp {timestamp:.2f}s: \n{e}")
                 
@@ -655,7 +659,7 @@ class LightGBMGestureModel:
                 confidence = pred_probs[predicted_class]
                 
                 # Convert to gesture name
-                gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
+                gesture_name = self.label_encoder.inverse_transform([predicted_class])[0]
 
                 # Convert LightGBM output to align witht he CNN format
                 if gesture_name == Labels.NOGESTURE:
@@ -682,8 +686,8 @@ class LightGBMGestureModel:
                 nogesture_conf,
                 gesture_conf,
                 move_conf,
-                self.model.config.thresholds.motion_threshold,
-                self.model.config.thresholds.gesture_threshold
+                self.config.thresholds.motion_threshold,
+                self.config.thresholds.gesture_threshold
             )
             predictions.append(Row(
                 frame_index=frame_number,
@@ -696,22 +700,23 @@ class LightGBMGestureModel:
                 timestamp=timestamp
             ))
             
-            frame_number += 1
-            
-            # Progress update
-            if frame_number % 500 == 0:
-                progress = frame_number / len(landmarks_per_frame) * 100
+            if (sampled_frame_number + 1) % 500 == 0:
+                progress = (sampled_frame_number + 1) / len(sampled_landmarks) * 100
                 print(f"Progress: {progress:.1f}%")
                 
         # Convert to DataFrame
         results_df = pd.DataFrame(vars(prediction) for prediction in predictions)
         
         if results_df.empty:
-            return pd.DataFrame(), {"error": "No predictions generated"}, pd.DataFrame(), np.array([])
+            return pd.DataFrame(columns=[
+                "frame_index", "prediction", "confidence",
+                "motion_confidence", "gesture_confidence",
+                "no_gesture_confidence", "move_confidence", "timestamp",
+            ])
 
         return results_df
 
-    def _predict_video(
+    def predict_video(
         self,
         video_path: str,
         stride: int = 1
@@ -722,12 +727,8 @@ class LightGBMGestureModel:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         print(f"Processing video with LightGBM: {fps:.1f}fps, {total_frames} frames")
-        
-        # Reset model state
-        self.model.key_joints_buffer.clear()
-        if hasattr(self.model, 'left_fingers_buffer'):
-            self.model.left_fingers_buffer.clear()
-            self.model.right_fingers_buffer.clear()
+
+        self.reset_buffer()
         
         predictions = []
         frame_number = 0
@@ -747,7 +748,7 @@ class LightGBMGestureModel:
             timestamp = frame_number / fps
             
             # Extract features using LightGBM model
-            features = self.model.extract_features_from_frame(frame)
+            features = self.extract_features_from_frame(frame)
             
             if features is not None:
                 # Store for compatibility
@@ -755,13 +756,12 @@ class LightGBMGestureModel:
                 valid_timestamps.append(timestamp)
                 
                 # Get prediction
-                pred_probs = self.model.predict(features.reshape(1, -1))[0]
+                pred_probs = self.predict(features.reshape(1, -1))[0]
                 predicted_class = np.argmax(pred_probs)
                 confidence = pred_probs[predicted_class]
                 
                 # Convert to gesture name
-                gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
-                gesture_name = self.model.standardize_gesture_name(gesture_name)
+                gesture_name = self.label_encoder.inverse_transform([predicted_class])[0]
                 
                 # Convert LightGBM output to align witht he CNN format
                 if gesture_name == Labels.NOGESTURE:
@@ -779,54 +779,61 @@ class LightGBMGestureModel:
                         move_conf = 0.0
                         nogesture_conf = 1-confidence
                 
-                predictions.append({
-                    'frame_idx': frame_number,
-                    'time': timestamp,
-                    'has_motion': gesture_conf,
-                    'NoGesture_confidence': nogesture_conf,
-                    'Gesture_confidence': gesture_conf,
-                    'Move_confidence': move_conf
-                })
+                predictions.append(Row(
+                    frame_index=frame_number,
+                    prediction=gesture_name,
+                    confidence=confidence,
+                    motion_confidence=gesture_conf,
+                    gesture_confidence=gesture_conf,
+                    no_gesture_confidence=nogesture_conf,
+                    move_confidence=move_conf,
+                    timestamp=timestamp
+                ))
             
             frame_number += 1
             
             # Progress update
-            if frame_number % 500 == 0:
+            if frame_number % 100 == 0:
                 progress = frame_number / total_frames * 100
                 print(f"Progress: {progress:.1f}%")
         
         cap.release()
         
         # Convert to DataFrame
-        sparse_results_df = pd.DataFrame(predictions)
+        # vars is to convert to dict . TODO maybe add this as a method to Row class
+        # sparse_results_df = pd.DataFrame(vars(p) for p in predictions)
+        sparse_results_df = pd.DataFrame([prediction.to_dict() for prediction in predictions])
         
         if sparse_results_df.empty:
-            return pd.DataFrame(), {"error": "No predictions generated"}, pd.DataFrame(), np.array([])
+            return pd.DataFrame(), {"error": "No predictions generated"}, pd.DataFrame(), np.array([]), np.array([])
         
+        print(f"Generated predictions for {len(sparse_results_df)} frames out of {total_frames} total frames.")
         # Apply thresholds (reuse existing logic)
-        sparse_results_df['prediction'] = sparse_results_df.apply(
+        sparse_results_df[PredictionColumns.PREDICTION] = sparse_results_df.apply(
             lambda row: get_prediction_at_threshold(
                 row,
-                self.model.config.thresholds.motion_threshold,
-                self.model.config.thresholds.gesture_threshold
+                self.config.thresholds.motion_threshold,
+                self.config.thresholds.gesture_threshold
             ),
             axis=1
         )
+        print(f"Applied thresholds: motion_threshold={self.config.thresholds.motion_threshold}, gesture_threshold={self.config.thresholds.gesture_threshold}")
 
         # Create segments
         segments = create_segments(
             sparse_results_df,
-            label_column='prediction',
-            min_gap_s=self.model.config.thresholds.min_gap_s,
-            min_length_s=self.model.config.thresholds.min_length_s
+            label_column=PredictionColumns.PREDICTION,
+            min_gap_s=self.config.thresholds.min_gap_s,
+            min_length_s=self.config.thresholds.min_length_s
         )
+        print(f"Created {len(segments)} segments based on predictions.")
 
         # Calculate statistics
         stats = {
-            'average_motion': float(sparse_results_df['has_motion'].mean()),
-            'average_gesture': float(sparse_results_df['Gesture_confidence'].mean()),
-            'average_move': float(sparse_results_df['Move_confidence'].mean()),
-            'model_type': self.model_type,
+            'average_motion': float(sparse_results_df[PredictionColumns.MOTION_CONFIDENCE].mean()),
+            'average_gesture': float(sparse_results_df[PredictionColumns.GESTURE_CONFIDENCE].mean()),
+            'average_move': float(sparse_results_df[PredictionColumns.MOVE_CONFIDENCE].mean()),
+            'model_type': ModelNames.LIGHTGBM,
             'lightgbm_features': len(valid_features)
         }
         

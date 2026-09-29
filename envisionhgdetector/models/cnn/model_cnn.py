@@ -11,10 +11,10 @@ from tensorflow.keras import layers, regularizers, Model
 from typing import Optional, Tuple, Dict, List
 import pandas as pd
 import numpy as np
-from ..utils import get_prediction_at_threshold, create_segments, get_video_fps
+from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_video_fps
 from .cnn_utils import make_model, create_windows
-from ..state import Row, Labels, CNN_Config
-from ..preprocessing import VideoProcessor
+from envisionhgdetector.state import Row, Labels, CNN_Config, ModelNames
+from .preprocessing import VideoProcessor
 
 class GestureModel:
     """
@@ -31,7 +31,7 @@ class GestureModel:
         """
         self.config = config
         self.model = make_model(config=config, type="multi")
-        self.video_processor = VideoProcessor(seq_length=config.seq_length, target_fps=config.target_fps)
+        self.video_processor = VideoProcessor(seq_length=config.seq_length, feature_set=config.dataset_name)
     
     def predict(self, features: np.ndarray) -> np.ndarray:
         """
@@ -100,7 +100,7 @@ class GestureModel:
         
         return classes, confidence
 
-    def _predict_video_from_landmarks(
+    def predict_video_from_landmarks(
         self,
         features: np.ndarray,
         stride: int = 1
@@ -142,8 +142,9 @@ class GestureModel:
                         gesture_confidence = adjusted_gesture
                         move_confidence = adjusted_move
 
-                prediction = get_prediction_at_threshold(
-                    has_motion,
+                no_gesture_confidence = 1 - has_motion
+                prediction = get_label_from_prediction(
+                    no_gesture_confidence,
                     gesture_confidence,
                     move_confidence,
                     self.config.thresholds.motion_threshold,
@@ -162,8 +163,9 @@ class GestureModel:
                     )
                 )
             else:
-                prediction = get_prediction_at_threshold(
-                    has_motion,
+                no_gesture_confidence = 1 - has_motion
+                prediction = get_label_from_prediction(
+                    no_gesture_confidence,
                     gesture_probs[0],
                     gesture_probs[1],
                     self.config.thresholds.motion_threshold,
@@ -185,7 +187,7 @@ class GestureModel:
         results_df = pd.DataFrame([vars(row) for row in rows])
         return results_df
 
-    def _predict_video(
+    def predict_video(
         self,
         video_path: str,
         stride: int = 1
@@ -234,8 +236,8 @@ class GestureModel:
                         gesture_confidence = adjusted_gesture
                         move_confidence = adjusted_move
 
-                prediction = get_prediction_at_threshold(
-                    has_motion,
+                prediction = get_label_from_prediction(
+                    1 - has_motion,
                     gesture_confidence,
                     move_confidence,
                     self.config.thresholds.motion_threshold,
@@ -252,8 +254,8 @@ class GestureModel:
                     no_gesture_confidence=1 - has_motion
                     ))
             else:
-                prediction = get_prediction_at_threshold(
-                    has_motion,
+                prediction = get_label_from_prediction(
+                    1 - has_motion,
                     gesture_probs[0],
                     gesture_probs[1],
                     self.config.thresholds.motion_threshold,
@@ -276,8 +278,8 @@ class GestureModel:
         segments = create_segments(
             results_df,
             label_column='prediction',
-            min_gap_s=self.model.config.thresholds.min_gap_s,
-            min_length_s=self.model.config.thresholds.min_length_s
+            min_gap_s=self.config.thresholds.min_gap_s,
+            min_length_s=self.config.thresholds.min_length_s
         )
 
         # Calculate statistics
@@ -286,7 +288,7 @@ class GestureModel:
             'average_gesture': float(results_df['gesture_confidence'].mean()),
             'average_move': float(results_df['move_confidence'].mean()),
             'applied_gesture_class_bias': float(gesture_class_bias),
-            'model_type': self.model_type
+            'model_type': ModelNames.CNN
         }
         
         return results_df, stats, segments, features, timestamps

@@ -12,10 +12,10 @@ import pandas as pd
 from typing import Tuple, Dict, List
 from tensorflow.keras import layers, regularizers, Model
 
-from ..utils import get_label_from_prediction, create_segments 
-from ..state import Row, Labels, CNN_B_Config
+from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_video_fps 
+from envisionhgdetector.state import PredictionColumns, Row, Labels, CNN_B_Config, ModelNames
 from .cnn_utils import make_model, create_windows
-from ..preprocessing import VideoProcessor
+from .preprocessing import VideoProcessor
 
 
 class GestureModel:
@@ -32,7 +32,7 @@ class GestureModel:
         """
         self.config = config
         self.model = make_model(config=config, type="binary")
-        self.video_processor = VideoProcessor(seq_length=config.seq_length, target_fps=config.target_fps)
+        self.video_processor = VideoProcessor(seq_length=config.seq_length, feature_set=config.dataset_name)
     
     def predict(self, features: np.ndarray) -> np.ndarray:
         """
@@ -78,7 +78,7 @@ class GestureModel:
         confidence = np.where(classes == 1, preds[:, 0], 1.0 - preds[:, 0])
         return classes, confidence
 
-    def _predict_video_from_landmarks(self, features: np.ndarray, stride: int = 1) -> pd.DataFrame:
+    def predict_video_from_landmarks(self, features: np.ndarray, fps:float, stride: int = 1) -> pd.DataFrame:
         # TODO
         '''
         Behaviorally, this is per-feature-frame majority voting, not per-original-video-frame prediction. Frames that are not represented in features cannot be recovered by this method alone.
@@ -141,14 +141,15 @@ class GestureModel:
                 gesture_confidence= frame_probabilities[frame_idx],
                 motion_confidence= frame_probabilities[frame_idx],
                 move_confidence = 0.0,  # CNN-B does not predict move confidence
-                no_gesture_confidence= 1.0 - frame_probabilities[frame_idx]
+                no_gesture_confidence=1.0 - frame_probabilities[frame_idx],
+                timestamp=frame_idx / fps,
             ))
 
         results = pd.DataFrame([vars(row) for row in all_predictions])
 
         return results
 
-    def _predict_video(
+    def predict_video(
         self,
         video_path: str,
         stride: int = 1
@@ -159,22 +160,38 @@ class GestureModel:
         One additional issue: results_df currently uses frame_index, while the video path also has frame_indices. They are not necessarily the same thing. Later, you should map the feature-frame indices back to frame_indices before treating them as original video-frame indices.
         '''
         features, timestamps, frame_indices = self.video_processor.process_video(video_path)
+        print(f"Extracted {len(features)} feature frames from video: {video_path}")
 
         if not features:
             return pd.DataFrame(), {"error": "No features detected"}, pd.DataFrame(), np.array([]), []
 
-        results_df = self._predict_video_from_landmarks(features, stride)
+        fps = get_video_fps(video_path)
+        results_df = self.predict_video_from_landmarks(features, fps, stride)
+        if not results_df.empty:
+            if len(timestamps) < len(results_df):
+                raise ValueError(
+                    "Video processor returned fewer timestamps than feature frames."
+                )
+            results_df[PredictionColumns.TIMESTAMP] = np.asarray(timestamps[:len(results_df)])
 
-        segments = create_segments(
-            results_df,
-            label_column='prediction',
-            min_gap_s=self.model.config.thresholds.min_gap_s,
-            min_length_s=self.model.config.thresholds.min_length_s
-        )
+        print("Creating Segments")
+        try:
+            segments = create_segments(
+                results_df,
+                label_column=PredictionColumns.PREDICTION,
+                min_gap_s=self.config.thresholds.min_gap_s,
+                min_length_s=self.config.thresholds.min_length_s
+            )
+        except Exception as e:
+            print(f"Error creating segments: {e}")
+            segments = pd.DataFrame()
 
+        print(f"Created {len(segments)} segments from predictions.")
+
+        print('Creating Statistics')
         stats = {
-            'average_gesture': float(results_df['confidence'].mean()),
-            'model_type': self.model_type
+            'average_gesture': float(results_df[PredictionColumns.GESTURE_CONFIDENCE].mean()),
+            'model_type': ModelNames.CNN_B,
         }
 
         return results_df, stats, segments, features, timestamps

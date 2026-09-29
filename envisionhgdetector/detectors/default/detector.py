@@ -3,45 +3,24 @@
 import os
 import glob
 import shutil
-import cv2
-import time
-import json
-import statistics
 import pandas as pd
 import numpy as np
-import mediapipe as mp
-import umap.umap_ as umap
-import plotly.express as px
-
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from scipy.ndimage import gaussian_filter1d
-from shapedtw.shapedtw import shape_dtw
-from shapedtw.shapeDescriptors import RawSubsequenceDescriptor
-from dash import Dash, dcc, html, Input, Output
-from scipy import signal
-from dataclasses import dataclass
-from scipy.spatial.distance import euclidean
-from typing import NamedTuple, Literal, get_args
 
-from .cnn.model_cnn import GestureModel  # Renamed CNN model
-from .cnn.model_cnn_b import GestureModel as BinaryGestureModel  # New binary CNN model
-from .lightgbm.model_lightgbm import LightGBMGestureModel  # New LightGBM model
-from .preprocessing import VideoProcessor, create_sliding_windows
-from .label_video_combined import label_video_combined  # Dual-panel for combined model
-from .default_config import DefaultConfig
-from .state import Thresholds, Row, Segment, Labels, VALID_MODEL_NAMES, VALID_MODEL_NAMES_LITERAL
-from .utils import (
-    create_segments, get_prediction_at_threshold, create_elan_file, 
-    label_video, cut_video_by_segments, retrack_gesture_videos,
-    compute_gesture_kinematics_dtw, create_gesture_visualization, create_dashboard,
-    setup_dashboard_folders, joint_map, calc_mcneillian_space, calc_vert_height,
-    calc_volume_size, calc_holds, get_label_from_prediction
+from envisionhgdetector import GestureModel  # Renamed CNN model
+from envisionhgdetector import BinaryGestureModel  # New binary CNN model
+from envisionhgdetector import LightGBMGestureModel  # New LightGBM model
+from envisionhgdetector.default_config import DefaultConfig
+from envisionhgdetector.state import ModelNames, Thresholds, Labels, VALID_MODEL_NAMES, VALID_MODEL_NAMES_LITERAL, MoveMode
+from envisionhgdetector.utils import (
+    create_elan_file, 
+    create_segments_from_labels,
+    label_video, retrack_gesture_videos,
+    compute_gesture_kinematics_dtw, create_gesture_visualization,
+    setup_dashboard_folders,
+    get_video_fps
 )
-
-from .realtime_detection import RealTimeGestureDetector  # New real-time detection module
-
 
 # suppress warnings
 import logging
@@ -55,7 +34,7 @@ class GestureDetector:
     """Main class for gesture detection in videos - supports CNN, LightGBM, and Combined models."""
     def __init__(
         self,
-        model_type: VALID_MODEL_NAMES_LITERAL,
+        model_type: str,
         config_path: Optional[Path] = None,
         weights_path: Optional[Path] = None,
         thresholds: Optional[Thresholds] = None
@@ -78,12 +57,12 @@ class GestureDetector:
         if self.model_type not in VALID_MODEL_NAMES:
             raise ValueError(f"Unknown model type: {model_type}. Use one of {VALID_MODEL_NAMES}.")
         
-        if self.model_type == "lightgbm":
+        if self.model_type == ModelNames.LIGHTGBM:
             self.config = DefaultConfig("lightgbm", self.thresholds, config_path, weights_path).get_config()
             self.model = LightGBMGestureModel(self.config)
             print(f"Initialized LightGBM gesture detector")
 
-        elif self.model_type == "cnn_b":
+        elif self.model_type == ModelNames.CNN_B:
             self.config = DefaultConfig("cnn_b", self.thresholds, config_path, weights_path).get_config()
             self.model = BinaryGestureModel(self.config)
             print(f"Initialized CNN-B gesture detector")
@@ -98,88 +77,28 @@ class GestureDetector:
         return self.model.predict_video(video_path, stride)  # Call the appropriate model's predict_video method
 
     def predict_labels_from_landmarks(self, landmarks_per_frame: np.ndarray, fps: float) -> pd.DataFrame:
-        return self.model.predict_labels_from_landmarks(landmarks_per_frame, fps)  # Call the appropriate model's method
+        results = self.model.predict_video_from_landmarks(landmarks_per_frame, fps)
+        return results
 
-    def _create_segments_from_predictions(
-        self, 
-        raw_df: pd.DataFrame, 
-        class_column: str,
-        threshold: float
-    ) -> pd.DataFrame:
-        """Create segments from a specific model's predictions."""
-        if raw_df.empty or class_column not in raw_df.columns:
-            # TODO - confirm if this is what we want
-            # return pd.DataFrame(columns=['start_time', 'end_time', 'prediction', 'prediction_id', 'duration'])
-            return pd.DataFrame(columns=Segment.__annotations__.keys())
-        
-        
-        segments = []
-        segment_id = 1
-        in_gesture = False
-        start_idx = 0
-        
-        min_length_s = self.config.thresholds.min_length_s
-        min_gap_s = self.config.thresholds.min_gap_s
-        
-        for idx, row in raw_df.iterrows():
-            is_gesture = row[class_column] != Labels.NOGESTURE
-            
-            if is_gesture and not in_gesture:
-                in_gesture = True
-                start_idx = idx
-            elif not is_gesture and in_gesture:
-                in_gesture = False
-                start_time = raw_df.loc[start_idx, 'time']
-                end_time = raw_df.loc[idx - 1, 'time'] if idx > 0 else raw_df.loc[idx, 'time']
-                duration = end_time - start_time
-                
-                if duration >= min_length_s:
-                    # Get majority label in segment
-                    segment_data = raw_df.loc[start_idx:idx-1]
-                    label = segment_data[class_column].mode().iloc[0] if not segment_data[class_column].mode().empty else Labels.GESTURE
-                    
-                    segments.append(Segment(
-                        start_time=start_time,
-                        end_time=end_time,
-                        prediction=label,
-                        prediction_id=segment_id,
-                        duration=duration
-                    ))
-                    
-                    segment_id += 1
-        
-        # Handle gesture at end
-        if in_gesture:
-            start_time = raw_df.loc[start_idx, 'time']
-            end_time = raw_df.iloc[-1]['time']
-            duration = end_time - start_time
-            
-            if duration >= min_length_s:
-                segments.append(Segment(
-                    start_time=start_time,
-                    end_time=end_time,
-                    prediction=Labels.GESTURE,
-                    prediction_id=segment_id,
-                    duration=duration
-                ))
-        
-        # Merge close segments
-        if len(segments) > 1:
-            merged = []
-            current = segments[0]
-            
-            for next_seg in segments[1:]:
-                gap = next_seg['start_time'] - current['end_time']
-                if gap <= min_gap_s:
-                    current['end_time'] = next_seg['end_time']
-                    current['duration'] = current['end_time'] - current['start_time']
-                else:
-                    merged.append(current)
-                    current = next_seg
-            merged.append(current)
-            segments = merged
-        
-        return pd.DataFrame(segments) if segments else pd.DataFrame(columns=['start_time', 'end_time', 'prediction', 'prediction_id', 'duration'])
+    # def _create_segments_from_predictions(
+    #     self, 
+    #     raw_df: pd.DataFrame, 
+    #     class_column: str,
+    #     threshold: float
+    # ) -> pd.DataFrame:
+    #     """Create segments from predictions using the shared timestamp helper."""
+    #     columns = ['start_time', 'end_time', 'prediction', 'prediction_id', 'duration']
+    #     if raw_df.empty or class_column not in raw_df.columns:
+    #         return pd.DataFrame(columns=columns)
+
+    #     segments = create_segments_from_labels(
+    #         raw_df['timestamp'].to_numpy(),
+    #         raw_df[class_column].tolist(),
+    #         min_gap_s=self.config.thresholds.min_gap_s,
+    #         min_length_s=self.config.thresholds.min_length_s,
+    #         move_mode=MoveMode.AS_GESTURE,
+    #     )
+    #     return segments
     
     def process_video(self, video_path: str, output_folder: str, elan_only: bool = False):
         output = dict()
@@ -206,6 +125,7 @@ class GestureDetector:
                         f"{video_name}_predictions.csv"
                     )
                     predictions_df.to_csv(output_pathpred, index=False)
+                    print(f"Saved predictions to {output_pathpred}")
                     
                     # Save segments
                     output_pathseg = os.path.join(
@@ -213,6 +133,7 @@ class GestureDetector:
                         f"{video_name}_segments.csv"
                     )
                     segments.to_csv(output_pathseg, index=False)
+                    print(f"Saved segments to {output_pathseg}")
 
                     # Save features (if available)
                     if len(features) > 0:
@@ -222,6 +143,7 @@ class GestureDetector:
                         )
                         feature_array = np.array(features)
                         np.save(output_pathfeat, feature_array)
+                        print(f"Saved features to {output_pathfeat}")
 
                 # Labeled video generation
                     print("Generating labeled video...")
@@ -246,7 +168,7 @@ class GestureDetector:
                     output_folder,
                     f"{video_name}.eaf"
                 )
-                fps = self._get_video_fps(video_path)
+                fps = get_video_fps(video_path)
                 create_elan_file(
                     video_path,
                     segments,

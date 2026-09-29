@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, regularizers, Model
 from typing import List, Literal
 import numpy as np
-from ..state import CNN_B_Config, CNN_Config
+from envisionhgdetector.state import CNN_B_Config, CNN_Config
 
 class BasicPreprocessing(layers.Layer):
     """
@@ -85,7 +85,7 @@ class EnhancedPreprocessing(layers.Layer):
     #     })
     #     return config
 
-def create_windows(self, features: List[List[float]], seq_length: int, stride: int) -> np.ndarray:
+def create_windows(features: List[List[float]], seq_length: int, stride: int) -> np.ndarray:
         """Creates sliding windows from feature sequences (CNN only)."""
         windows = []
         if len(features) < seq_length:
