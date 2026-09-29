@@ -5,17 +5,49 @@ from dataclasses import dataclass
 from typing import Literal, get_args
 from enum import Enum
 
-class Labels(str, Enum):
+class Labels:
     GESTURE = "Gesture"
     NOGESTURE = "NoGesture"
     MOVE = "Move"
 
+# Color mapping for labels
+color_map = {
+    Labels.NOGESTURE: (50, 50, 50),      # Dark gray
+    Labels.GESTURE: (0, 204, 204),        # Vibrant teal
+    Labels.MOVE: (255, 94, 98)            # Soft coral red
+}
+
+class MoveMode(str, Enum):
+    """How segmentation should handle predictions labeled Move."""
+
+    SEPARATE = "separate"
+    AS_GESTURE = "as_gesture"
+    IGNORE = "ignore"
+
+
 LABELS_LITERAL = Literal[Labels.GESTURE, Labels.NOGESTURE, Labels.MOVE]
 LABELS = get_args(LABELS_LITERAL)
 
-VALID_MODEL_NAMES_LITERAL = Literal["cnn", "cnn_b", "lightgbm"]
-VALID_MODEL_NAMES = get_args(VALID_MODEL_NAMES_LITERAL)
+class PredictionColumns:
+    """Canonical prediction DataFrame column names."""
 
+    FRAME_INDEX = "frame_index"
+    PREDICTION = "prediction"
+    CONFIDENCE = "confidence"
+    MOTION_CONFIDENCE = "motion_confidence"
+    GESTURE_CONFIDENCE = "gesture_confidence"
+    NO_GESTURE_CONFIDENCE = "no_gesture_confidence"
+    MOVE_CONFIDENCE = "move_confidence"
+    TIMESTAMP = "timestamp"
+    FRAME = "frame"
+    WALL_CLOCK_TIME = "wall_clock_time"
+    RAW_GESTURE = "raw_gesture"
+    THRESHOLD = "threshold"
+    PREDICTION_AVAILABLE = "prediction_available"
+    SOURCE_FRAME_INDEX = "frame_idx"
+
+# TODO - how do i join these 2
+# maybe init and get names function or smth
 @dataclass
 class Row:
     frame_index: int
@@ -26,6 +58,54 @@ class Row:
     no_gesture_confidence: float
     move_confidence: float
     timestamp: Optional[float] = None
+
+    def to_dict(self) -> dict:
+        return {
+            PredictionColumns.FRAME_INDEX: self.frame_index,
+            PredictionColumns.PREDICTION: self.prediction,
+            PredictionColumns.CONFIDENCE: self.confidence,
+            PredictionColumns.MOTION_CONFIDENCE: self.motion_confidence,
+            PredictionColumns.GESTURE_CONFIDENCE: self.gesture_confidence,
+            PredictionColumns.NO_GESTURE_CONFIDENCE: self.no_gesture_confidence,
+            PredictionColumns.MOVE_CONFIDENCE: self.move_confidence,
+            PredictionColumns.TIMESTAMP: self.timestamp
+        }
+
+class SegmentColumns:
+    """Canonical segment DataFrame column names."""
+
+    START_TIME = "start_time"
+    END_TIME = "end_time"
+    PREDICTION = "prediction"
+    PREDICTION_ID = "prediction_id"
+    DURATION = "duration"
+    LABEL = "label"
+    LABEL_ID = "labelid"
+
+
+
+class ModelNames:
+    """Canonical model identifiers."""
+
+    CNN = "cnn"
+    CNN_B = "cnn_b"
+    LIGHTGBM = "lightgbm"
+VALID_MODEL_NAMES_LITERAL = Literal[ModelNames.CNN, ModelNames.CNN_B, ModelNames.LIGHTGBM]
+VALID_MODEL_NAMES = get_args(VALID_MODEL_NAMES_LITERAL)
+
+
+
+class StatsKeys:
+    """Canonical statistics dictionary keys."""
+
+    MODEL_TYPE = "model_type"
+    AVERAGE_MOTION = "average_motion"
+    AVERAGE_GESTURE = "average_gesture"
+    AVERAGE_MOVE = "average_move"
+    CNN_WEIGHT = "cnn_weight"
+    LIGHTGBM_WEIGHT = "lgbm_weight"
+
+
 
 @dataclass
 class Segment:
