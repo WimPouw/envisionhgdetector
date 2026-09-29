@@ -1,7 +1,0 @@
-Gestures_P007		1690	3040	Symbolic
-Gestures_P007		248955	251189	N/A
-Gestures_P007		382556	383828	Iconic
-Gestures_P007		427226	428891	Iconic
-Gestures_P007		429068	432157	Beat
-Gestures_P007		433468	435082	Iconic
-Gestures_P007		527600	530309	N/A
