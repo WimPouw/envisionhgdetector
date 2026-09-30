@@ -1,25 +1,16 @@
 # envisionhgdetector/detector.py
-
-import os
-import glob
 import pandas as pd
 import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from envisionhgdetector import GestureModel  # Renamed CNN model
-from envisionhgdetector import BinaryGestureModel  # New binary CNN model
-from envisionhgdetector import LightGBMGestureModel  # New LightGBM model
 from envisionhgdetector.default_config import DefaultConfig
 from envisionhgdetector.analysis.workflows import AnalysisMixin
 from envisionhgdetector.dashboard.preparation import DashboardMixin
-from envisionhgdetector.state import ModelNames, Thresholds, Labels, VALID_MODEL_NAMES, VALID_MODEL_NAMES_LITERAL, MoveMode
-from envisionhgdetector.utils import (
-    create_elan_file, 
-    create_segments_from_labels,
-    label_video,
-    get_video_fps
-)
+from envisionhgdetector.state import Thresholds, VALID_MODEL_NAMES, ModelNames
+from envisionhgdetector.utils import create_elan_file, label_video, get_video_fps
+from envisionhgdetector import GestureModel, BinaryGestureModel, LightGBMGestureModel
+
 
 # suppress warnings
 import logging
@@ -51,27 +42,20 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
             thresholds = Thresholds()  # Use default thresholds if none provided
         self.thresholds = thresholds
 
-        # Validate model type
         self.model_type = model_type
         if self.model_type not in VALID_MODEL_NAMES:
             raise ValueError(f"Unknown model type: {model_type}. Use one of {VALID_MODEL_NAMES}.")
-        
-        if self.model_type == ModelNames.LIGHTGBM:
-            self.config = DefaultConfig("lightgbm", self.thresholds, config_path, weights_path).get_config()
-            self.model = LightGBMGestureModel(self.config)
-            print(f"Initialized LightGBM gesture detector")
 
-        elif self.model_type == ModelNames.CNN_B:
-            self.config = DefaultConfig("cnn_b", self.thresholds, config_path, weights_path).get_config()
-            self.model = BinaryGestureModel(self.config)
-            print(f"Initialized CNN-B gesture detector")
+        self.config = DefaultConfig(self.model_type, self.thresholds, config_path, weights_path).get_config()
 
-        else:  # CNN
-            self.config = DefaultConfig("cnn", self.thresholds, config_path, weights_path).get_config()
-            self.model = GestureModel(self.config)
-            print(f"Initialized CNN gesture detector")
+        MODEL_CLASS_MAPPING = {
+            ModelNames.CNN: GestureModel,
+            ModelNames.CNN_B: BinaryGestureModel,
+            ModelNames.LIGHTGBM: LightGBMGestureModel
+        }   
+        self.model = MODEL_CLASS_MAPPING[self.model_type](self.config)
+        print(f"Initialized {self.model_type} gesture detector")
                 
-
     def predict_video(self, video_path: str, stride: int = 1) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray, List[float]]:
         return self.model.predict_video(video_path, stride)  # Call the appropriate model's predict_video method
 
