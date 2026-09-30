@@ -110,7 +110,7 @@ class CombinedGestureDetector:
             return {"error": f"Video not found: {video_path}"}
 
         os.makedirs(output_folder, exist_ok=True)
-        video_name = os.path.basename(video_path)
+        video_name, video_extension = os.path.splitext(os.path.basename(video_path))
 
         try:
             predictions, stats, segments, _, timestamps = self.predict_video(
@@ -141,7 +141,7 @@ class CombinedGestureDetector:
                         np.asarray(self.last_lgbm_features),
                     )
 
-                labeled_path = os.path.join(output_folder, f"labeled_{video_name}")
+                labeled_path = os.path.join(output_folder, f"{video_name}_labelled{video_extension}")
                 label_video(
                     video_path,
                     segments,

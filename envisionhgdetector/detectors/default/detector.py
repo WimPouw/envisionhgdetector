@@ -109,7 +109,7 @@ class GestureDetector:
 
         os.makedirs(output_folder, exist_ok=True)
 
-        video_name = os.path.basename(video_path)
+        video_name, video_extension = os.path.splitext(os.path.basename(video_path))
         print(f"\nProcessing {video_name} with {self.model_type.upper()} model...")
         
         try:
@@ -149,7 +149,7 @@ class GestureDetector:
                     print("Generating labeled video...")
                     output_pathvid = os.path.join(
                         output_folder,
-                        f"labeled_{video_name}"
+                        f"{video_name}_labelled{video_extension}"
                     )
                     label_video(
                         video_path, 
