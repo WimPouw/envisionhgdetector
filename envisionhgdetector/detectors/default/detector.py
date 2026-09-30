@@ -158,7 +158,7 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
                         valid_timestamps=timestamps,
                         motion_threshold=self.model.config.thresholds.motion_threshold,
                         gesture_threshold=self.model.config.thresholds.gesture_threshold,
-                        target_fps=25.0
+                        target_fps=getattr(self.model.config, "target_fps", None)
                     )
                 
                 print("Generating ELAN file...")

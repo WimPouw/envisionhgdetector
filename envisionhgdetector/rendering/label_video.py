@@ -18,11 +18,11 @@ def label_video(
     motion_threshold: float = None,
     gesture_threshold: float = None,
     window_duration: float = 10.0,
-    target_fps: float = 25.0
+    target_fps: Optional[float] = None
 ) -> None:
     """
     Label a video with predicted gestures based on segments.
-    Creates output at target_fps regardless of input fps.
+    Uses the input frame rate when target_fps is None.
     """
     # Open video
     cap = cv2.VideoCapture(video_path)
@@ -31,13 +31,12 @@ def label_video(
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     video_duration = total_frames / input_fps
+
+    output_fps = input_fps if target_fps is None else target_fps
     
-    # Calculate frame sampling - TODO not used
-    frame_interval = max(1, round(input_fps / target_fps)) if input_fps > target_fps else 1
-    
-    # Create VideoWriter object at target FPS
+    # Create VideoWriter object at the selected FPS
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
+    out = cv2.VideoWriter(output_path, fourcc, output_fps, (width, height))
     
     # Fixed y-axis parameters for absolute scale
     y_min = 0.0
@@ -80,15 +79,15 @@ def label_video(
         else:
             return matching_segments[SegmentColumns.LABEL].iloc[0] if len(matching_segments) > 0 else Labels.NOGESTURE
     
-    # Calculate total output frames at target FPS
-    output_frames = int(video_duration * target_fps)
+    # Calculate total output frames at the selected FPS
+    output_frames = total_frames if target_fps is None else int(video_duration * output_fps)
     
     progress_bar = tqdm(total=output_frames, desc="Labeling video", unit="frames")
 
-    # Process frames at the target rate
+    # Process frames at the selected rate
     for output_frame_idx in range(output_frames):
         # Calculate which input frame to read
-        output_time = output_frame_idx / target_fps
+        output_time = output_frame_idx / output_fps
         input_frame_idx = int(output_time * input_fps)
         
         # Ensure we don't exceed video bounds
@@ -287,5 +286,5 @@ def label_video(
     cap.release()
     out.release()
     
-    print(f"Video labeled at {target_fps}fps saved to {output_path}")
+    print(f"Video labeled at {output_fps}fps saved to {output_path}")
 
