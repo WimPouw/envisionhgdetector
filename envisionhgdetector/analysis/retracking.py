@@ -5,10 +5,10 @@ from pathlib import Path
 from typing import Dict, Tuple
 
 import cv2
-import mediapipe as mp
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
+from ..mediapipe_processing import PoseProcessor, drawing_utils, pose
 from .video_files import find_all_videos
 
 
@@ -32,10 +32,6 @@ def retrack_gesture_videos(
     os.makedirs(output_folder, exist_ok=True)
     tracked_folder = os.path.join(output_folder, "tracked_videos")
     os.makedirs(tracked_folder, exist_ok=True)
-    
-    # Initialize MediaPipe
-    mp_pose = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
     
     tracked_data = {}
     
@@ -67,21 +63,19 @@ def retrack_gesture_videos(
         visibility_scores = []
         frame_indices = []
         
-        with mp_pose.Pose(
+        with PoseProcessor(
             model_complexity=2,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
             enable_segmentation=True
-        ) as pose:
+        ) as processor:
             frame_idx = 0
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
                     break
                 
-                # Convert to RGB for MediaPipe
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = pose.process(frame_rgb)
+                results = processor.process_frame(frame)
                 
                 if results.pose_world_landmarks:
                     # Extract world landmarks
@@ -97,10 +91,10 @@ def retrack_gesture_videos(
                     
                     # Draw pose on frame
                     annotated_frame = frame.copy()
-                    mp_drawing.draw_landmarks(
+                    drawing_utils.draw_landmarks(
                         annotated_frame,
                         results.pose_landmarks,
-                        mp_pose.POSE_CONNECTIONS
+                        pose.POSE_CONNECTIONS
                     )
                 else:
                     # For frames without landmarks, just write the original frame
