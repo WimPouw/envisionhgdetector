@@ -1,7 +1,7 @@
-import tensorflow as tf
-from tensorflow.keras import layers, regularizers, Model
-from typing import List, Literal
 import numpy as np
+import tensorflow as tf
+from typing import List, Literal
+from tensorflow.keras import layers, regularizers, Model
 from envisionhgdetector.state import CNN_B_Config, CNN_Config
 
 class BasicPreprocessing(layers.Layer):
@@ -23,11 +23,6 @@ class BasicPreprocessing(layers.Layer):
             )
             inputs = inputs + noise
         return inputs
-    
-    # def get_config(self):
-    #     config = super().get_config()
-    #     config.update({'noise_stddev': self.noise_stddev})
-    #     return config
 
 class EnhancedPreprocessing(layers.Layer):
     """
@@ -74,16 +69,6 @@ class EnhancedPreprocessing(layers.Layer):
         x = (x - mean) / std
         
         return x
-    
-    # def get_config(self):
-    #     config = super().get_config()
-    #     config.update({
-    #         'noise_stddev': self.noise_stddev,
-    #         'jitter_sigma': self.jitter_sigma,
-    #         'scale_range': self.scale_range,
-    #         'drop_prob': self.drop_prob
-    #     })
-    #     return config
 
 def create_windows(features: List[List[float]], seq_length: int, stride: int) -> np.ndarray:
         """Creates sliding windows from feature sequences (CNN only)."""

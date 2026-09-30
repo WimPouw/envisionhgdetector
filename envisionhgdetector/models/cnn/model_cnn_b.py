@@ -10,7 +10,7 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 from typing import Tuple, Dict, List
-from tensorflow.keras import layers, regularizers, Model
+from tensorflow.keras import layers, regularizers
 
 from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_video_fps 
 from envisionhgdetector.state import PredictionColumns, Row, Labels, CNN_B_Config, ModelNames
@@ -59,9 +59,9 @@ class GestureModel(ModelTemplate):
         Returns:
             Array of class indices: 0=NoGesture, 1=Gesture
         """
-        preds = self.predict(features)
-        return (preds[:, 0] > motion_threshold).astype(np.int64)
-    
+        classes, _ = self.predict_with_confidence(features, motion_threshold)
+        return classes
+
     def predict_with_confidence(self, features: np.ndarray, motion_threshold: float) -> Tuple[np.ndarray, np.ndarray]:
         """
         Predict classes with confidence scores.
