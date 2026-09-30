@@ -8,6 +8,7 @@ from typing import Optional, Tuple
 from envisionhgdetector import GestureDetector
 from envisionhgdetector.state import Labels, ModelNames, MoveMode
 from envisionhgdetector.utils import create_elan_file, create_segments_from_labels
+from envisionhgdetector.mediapipe_processing import HolisticProcessor
 
 
 class RealtimeGestureDetector:
@@ -114,92 +115,100 @@ class RealtimeGestureDetector:
         print()
         
         try:
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    print("Failed to read frame from camera")
-                    continue
+            with HolisticProcessor(
+                model_complexity=1,
+                static_image_mode=False,
+                enable_segmentation=False,
+                smooth_landmarks=True,
+                min_detection_confidence=self.model.config.min_detection_confidence,
+                min_tracking_confidence=self.model.config.min_tracking_confidence,
+            ) as processor:
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        print("Failed to read frame from camera")
+                        continue
                 
-                current_time = time.time() - start_time
+                    current_time = time.time() - start_time
                 
-                # Check duration limit
-                if duration and current_time > duration:
-                    break
-                
-                # Extract features and predict
-                features = self.model.extract_features_from_frame(frame)
-                
-                gesture_name = Labels.NOGESTURE
-                confidence = 0.0
-                
-                if features is not None:
-                    pred_probs = self.model.predict(features.reshape(1, -1))[0]
-                    predicted_class = np.argmax(pred_probs)
-                    confidence = pred_probs[predicted_class]
-                    
-                    gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
-                    print(f"Frame {frame_count}: Predicted {gesture_name} with confidence {confidence:.3f}")
-                    
-                    # Apply confidence threshold (fixed)
-                    if gesture_name != Labels.NOGESTURE and confidence < self.confidence_threshold:
-                        gesture_name = Labels.NOGESTURE
-                        confidence = 0.0
-                
-                # Calculate frame-based timestamp that matches video output
-                # This ensures ELAN timestamps align with video frames
-                # Use frame_count/fps for video sync, wall clock for user display
-                video_timestamp = frame_count / output_fps if save_video else current_time
-                
-                # Store results with both timestamps
-                frame_results.append({
-                    'frame': frame_count,
-                    'timestamp': video_timestamp,  # Video-aligned timestamp for ELAN
-                    'wall_clock_time': current_time,  # Real time for user feedback
-                    Labels.GESTURE: gesture_name,
-                    'confidence': confidence,
-                    'threshold': self.confidence_threshold,
-                    'raw_gesture': gesture_name
-                })
-                
-                # Display on frame
-                if show_display:
-                    display_frame = cv2.flip(frame, 1)  # Mirror effect
-                    
-                    # Add text overlay (use wall clock time for display)
-                    color = (0, 255, 0) if gesture_name != Labels.NOGESTURE else (128, 128, 128)
-                    cv2.putText(display_frame, f"{Labels.GESTURE}: {gesture_name}", 
-                            (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
-                    cv2.putText(display_frame, f"Confidence: {confidence:.2f}", 
-                            (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-                    cv2.putText(display_frame, f"Time: {current_time:.1f}s", 
-                            (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                    cv2.putText(display_frame, f"Frame: {frame_count}", 
-                            (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                    
-                    # Save frame if requested
-                    if writer:
-                        writer.write(display_frame)
-                    
-                    cv2.imshow('Real-time Gesture Detection', display_frame)
-                    
-                    # Handle keyboard input (simplified)
-                    key = cv2.waitKey(1) & 0xFF
-                    
-                    if key == ord('q') or key == ord('Q'):
-                        print("Quit requested")
+                    # Check duration limit
+                    if duration and current_time > duration:
                         break
-                    elif key == ord(' '):  # Status
-                        print(f"Current: {gesture_name} ({confidence:.3f})")
-                        print(f"Parameters: threshold={self.confidence_threshold:.2f}, gap={self.min_gap_s:.1f}s, minlen={self.min_length_s:.1f}s")
                 
-                frame_count += 1
+                    # Extract features and predict
+                    features = self.model.extract_features_from_frame(frame, processor=processor)
                 
-                # Periodic status updates
-                if frame_count % 1500 == 0:
-                    runtime_mins = current_time / 60.0
-                    gesture_frames = len([r for r in frame_results if r[Labels.GESTURE] != Labels.NOGESTURE])
-                    gesture_percentage = (gesture_frames / len(frame_results)) * 100 if frame_results else 0
-                    print(f"Status: {runtime_mins:.1f}m runtime, {frame_count} frames, {gesture_percentage:.1f}% gestures")
+                    gesture_name = Labels.NOGESTURE
+                    confidence = 0.0
+                
+                    if features is not None:
+                        pred_probs = self.model.predict(features.reshape(1, -1))[0]
+                        predicted_class = np.argmax(pred_probs)
+                        confidence = pred_probs[predicted_class]
+                    
+                        gesture_name = self.model.label_encoder.inverse_transform([predicted_class])[0]
+                        print(f"Frame {frame_count}: Predicted {gesture_name} with confidence {confidence:.3f}")
+                    
+                        # Apply confidence threshold (fixed)
+                        if gesture_name != Labels.NOGESTURE and confidence < self.confidence_threshold:
+                            gesture_name = Labels.NOGESTURE
+                            confidence = 0.0
+                
+                    # Calculate frame-based timestamp that matches video output
+                    # This ensures ELAN timestamps align with video frames
+                    # Use frame_count/fps for video sync, wall clock for user display
+                    video_timestamp = frame_count / output_fps if save_video else current_time
+                
+                    # Store results with both timestamps
+                    frame_results.append({
+                        'frame': frame_count,
+                        'timestamp': video_timestamp,  # Video-aligned timestamp for ELAN
+                        'wall_clock_time': current_time,  # Real time for user feedback
+                        Labels.GESTURE: gesture_name,
+                        'confidence': confidence,
+                        'threshold': self.confidence_threshold,
+                        'raw_gesture': gesture_name
+                    })
+                
+                    # Display on frame
+                    if show_display:
+                        display_frame = cv2.flip(frame, 1)  # Mirror effect
+                    
+                        # Add text overlay (use wall clock time for display)
+                        color = (0, 255, 0) if gesture_name != Labels.NOGESTURE else (128, 128, 128)
+                        cv2.putText(display_frame, f"{Labels.GESTURE}: {gesture_name}",
+                                (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 2)
+                        cv2.putText(display_frame, f"Confidence: {confidence:.2f}",
+                                (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+                        cv2.putText(display_frame, f"Time: {current_time:.1f}s",
+                                (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        cv2.putText(display_frame, f"Frame: {frame_count}",
+                                (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                    
+                        # Save frame if requested
+                        if writer:
+                            writer.write(display_frame)
+                    
+                        cv2.imshow('Real-time Gesture Detection', display_frame)
+                    
+                        # Handle keyboard input (simplified)
+                        key = cv2.waitKey(1) & 0xFF
+                    
+                        if key == ord('q') or key == ord('Q'):
+                            print("Quit requested")
+                            break
+                        elif key == ord(' '):  # Status
+                            print(f"Current: {gesture_name} ({confidence:.3f})")
+                            print(f"Parameters: threshold={self.confidence_threshold:.2f}, gap={self.min_gap_s:.1f}s, minlen={self.min_length_s:.1f}s")
+                
+                    frame_count += 1
+                
+                    # Periodic status updates
+                    if frame_count % 1500 == 0:
+                        runtime_mins = current_time / 60.0
+                        gesture_frames = len([r for r in frame_results if r[Labels.GESTURE] != Labels.NOGESTURE])
+                        gesture_percentage = (gesture_frames / len(frame_results)) * 100 if frame_results else 0
+                        print(f"Status: {runtime_mins:.1f}m runtime, {frame_count} frames, {gesture_percentage:.1f}% gestures")
         
         except KeyboardInterrupt:
             print("\nInterrupted by user")

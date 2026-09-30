@@ -13,8 +13,8 @@ from enum import auto, Enum
 from typing import List, Optional, Union, Tuple
 import cv2
 import numpy as np
-import mediapipe as mp
 from tqdm import tqdm
+from ...mediapipe_processing import HolisticProcessor, drawing_utils, holistic
 
 # ============================================================================
 # CONFIGURATION
@@ -32,8 +32,8 @@ NUM_WORLD_FEATURES = 92     # 23 upper body landmarks × 4 (x, y, z, visibility)
 # MEDIAPIPE SETUP
 # ============================================================================
 
-mp_holistic = mp.solutions.holistic
-mp_drawing = mp.solutions.drawing_utils
+mp_holistic = holistic
+mp_drawing = drawing_utils
 
 # Body landmark names (33 landmarks from BlazePose)
 BODY_LANDMARKS = [
@@ -370,7 +370,8 @@ def video_to_landmarks(
     video_segment: VideoSegment = VideoSegment.BEGINNING,
     end_padding: bool = True,
     drop_consecutive_duplicates: bool = False,
-    feature_set: Optional[str] = None
+    feature_set: Optional[str] = None,
+    model_complexity: int = 1,
 ) -> Tuple[List[List[float]], List[float], List[int]]:
     """
     Extract landmarks from video frames at 25 fps.
@@ -405,10 +406,8 @@ def video_to_landmarks(
     frame_number = 0
     processed_frame_count = 0
 
-    with mp_holistic.Holistic(
-        min_detection_confidence=0.5, 
-        min_tracking_confidence=0.5, 
-        model_complexity=1
+    with HolisticProcessor(
+        model_complexity=model_complexity
     ) as holistic:
         while cap.isOpened():
             ret, bgr_frame = cap.read()
@@ -428,10 +427,9 @@ def video_to_landmarks(
             if max_num_frames and video_segment == VideoSegment.BEGINNING and valid_frame_count >= max_num_frames:
                 break
 
-            frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
-            results = holistic.process(frame)
+            results = holistic.process_frame(bgr_frame)
 
-            h, w, _ = frame.shape
+            h, w, _ = bgr_frame.shape
 
             # ================================================================
             # WORLD LANDMARKS (92 features) - BEST PERFORMING
@@ -674,9 +672,11 @@ class VideoProcessor:
         """
         self.seq_length = seq_length
         self.feature_set = feature_set or FEATURE_SET
-        self.mp_holistic = mp.solutions.holistic
+        self.mp_holistic = holistic
         
-    def process_video(self, video_path: str) -> Tuple[List[List[float]], List[float], List[int]]:
+    def process_video(
+        self, video_path: str, model_complexity: int = 1
+    ) -> Tuple[List[List[float]], List[float], List[int]]:
         """
         Process video and extract landmarks features.
         """
@@ -684,7 +684,8 @@ class VideoProcessor:
             video_path=video_path, 
             max_num_frames=None,
             video_segment=VideoSegment.BEGINNING,
-            feature_set=self.feature_set
+            feature_set=self.feature_set,
+            model_complexity=model_complexity,
         )
         
         return features_list, timestamps, frame_indices

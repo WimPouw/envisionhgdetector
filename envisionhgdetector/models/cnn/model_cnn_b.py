@@ -30,6 +30,7 @@ class GestureModel(ModelTemplate):
         Args:
             config: CNN_B_Config
         """
+        print('THIS IS NEW CNN B CODE')
         self.config = config
         self.model = make_model(config=config, type="binary")
         self.video_processor = VideoProcessor(seq_length=config.seq_length, feature_set=config.dataset_name)

@@ -9,7 +9,6 @@ Window: 5 frames
 """
 
 import cv2
-import mediapipe as mp
 import pandas as pd
 import numpy as np
 import joblib
@@ -19,6 +18,7 @@ from collections import deque
 from envisionhgdetector.state import LIGHTGBM_Config, Row, Labels, ModelNames, PredictionColumns
 from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_prediction_at_threshold, expand_predictions_to_frames
 from ..model_template import ModelTemplate
+from ...mediapipe_processing import HolisticProcessor, holistic
 
 class LightGBMGestureModel(ModelTemplate):
     """
@@ -30,11 +30,11 @@ class LightGBMGestureModel(ModelTemplate):
     
     def __init__(self, config: LIGHTGBM_Config):
         """Initialize LightGBM model with configuration."""
+        print('THIS IS NEW LIGHTGBM CODE')
         self.config = config
 
         self.load_model(config.weights_path)
-        # Initialize MediaPipe Holistic for world landmarks
-        self.mp_holistic = mp.solutions.holistic
+        self.mp_holistic = holistic
         # Backward compatibility aliases
         self.key_joints_buffer = self.landmarks_buffer  # Alias for old code
         self.left_fingers_buffer = deque(maxlen=self.config.window_size)  # Dummy for old code
@@ -79,7 +79,12 @@ class LightGBMGestureModel(ModelTemplate):
         except Exception as e:
             raise RuntimeError(f"Failed to load LightGBM model from {model_path}: {str(e)}")
     
-    def extract_world_landmarks(self, frame: np.ndarray) -> Optional[np.ndarray]:
+    def extract_world_landmarks(
+        self,
+        frame: np.ndarray,
+        model_complexity: int = 1,
+        processor: Optional[HolisticProcessor] = None,
+    ) -> Optional[np.ndarray]:
         """
         Extract world landmarks from frame using MediaPipe Holistic.
         
@@ -87,20 +92,18 @@ class LightGBMGestureModel(ModelTemplate):
             Array of 92 features (23 landmarks × 4: x, y, z, visibility)
             or None if pose not detected
         """
-        # Convert BGR to RGB
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        rgb_frame.flags.writeable = False
-        
-        # Process with MediaPipe
-        with self.mp_holistic.Holistic(
-            static_image_mode=False,
-            model_complexity=1,
-            enable_segmentation=False,
-            smooth_landmarks=True,
-            min_detection_confidence=self.config.min_detection_confidence,
-            min_tracking_confidence=self.config.min_tracking_confidence
-        ) as holistic:
-            results = holistic.process(rgb_frame)
+        if processor is None:
+            with HolisticProcessor(
+                static_image_mode=False,
+                model_complexity=model_complexity,
+                enable_segmentation=False,
+                smooth_landmarks=True,
+                min_detection_confidence=self.config.min_detection_confidence,
+                min_tracking_confidence=self.config.min_tracking_confidence,
+            ) as processor:
+                return self.extract_world_landmarks(frame, model_complexity, processor)
+
+        results = processor.process_frame(frame, readonly=True)
         
         if not results.pose_world_landmarks:
             return None
@@ -531,7 +534,9 @@ class LightGBMGestureModel(ModelTemplate):
             
         return probabilities
     
-    def extract_features_from_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
+    def extract_features_from_frame(
+        self, frame: np.ndarray, processor: Optional[HolisticProcessor] = None
+    ) -> Optional[np.ndarray]:
         """
         Extract features from a single frame for real-time prediction.
         
@@ -542,7 +547,7 @@ class LightGBMGestureModel(ModelTemplate):
             100-dimensional feature array, or None if not enough data
         """
         # Extract world landmarks
-        landmarks = self.extract_world_landmarks(frame)
+        landmarks = self.extract_world_landmarks(frame, processor=processor)
         
         if landmarks is None:
             return None
@@ -720,7 +725,8 @@ class LightGBMGestureModel(ModelTemplate):
     def predict_video(
         self,
         video_path: str,
-        stride: int = 1
+        stride: int = 1,
+        model_complexity: int = 1,
     ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray]:
         """LightGBM prediction method with CNN-compatible output."""
         cap = cv2.VideoCapture(video_path)
@@ -736,67 +742,75 @@ class LightGBMGestureModel(ModelTemplate):
         valid_features = []  # Store extracted features for compatibility
         valid_timestamps = []
         
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
+        with HolisticProcessor(
+            static_image_mode=False,
+            model_complexity=model_complexity,
+            enable_segmentation=False,
+            smooth_landmarks=True,
+            min_detection_confidence=self.config.min_detection_confidence,
+            min_tracking_confidence=self.config.min_tracking_confidence,
+        ) as processor:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
                 
-            # Skip frames based on stride
-            if frame_number % stride != 0:
-                frame_number += 1
-                continue
-            
-            timestamp = frame_number / fps
-            
-            # Extract features using LightGBM model
-            features = self.extract_features_from_frame(frame)
-            
-            if features is not None:
-                # Store for compatibility
-                valid_features.append(features.tolist())
-                valid_timestamps.append(timestamp)
-                
-                # Get prediction
-                pred_probs = self.predict(features.reshape(1, -1))[0]
-                predicted_class = np.argmax(pred_probs)
-                confidence = pred_probs[predicted_class]
-                
-                # Convert to gesture name
-                gesture_name = self.label_encoder.inverse_transform([predicted_class])[0]
-                
-                # Convert LightGBM output to align witht he CNN format
-                if gesture_name == Labels.NOGESTURE:
-                    gesture_conf = 1-confidence # gesture confidence is the 1-no gesture confidence                   
-                    nogesture_conf = confidence # no gesture confidence is the confidence of the no gesture class
-                    move_conf = 0.0
-                else:
-                    # Distribute confidence based on gesture type
-                    if gesture_name == Labels.MOVE:
-                        gesture_conf = 0.0
-                        move_conf = confidence
-                        nogesture_conf = 1-confidence
-                    else: #then its a a gesture
-                        gesture_conf = confidence
+                # Skip frames based on stride
+                if frame_number % stride != 0:
+                    frame_number += 1
+                    continue
+
+                timestamp = frame_number / fps
+
+                # Extract features using LightGBM model
+                features = self.extract_features_from_frame(frame, processor=processor)
+
+                if features is not None:
+                    # Store for compatibility
+                    valid_features.append(features.tolist())
+                    valid_timestamps.append(timestamp)
+
+                    # Get prediction
+                    pred_probs = self.predict(features.reshape(1, -1))[0]
+                    predicted_class = np.argmax(pred_probs)
+                    confidence = pred_probs[predicted_class]
+
+                    # Convert to gesture name
+                    gesture_name = self.label_encoder.inverse_transform([predicted_class])[0]
+
+                    # Convert LightGBM output to align witht he CNN format
+                    if gesture_name == Labels.NOGESTURE:
+                        gesture_conf = 1-confidence # gesture confidence is the 1-no gesture confidence
+                        nogesture_conf = confidence # no gesture confidence is the confidence of the no gesture class
                         move_conf = 0.0
-                        nogesture_conf = 1-confidence
-                
-                predictions.append(Row(
-                    frame_index=frame_number,
-                    prediction=gesture_name,
-                    confidence=confidence,
-                    motion_confidence=gesture_conf,
-                    gesture_confidence=gesture_conf,
-                    no_gesture_confidence=nogesture_conf,
-                    move_confidence=move_conf,
-                    timestamp=timestamp
-                ))
+                    else:
+                        # Distribute confidence based on gesture type
+                        if gesture_name == Labels.MOVE:
+                            gesture_conf = 0.0
+                            move_conf = confidence
+                            nogesture_conf = 1-confidence
+                        else: #then its a a gesture
+                            gesture_conf = confidence
+                            move_conf = 0.0
+                            nogesture_conf = 1-confidence
+
+                    predictions.append(Row(
+                        frame_index=frame_number,
+                        prediction=gesture_name,
+                        confidence=confidence,
+                        motion_confidence=gesture_conf,
+                        gesture_confidence=gesture_conf,
+                        no_gesture_confidence=nogesture_conf,
+                        move_confidence=move_conf,
+                        timestamp=timestamp
+                    ))
+
+                frame_number += 1
             
-            frame_number += 1
-            
-            # Progress update
-            if frame_number % 100 == 0:
-                progress = frame_number / total_frames * 100
-                print(f"Progress: {progress:.1f}%")
+                # Progress update
+                if frame_number % 100 == 0:
+                    progress = frame_number / total_frames * 100
+                    print(f"Progress: {progress:.1f}%")
         
         cap.release()
         
