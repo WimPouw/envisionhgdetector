@@ -15,8 +15,10 @@ from envisionhgdetector.utils import get_label_from_prediction, create_segments,
 from .cnn_utils import make_model, create_windows
 from envisionhgdetector.state import Row, Labels, CNN_Config, ModelNames
 from .preprocessing import VideoProcessor
+from ..model_template import ModelTemplate
 
-class GestureModel:
+
+class GestureModel(ModelTemplate):
     """
     Wrapper class for the gesture detection model.
     Handles model loading and inference.
@@ -103,6 +105,7 @@ class GestureModel:
     def predict_video_from_landmarks(
         self,
         features: np.ndarray,
+        fps:float,
         stride: int = 1
     ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray]:
         """CNN prediction from landmarks."""
@@ -191,18 +194,18 @@ class GestureModel:
         self,
         video_path: str,
         stride: int = 1
-    ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray]:
+    ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray, list[float]]:
         """Original CNN prediction method."""
         # Extract features and timestamps
         features, timestamps, frame_indices = self.video_processor.process_video(video_path)
     
         if not features:
-            return pd.DataFrame(), {"error": "No features detected"}, pd.DataFrame(), np.array([])
+            return pd.DataFrame(), {"error": "No features detected"}, pd.DataFrame(), np.array([]), []
         
         windows = create_windows(features, self.config.seq_length, stride)
         
         if len(windows) == 0:
-            return pd.DataFrame(), {"error": "No valid windows created"}, pd.DataFrame(), np.array([])
+            return pd.DataFrame(), {"error": "No valid windows created"}, pd.DataFrame(), np.array([]), []
 
         # Get predictions
         predictions = self.model.predict(windows)

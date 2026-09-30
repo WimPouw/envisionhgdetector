@@ -18,8 +18,9 @@ from typing import Optional, List, Dict, Any, Tuple
 from collections import deque
 from envisionhgdetector.state import LIGHTGBM_Config, Row, Labels, ModelNames, PredictionColumns
 from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_prediction_at_threshold, expand_predictions_to_frames
+from ..model_template import ModelTemplate
 
-class LightGBMGestureModel:
+class LightGBMGestureModel(ModelTemplate):
     """
     LightGBM-based gesture detection model.
     Matches Config 13 training: 100 features from world landmarks.

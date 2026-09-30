@@ -16,9 +16,9 @@ from envisionhgdetector.utils import get_label_from_prediction, create_segments,
 from envisionhgdetector.state import PredictionColumns, Row, Labels, CNN_B_Config, ModelNames
 from .cnn_utils import make_model, create_windows
 from .preprocessing import VideoProcessor
+from ..model_template import ModelTemplate
 
-
-class GestureModel:
+class GestureModel(ModelTemplate):
     """
     Wrapper class for the gesture detection model.
     Handles model loading and inference.
