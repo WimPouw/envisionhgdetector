@@ -1,6 +1,4 @@
 """Retrack gesture clips and save world landmarks."""
-
-import os
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -8,9 +6,9 @@ import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-from ..mediapipe_processing import PoseProcessor, drawing_utils, pose
 from .video_files import find_all_videos
-
+from envisionhgdetector.mediapipe_processing import PoseProcessor, drawing_utils, pose
+from envisionhgdetector.state import DIRS
 
 def retrack_gesture_videos(
     input_folder: str,
@@ -29,10 +27,12 @@ def retrack_gesture_videos(
     Returns:
         Dictionary mapping video names to tuples of (landmarks, visibility scores)
     """
-    os.makedirs(output_folder, exist_ok=True)
-    tracked_folder = os.path.join(output_folder, "tracked_videos")
-    os.makedirs(tracked_folder, exist_ok=True)
-    
+    input_folder = Path(input_folder)
+    output_folder = Path(output_folder)
+    tracked_folder = output_folder / DIRS.TRACKED_VIDEOS
+    output_folder.mkdir(parents=True, exist_ok=True)
+    tracked_folder.mkdir(parents=True, exist_ok=True)
+
     tracked_data = {}
     
     # Find all videos recursively
@@ -43,14 +43,14 @@ def retrack_gesture_videos(
         video_name = Path(video_path).stem
         print(f"Processing {video_name}")
         
-        cap = cv2.VideoCapture(video_path)
+        cap = cv2.VideoCapture(str(video_path))
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
         # Create output video writer
-        out_path = os.path.join(tracked_folder, f"{video_name}_tracked.mp4")
+        out_path = tracked_folder / f"{video_name}_tracked.mp4"
         out = cv2.VideoWriter(
             out_path,
             cv2.VideoWriter_fourcc(*'mp4v'),
@@ -145,11 +145,11 @@ def retrack_gesture_videos(
                 )
             
             # Save smoothed landmarks
-            landmarks_save_path = os.path.join(output_folder, f"{video_name}_world_landmarks.npy")
+            landmarks_save_path = output_folder / f"{video_name}_world_landmarks.npy"
             np.save(landmarks_save_path, smoothed)
             
             # Save visibility scores
-            visibility_save_path = os.path.join(output_folder, f"{video_name}_visibility.npy")
+            visibility_save_path = output_folder / f"{video_name}_visibility.npy"
             np.save(visibility_save_path, full_visibility)
             
             tracked_data[video_name] = (smoothed, full_visibility)
