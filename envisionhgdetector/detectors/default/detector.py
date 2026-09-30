@@ -16,10 +16,6 @@ from envisionhgdetector import GestureModel, BinaryGestureModel, LightGBMGesture
 import logging
 logging.getLogger("moviepy").setLevel(logging.WARNING)
 
-def apply_smoothing(series: pd.Series, window: int = 5) -> pd.Series:
-    """Apply simple moving average smoothing to a series."""
-    return series.rolling(window=window, center=True).mean().fillna(series)
-
 class GestureDetector(AnalysisMixin, DashboardMixin):
     """Main class for gesture detection in videos - supports CNN, LightGBM, and Combined models."""
     def __init__(
@@ -60,31 +56,9 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
         return self.model.predict_video(video_path, stride)  # Call the appropriate model's predict_video method
 
     def predict_labels_from_landmarks(self, landmarks_per_frame: np.ndarray, fps: float) -> pd.DataFrame:
-        results = self.model.predict_video_from_landmarks(landmarks_per_frame, fps)
-        return results
-
-    # def _create_segments_from_predictions(
-    #     self, 
-    #     raw_df: pd.DataFrame, 
-    #     class_column: str,
-    #     threshold: float
-    # ) -> pd.DataFrame:
-    #     """Create segments from predictions using the shared timestamp helper."""
-    #     columns = ['start_time', 'end_time', 'prediction', 'prediction_id', 'duration']
-    #     if raw_df.empty or class_column not in raw_df.columns:
-    #         return pd.DataFrame(columns=columns)
-
-    #     segments = create_segments_from_labels(
-    #         raw_df['timestamp'].to_numpy(),
-    #         raw_df[class_column].tolist(),
-    #         min_gap_s=self.config.thresholds.min_gap_s,
-    #         min_length_s=self.config.thresholds.min_length_s,
-    #         move_mode=MoveMode.AS_GESTURE,
-    #     )
-    #     return segments
+        return self.model.predict_video_from_landmarks(landmarks_per_frame, fps)
     
-    def process_video(self, video_path: str, output_folder: str, elan_only: bool = False):
-        output = dict()
+    def process_video(self, video_path: str | Path, output_folder: str | Path, elan_only: bool = False):
         print("Elan only flag is set to:", elan_only)
         video_path = Path(video_path)
         output_folder = Path(output_folder)
