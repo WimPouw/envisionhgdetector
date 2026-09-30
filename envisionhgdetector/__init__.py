@@ -7,8 +7,8 @@ from .models.cnn.model_cnn import GestureModel
 from .models.cnn.model_cnn_b import GestureModel as BinaryGestureModel
 from .models.lightgbm.model_lightgbm import LightGBMGestureModel
 
-from .detectors.default.detector import GestureDetector
-from .detectors.realtime.realtime_detection import RealtimeGestureDetector
+from .detectors.detector import GestureDetector
+from .detectors.realtime_detection import RealtimeGestureDetector
 from .combined.combined_detection import CombinedGestureDetector
 
 __version__ = "3.1.0"
