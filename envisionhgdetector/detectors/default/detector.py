@@ -2,7 +2,6 @@
 
 import os
 import glob
-import shutil
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -12,13 +11,13 @@ from envisionhgdetector import GestureModel  # Renamed CNN model
 from envisionhgdetector import BinaryGestureModel  # New binary CNN model
 from envisionhgdetector import LightGBMGestureModel  # New LightGBM model
 from envisionhgdetector.default_config import DefaultConfig
+from envisionhgdetector.analysis.workflows import AnalysisMixin
+from envisionhgdetector.dashboard.preparation import DashboardMixin
 from envisionhgdetector.state import ModelNames, Thresholds, Labels, VALID_MODEL_NAMES, VALID_MODEL_NAMES_LITERAL, MoveMode
 from envisionhgdetector.utils import (
     create_elan_file, 
     create_segments_from_labels,
-    label_video, retrack_gesture_videos,
-    compute_gesture_kinematics_dtw, create_gesture_visualization,
-    setup_dashboard_folders,
+    label_video,
     get_video_fps
 )
 
@@ -30,7 +29,7 @@ def apply_smoothing(series: pd.Series, window: int = 5) -> pd.Series:
     """Apply simple moving average smoothing to a series."""
     return series.rolling(window=window, center=True).mean().fillna(series)
 
-class GestureDetector:
+class GestureDetector(AnalysisMixin, DashboardMixin):
     """Main class for gesture detection in videos - supports CNN, LightGBM, and Combined models."""
     def __init__(
         self,
@@ -208,230 +207,3 @@ class GestureDetector:
             results[video_name] = self.process_video(video_path, output_folder)
             
         return results
-        
-    def retrack_gestures(
-        self,
-        input_folder: str,
-        output_folder: str
-    ) -> Dict[str, str]:
-        """Retrack gesture segments using MediaPipe world landmarks (works with both models)."""
-        try:
-            # Retrack the videos and save landmarks
-            tracked_data = retrack_gesture_videos(
-                input_folder=input_folder,
-                output_folder=output_folder
-            )
-            
-            if not tracked_data:
-                return {"error": "No gestures could be tracked"}
-                
-            print(f"Successfully retracked {len(tracked_data)} gestures")
-            
-            return {
-                "tracked_folder": os.path.join(output_folder, "tracked_videos"),
-                "landmarks_folder": output_folder
-            }
-            
-        except Exception as e:
-            print(f"Error during gesture retracking: {str(e)}")
-            return {"error": str(e)}
-
-    def analyze_dtw_kinematics(
-        self,
-        landmarks_folder: str,
-        output_folder: str,
-        fps: float = 25.0
-    ) -> Dict[str, str]:
-        """Compute DTW distances, kinematic features, and create visualization (works with both models)."""
-        try:
-            # Compute DTW distances and kinematic features
-            print("Computing DTW distances and kinematic features...")
-            dtw_matrix, gesture_names, kinematic_features = compute_gesture_kinematics_dtw(
-                tracked_folder=landmarks_folder,
-                output_folder=output_folder,
-                fps=fps
-            )
-            
-            # Create visualization
-            print("Creating visualization...")
-            create_gesture_visualization(
-                dtw_matrix=dtw_matrix,
-                gesture_names=gesture_names,
-                output_folder=output_folder
-            )
-            
-            return {
-                "distance_matrix": os.path.join(output_folder, "dtw_distances.csv"),
-                "kinematic_features": os.path.join(output_folder, "kinematic_features.csv"),
-                "visualization": os.path.join(output_folder, "gesture_visualization.csv")
-            }
-            
-        except Exception as e:
-            print(f"Error during DTW and kinematic analysis: {str(e)}")
-            return {"error": str(e)}
-    
-    def prepare_gesture_dashboard(self, data_folder: str, assets_folder: Optional[str] = None) -> None:
-        """Prepare dashboard (works with both models)."""
-        try:
-            if assets_folder is None:
-                assets_folder = os.path.join(os.path.dirname(data_folder), "assets")
-
-            # Set up folders and copy necessary files
-            setup_dashboard_folders(data_folder, assets_folder)
-            
-            # Get the output directory (parent of analysis folder)
-            output_dir = os.path.dirname(data_folder)
-            
-            # Copy the app.py to the output directory
-            dashboard_script_path = os.path.join(os.path.dirname(__file__), "dashboard", "app.py")
-            destination_script_path = os.path.join(output_dir, "app.py")
-            shutil.copy(dashboard_script_path, destination_script_path)
-            
-            print(f"Dashboard prepared for {self.model_type.upper()} results")
-            print(f"App dashboard copied to: {destination_script_path}")
-            
-            # Create the CSS file in the assets folder
-            css_content = '''
-                body, 
-                .dash-graph,
-                .dash-core-components,
-                .dash-html-components { 
-                    margin: 0; 
-                    background-color: #111; 
-                    font-family: sans-serif !important;
-                    min-height: 100vh;
-                    width: 100%;
-                    color: #ffffff;
-                }
-
-                /* Modern container styling */
-                .dashboard-container {
-                    max-width: 1400px;
-                    margin: 0 auto;
-                    padding: 2rem;
-                    font-family: sans-serif !important;
-                }
-
-                /* Enhanced headings */
-                h1, h2, h3, h4, h5, h6 {
-                    color: rgba(255, 255, 255, 0.95);
-                    font-weight: 600;
-                    letter-spacing: -0.02em;
-                    font-family: sans-serif !important;
-                }
-
-                h1 {
-                    font-size: 2.5rem;
-                    text-align: center;
-                    margin-bottom: 2rem;
-                    background: linear-gradient(45deg, #fff, #a8a8a8);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    text-shadow: 0 0 30px rgba(255,255,255,0.1);
-                    font-family: sans-serif !important;
-                }
-
-                h2 {
-                    font-size: 1.5rem;
-                    margin: 1.5rem 0;
-                    padding-bottom: 0.5rem;
-                    border-bottom: 2px solid rgba(255,255,255,0.1);
-                    font-family: sans-serif !important;
-                }
-
-                /* Card-like sections */
-                .visualization-section {
-                    background: rgba(255, 255, 255, 0.03);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 12px;
-                    padding: 1.5rem;
-                    margin-bottom: 2rem;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                    backdrop-filter: blur(10px);
-                }
-
-                /* Grid layout for kinematic features */
-                .kinematic-grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-                    gap: 1.5rem;
-                    margin-right: 120px; /* Space for fixed video */
-                    grid-auto-rows: minmax(200px, auto); 
-                    height: 500px; /* Adjust as needed */
-                }
-
-                /* Video container styling */
-                .video-container {
-                    background: rgba(0, 0, 0, 0.3);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 12px;
-                    padding: 1rem;
-                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
-                }
-
-                /* Interactive elements */
-                .interactive-element {
-                    transition: all 0.2s ease-in-out;
-                }
-
-                .interactive-element:hover {
-                    transform: translateY(-2px);
-                    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
-                }
-
-                /* Scrollbar styling */
-                ::-webkit-scrollbar {
-                    width: 8px;
-                    height: 8px;
-                }
-
-                ::-webkit-scrollbar-track {
-                    background: rgba(255, 255, 255, 0.1);
-                    border-radius: 4px;
-                }
-
-                ::-webkit-scrollbar-thumb {
-                    background: rgba(255, 255, 255, 0.3);
-                    border-radius: 4px;
-                }
-
-                ::-webkit-scrollbar-thumb:hover {
-                    background: rgba(255, 255, 255, 0.4);
-                }
-
-                /* Loading states */
-                .loading {
-                    opacity: 0.7;
-                    transition: opacity 0.3s ease;
-                }
-
-                /* Tooltip styling */
-                .tooltip {
-                    background: rgba(0, 0, 0, 0.8);
-                    border: 1px solid rgba(255, 255, 255, 0.1);
-                    border-radius: 6px;
-                    padding: 0.5rem;
-                    font-size: 0.875rem;
-                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-                    font-family: sans-serif !important;
-                }
-
-                /* Force Dash components to use sans-serif */
-                .dash-plot-container, 
-                .dash-graph-container,
-                .js-plotly-plot,
-                .plotly {
-                    font-family: sans-serif !important;
-                }
-                '''
-            css_file_path = os.path.join(assets_folder, "styles.css")
-            with open(css_file_path, "w") as css_file:
-                css_file.write(css_content.strip())
-            
-            print(f"CSS file created at: {css_file_path}")
-            print("Run 'python app.py' to start the dashboard")
-            
-        except Exception as e:
-            print(f"Error preparing dashboard: {str(e)}")
-            raise
-
