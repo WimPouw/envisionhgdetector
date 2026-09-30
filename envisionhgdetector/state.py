@@ -5,6 +5,15 @@ from dataclasses import dataclass
 from typing import Literal, get_args
 from enum import Enum
 
+
+class DIRS:
+    ANALYSIS = "analysis"
+    RETRACKED = "retracked"
+    TRACKED_VIDEOS = "tracked_videos" # retracked/tracked_videos
+    GESTURE_SEGMENTS = "gesture_segments"
+    ASSETS = "assets"
+    VIDEOS_RERENDERED = "videos_rerendered" # assets/videos_rerendered
+
 class Labels:
     GESTURE = "Gesture"
     NOGESTURE = "NoGesture"

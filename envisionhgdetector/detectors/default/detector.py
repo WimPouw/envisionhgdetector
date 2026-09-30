@@ -102,58 +102,53 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
     def process_video(self, video_path: str, output_folder: str, elan_only: bool = False):
         output = dict()
         print("Elan only flag is set to:", elan_only)
-        if not os.path.exists(video_path):
+        video_path = Path(video_path)
+        output_folder = Path(output_folder)
+        output = dict(error=None, stats=None, output_path=None) # elan output path
+
+        if not video_path.exists():
             output["error"] = f"Video not found: {video_path}"
+            print(output["error"])
             return output
+        
+        output_folder.mkdir(parents=True, exist_ok=True)
+        video_name, video_extension = video_path.stem, video_path.suffix
+        video_output_folder = output_folder / video_name
+        video_output_folder.mkdir(parents=True, exist_ok=True)
 
-        os.makedirs(output_folder, exist_ok=True)
-
-        video_name, video_extension = os.path.splitext(os.path.basename(video_path))
-        print(f"\nProcessing {video_name} with {self.model_type.upper()} model...")
+        elan_save_path = video_output_folder / f"{video_name}.eaf"
+        segments_save_path = video_output_folder / f"{video_name}_segments.csv"
+        predictions_save_path = video_output_folder / f"{video_name}_predictions.csv"
+        features_save_path = video_output_folder / f"{video_name}_features.npy"
+        labeled_video_path = video_output_folder / f"{video_name}_labeled{video_extension}"
+        print(f"\nProcessing {video_name} with {self.model_type} model...")
         
         try:
-            # Process video (automatically routes to correct model)
             print("Extracting features and model inferencing...")
             predictions_df, stats, segments, features, timestamps = self.predict_video(video_path)
             
             if not predictions_df.empty:
                 # Save predictions
                 if not elan_only:
-                    output_pathpred = os.path.join(
-                        output_folder,
-                        f"{video_name}_predictions.csv"
-                    )
-                    predictions_df.to_csv(output_pathpred, index=False)
-                    print(f"Saved predictions to {output_pathpred}")
+                    predictions_df.to_csv(predictions_save_path, index=False)
+                    print(f"Saved predictions to {predictions_save_path}")
                     
                     # Save segments
-                    output_pathseg = os.path.join(
-                        output_folder,
-                        f"{video_name}_segments.csv"
-                    )
-                    segments.to_csv(output_pathseg, index=False)
-                    print(f"Saved segments to {output_pathseg}")
+                    segments.to_csv(segments_save_path, index=False)
+                    print(f"Saved segments to {segments_save_path}")
 
                     # Save features (if available)
                     if len(features) > 0:
-                        output_pathfeat = os.path.join(
-                            output_folder,
-                            f"{video_name}_features.npy"
-                        )
                         feature_array = np.array(features)
-                        np.save(output_pathfeat, feature_array)
-                        print(f"Saved features to {output_pathfeat}")
+                        np.save(features_save_path, feature_array)
+                        print(f"Saved features to {features_save_path}")
 
                 # Labeled video generation
                     print("Generating labeled video...")
-                    output_pathvid = os.path.join(
-                        output_folder,
-                        f"{video_name}_labelled{video_extension}"
-                    )
                     label_video(
-                        video_path, 
+                        str(video_path), 
                         segments, 
-                        output_pathvid,
+                        str(labeled_video_path),
                         predictions_df,
                         valid_timestamps=timestamps,
                         motion_threshold=self.model.config.thresholds.motion_threshold,
@@ -163,22 +158,18 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
                 
                 print("Generating ELAN file...")
                 # Create ELAN file
-                output_path = os.path.join(
-                    output_folder,
-                    f"{video_name}.eaf"
-                )
                 fps = get_video_fps(video_path)
                 create_elan_file(
                     video_path,
                     segments,
-                    output_path,
+                    elan_save_path,
                     fps=fps,
                     include_ground_truth=False
                 )
 
                 output['stats'] = stats
-                output['output_path'] = output_path
-                print(f"Done processing {video_name} with {self.model_type.upper()}")
+                output['output_path'] = elan_save_path
+                print(f"Done processing {video_name} with {self.model_type}")
             else:
                 output["error"] = "No predictions generated"
 
@@ -188,22 +179,22 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
         
         return output
     
-    def process_folder(
-        self,
-        input_folder: str,
-        output_folder: str,
-        video_pattern: str = "*.mp4"
-    ) -> Dict[str, Dict]:
+    def process_folder(self, input_folder: str, output_folder: str, video_pattern: str = ".mp4") -> Dict[str, Dict]:
         """Process all videos in a folder (works with both CNN and LightGBM)."""
         # Create output directories
-        os.makedirs(output_folder, exist_ok=True)
-        
-        # Get all videos
-        videos = glob.glob(os.path.join(input_folder, video_pattern))
+        input_folder = Path(input_folder)
+        output_folder = Path(output_folder)
+        output_folder.mkdir(parents=True, exist_ok=True)
         results = {}
         
+        # Get all videos
+        videos = [
+            path
+            for path in input_folder.rglob(video_pattern)
+            if path.is_file()
+        ]
+        
         for video_path in videos:
-            video_name = os.path.basename(video_path)
-            results[video_name] = self.process_video(video_path, output_folder)
+            results[video_path.stem] = self.process_video(video_path, output_folder)
             
         return results

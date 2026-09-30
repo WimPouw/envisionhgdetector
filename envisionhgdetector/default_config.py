@@ -9,10 +9,9 @@ class DefaultConfig:
         if model_name == ModelNames.CNN:
             raise NotImplementedError("The 'cnn' model is not implemented yet. Please use 'cnn_b' or 'lightgbm'.")
         
+        self.pre_built_models_dir = Path(__file__).parent / "pre_built_models"
         self.config_path = config_path or self.get_default_config(model_name)
         self.weights_path = weights_path or self.get_default_weights(model_name)
-
-        print(f"Using weights path: {self.weights_path}")
 
         if not self.config_path.exists():
             raise FileNotFoundError(f"Config file {self.config_path} does not exist.")
@@ -23,25 +22,23 @@ class DefaultConfig:
 
     def get_default_config(self, model_name: str) -> Path:
         """Get the default config path based on model name."""
-        model_dir = Path(__file__).parent / "pre_built_models"
         default_configs = {
             "cnn_b":  "best_cnn_b_config.yaml",
             "cnn":  "cnn_config.yaml",
             "lightgbm":  "best_lgbm_config.yaml",
         }
-        config_path = model_dir / default_configs.get(model_name)
+        config_path = self.pre_built_models_dir / default_configs.get(model_name)
         print(f"Using default config path: {config_path}")
         return config_path
         
     def get_default_weights(self, model_name: str) -> Path:
         """Get the default weights path based on model name."""
-        model_dir = Path(__file__).parent / "pre_built_models"
         default_weights = {
             "cnn_b":  "best_cnn_b.h5",
             "cnn":  "cnn_weights.h5",
             "lightgbm":  "best_lightgbm.pkl",
         }
-        weights_path = model_dir / default_weights.get(model_name)
+        weights_path = self.pre_built_models_dir / default_weights.get(model_name)
         print(f"Using default weights path: {weights_path}")
         return weights_path
 
