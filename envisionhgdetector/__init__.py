@@ -11,9 +11,12 @@ from .detectors.detector import GestureDetector
 from .detectors.realtime_detection import RealtimeGestureDetector
 from .combined.combined_detection import CombinedGestureDetector
 
+from .rendering.label_video import label_video, label_video_batch
+
 __version__ = "3.1.0"
 __author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele"
 
+# import *
 __all__ = [
     # Main detector
     "GestureDetector",
