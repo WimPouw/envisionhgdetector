@@ -70,7 +70,7 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
             return output
         
         output_folder.mkdir(parents=True, exist_ok=True)
-        video_name, video_extension = video_path.stem, video_path.suffix
+        video_name = video_path.stem
         video_output_folder = output_folder / video_name
         video_output_folder.mkdir(parents=True, exist_ok=True)
 
@@ -78,58 +78,46 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
         segments_save_path = video_output_folder / f"{video_name}_segments.csv"
         predictions_save_path = video_output_folder / f"{video_name}_predictions.csv"
         features_save_path = video_output_folder / f"{video_name}_features.npy"
-        labeled_video_path = video_output_folder / f"{video_name}_labeled{video_extension}"
         print(f"\nProcessing {video_name} with {self.model_type} model...")
         
         try:
             print("Extracting features and model inferencing...")
             predictions_df, stats, segments, features, timestamps = self.predict_video(video_path)
             
-            if not predictions_df.empty:
-                # Save predictions
-                if not elan_only:
-                    predictions_df.to_csv(predictions_save_path, index=False)
-                    print(f"Saved predictions to {predictions_save_path}")
-                    
-                    # Save segments
-                    segments.to_csv(segments_save_path, index=False)
-                    print(f"Saved segments to {segments_save_path}")
-
-                    # Save features (if available)
-                    if len(features) > 0:
-                        feature_array = np.array(features)
-                        np.save(features_save_path, feature_array)
-                        print(f"Saved features to {features_save_path}")
-
-                # Labeled video generation
-                    print("Generating labeled video...")
-                    label_video(
-                        str(video_path), 
-                        segments, 
-                        str(labeled_video_path),
-                        predictions_df,
-                        valid_timestamps=timestamps,
-                        motion_threshold=self.model.config.thresholds.motion_threshold,
-                        gesture_threshold=self.model.config.thresholds.gesture_threshold,
-                        target_fps=getattr(self.model.config, "target_fps", None)
-                    )
-                
-                print("Generating ELAN file...")
-                # Create ELAN file
-                fps = get_video_fps(video_path)
-                create_elan_file(
-                    video_path,
-                    segments,
-                    elan_save_path,
-                    fps=fps,
-                    include_ground_truth=False
-                )
-
-                output['stats'] = stats
-                output['output_path'] = elan_save_path
-                print(f"Done processing {video_name} with {self.model_type}")
-            else:
+            if predictions_df.empty:
                 output["error"] = "No predictions generated"
+                print(output["error"])
+                return output
+            
+            if not elan_only:
+                # Save predictions
+                predictions_df.to_csv(predictions_save_path, index=False)
+                print(f"Saved predictions to {predictions_save_path}")
+                
+                # Save segments
+                segments.to_csv(segments_save_path, index=False)
+                print(f"Saved segments to {segments_save_path}")
+
+                # Save features (if available)
+                if len(features) > 0:
+                    feature_array = np.array(features)
+                    np.save(features_save_path, feature_array)
+                    print(f"Saved features to {features_save_path}")
+            
+            print("Generating ELAN file...")
+            # Create ELAN file
+            fps = get_video_fps(video_path)
+            create_elan_file(
+                video_path,
+                segments,
+                elan_save_path,
+                fps=fps,
+                include_ground_truth=False
+            )
+
+            output['stats'] = stats
+            output['output_path'] = elan_save_path
+            print(f"Done processing {video_name} with {self.model_type}")
 
         except Exception as e:
             print(f"Error processing {video_name}: {str(e)}")
