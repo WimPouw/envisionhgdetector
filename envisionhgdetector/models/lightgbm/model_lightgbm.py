@@ -56,7 +56,9 @@ class LightGBMGestureModel(ModelTemplate):
             self.model = model_data['model']
             self.scaler = model_data['scaler']
             self.label_encoder = model_data['label_encoder']
-            self.window_size = model_data.get('window_size', self.config.window_size)
+            self.window_size = int(model_data.get('window_size', self.config.window_size))
+            if self.window_size < 1:
+                raise ValueError("Model window_size must be a positive integer.")
             self.n_features = model_data.get('n_features', self.config.n_features)
             
             # IMPORTANT: Use label_encoder.classes_ for correct label order
@@ -296,7 +298,6 @@ class LightGBMGestureModel(ModelTemplate):
     def extract_sequence_features(
         self,
         video: np.ndarray,
-        window_size: int = 5,
         stride: int = 2,
     ) -> np.ndarray:
         """Extract features from ALL windows of a video in one vectorized pass.
@@ -306,12 +307,19 @@ class LightGBMGestureModel(ModelTemplate):
 
         Args:
             video: Array of shape (n_frames, 92).
-            window_size: Sliding window size.
             stride: Step between windows.
 
         Returns:
-            Array of shape (n_windows, 100).
+            Array of shape (n_windows, 100), using the model's stored window size.
+            Incomplete windows are omitted; short inputs return shape (0, 100).
         """
+        window_size = self.window_size
+        if stride < 1:
+            raise ValueError("stride must be a positive integer.")
+        
+        video = np.asarray(video)
+        if video.ndim != 2 or video.shape[1] != 92:
+            raise ValueError("video must have shape (n_frames, 92).")
         n_frames = len(video)
         if n_frames < window_size:
             return np.empty((0, 100), dtype=np.float32)
@@ -350,20 +358,16 @@ class LightGBMGestureModel(ModelTemplate):
         # --- 1. Current pose (18) 
         out[:, 0:18] = window_mean(kj_flat)
 
-        # --- 2. Velocity (20) --- mean velocity over window ---
-        # NOTE: window_mean of per-frame velocity vectors = net displacement / window_size.
-        # This is mathematically equivalent to (pos[end] - pos[start]) / window_size.
-        # Direction changes within the window cancel out, so a hand moving right
-        # then left shows ~zero mean velocity. The scalar speed features (36-37)
-        # correctly average norms and capture sustained motion magnitude.
-        frame_vels = np.zeros_like(kj_flat)
-        frame_vels[1:] = kj_flat[1:] - kj_flat[:-1]   # (n_frames, 18)
-        mean_vel = window_mean(frame_vels)              # (n_windows, 18)
-        out[:, 18:36] = mean_vel
-        lw_speed_seq = np.linalg.norm(frame_vels[:, 12:15], axis=1, keepdims=True)  # (n_frames, 1)
-        rw_speed_seq = np.linalg.norm(frame_vels[:, 15:18], axis=1, keepdims=True)  # (n_frames, 1)
-        out[:, 36] = window_mean(lw_speed_seq)[:, 0]  # left wrist mean speed
-        out[:, 37] = window_mean(rw_speed_seq)[:, 0]  # right wrist mean speed
+        # --- 2. Velocity (20) --- only transitions inside each window ---
+        # Mean signed velocity can cancel; mean speed retains motion magnitude.
+        out[:, 18:36] = (kj_flat[ends] - kj_flat[starts]) / (window_size - 1)
+        frame_vels = np.diff(kj_flat, axis=0)
+        wrist_speeds = np.column_stack([
+            np.linalg.norm(frame_vels[:, 12:15], axis=1),
+            np.linalg.norm(frame_vels[:, 15:18], axis=1),
+        ])
+        speed_sums = np.vstack([np.zeros((1, 2)), np.cumsum(wrist_speeds, axis=0)])
+        out[:, 36:38] = (speed_sums[ends] - speed_sums[starts]) / (window_size - 1)
 
         # --- 3. Wrist ranges (6) ---
         # Sliding window view: (n_all_windows, window_size, 6) then take strided subset
@@ -403,11 +407,15 @@ class LightGBMGestureModel(ModelTemplate):
         out[:, 66] = window_mean(np.linalg.norm(r_index_seq - r_thumb_seq, axis=1, keepdims=True))[:, 0]
         out[:, 67] = window_mean(np.linalg.norm(r_pinky_seq - r_index_seq, axis=1, keepdims=True))[:, 0]
 
-        # --- 6. Wrist acceleration (2) --- mean norm over window ---
-        frame_accels = np.zeros_like(kj_flat)
-        frame_accels[2:] = kj_flat[2:] - 2 * kj_flat[1:-1] + kj_flat[:-2] # double derivate (n_frames, 18), first 2 frames stay 0
-        out[:, 68] = window_mean(np.linalg.norm(frame_accels[:, 12:15], axis=1, keepdims=True))[:, 0]
-        out[:, 69] = window_mean(np.linalg.norm(frame_accels[:, 15:18], axis=1, keepdims=True))[:, 0]
+        # --- 6. Wrist acceleration (2) --- only triples inside each window ---
+        if window_size > 2:
+            frame_accels = np.diff(kj_flat, n=2, axis=0)
+            wrist_accels = np.column_stack([
+                np.linalg.norm(frame_accels[:, 12:15], axis=1),
+                np.linalg.norm(frame_accels[:, 15:18], axis=1),
+            ])
+            accel_sums = np.vstack([np.zeros((1, 2)), np.cumsum(wrist_accels, axis=0)])
+            out[:, 68:70] = (accel_sums[ends - 1] - accel_sums[starts]) / (window_size - 2)
 
         # --- 7. Trajectory smoothness (2) --- std of speed over window ---
         if n_frames > 1 and window_size > 2:
