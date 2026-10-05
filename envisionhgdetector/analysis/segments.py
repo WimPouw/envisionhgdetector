@@ -6,7 +6,7 @@ from typing import Dict, List
 
 import numpy as np
 import pandas as pd
-from envisionhgdetector.envisionhgdetector.state import SegmentColumns
+from envisionhgdetector.state import SegmentColumns
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
 def cut_video_by_segments(
