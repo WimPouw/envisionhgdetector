@@ -88,7 +88,6 @@ class SegmentColumns:
     PREDICTION = "prediction"
     PREDICTION_ID = "prediction_id"
     DURATION = "duration"
-    LABEL = "label"
     LABEL_ID = "labelid"
 
 

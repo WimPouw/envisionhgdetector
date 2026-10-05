@@ -5,6 +5,8 @@ import time
 
 import pandas as pd
 
+from envisionhgdetector.state import SegmentColumns
+
 def create_elan_file(
     video_path: str, 
     segments_df: pd.DataFrame, 
@@ -54,8 +56,8 @@ def create_elan_file(
 
     for _, segment in segments_df.iterrows():
         # Convert time to milliseconds
-        start_ms = int(segment['start_time'] * 1000)
-        end_ms = int(segment['end_time'] * 1000)
+        start_ms = int(segment[SegmentColumns.START_TIME] * 1000)
+        end_ms = int(segment[SegmentColumns.END_TIME] * 1000)
         
         # Only create new time slots if we haven't seen these times before
         if start_ms not in time_slot_refs:
@@ -95,14 +97,14 @@ def create_elan_file(
         
         annotations = []
         for _, segment in model_segments.iterrows():
-            start_ms = int(segment['start_time'] * 1000)
-            end_ms = int(segment['end_time'] * 1000)
+            start_ms = int(segment[SegmentColumns.START_TIME] * 1000)
+            end_ms = int(segment[SegmentColumns.END_TIME] * 1000)
             start_slot = time_slot_refs[start_ms]
             end_slot = time_slot_refs[end_ms]
             
             annotation = f'''        <ANNOTATION>
             <ALIGNABLE_ANNOTATION ANNOTATION_ID="a{annotation_id}" TIME_SLOT_REF1="{start_slot}" TIME_SLOT_REF2="{end_slot}">
-                <ANNOTATION_VALUE>{segment['label']}</ANNOTATION_VALUE>
+                <ANNOTATION_VALUE>{segment[SegmentColumns.PREDICTION]}</ANNOTATION_VALUE>
             </ALIGNABLE_ANNOTATION>
         </ANNOTATION>'''
             

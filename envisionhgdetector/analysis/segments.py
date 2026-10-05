@@ -6,6 +6,7 @@ from typing import Dict, List
 
 import numpy as np
 import pandas as pd
+from envisionhgdetector.envisionhgdetector.state import SegmentColumns
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
 def cut_video_by_segments(
@@ -76,9 +77,9 @@ def cut_video_by_segments(
             
             # Process each segment
             for idx, segment in segments_df.iterrows():
-                start_time = segment['start_time']
-                end_time = segment['end_time']
-                label = segment['label']
+                start_time = segment[SegmentColumns.START_TIME]
+                end_time = segment[SegmentColumns.END_TIME]
+                label = segment[SegmentColumns.PREDICTION]
                 
                 # Calculate frame indices
                 start_frame = int(start_time * fps)

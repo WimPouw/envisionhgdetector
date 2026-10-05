@@ -5,7 +5,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 
-from ..state import Labels, MoveMode, SegmentColumns
+from envisionhgdetector.state import Labels, MoveMode, SegmentColumns
 
 # TODO - what if we add frame index as well. will be useful for downstream processing
 def create_segments(
@@ -28,7 +28,7 @@ def create_segments(
         DataFrame with columns: start_time, end_time, labelid, label, duration.
         Input annotations must contain a ``timestamp`` column.
     """
-    output_columns = ['start_time', 'end_time', 'labelid', 'label', 'duration']
+    output_columns = [SegmentColumns.START_TIME, SegmentColumns.END_TIME, SegmentColumns.PREDICTION_ID, SegmentColumns.PREDICTION, SegmentColumns.DURATION]
     if annotations.empty:
         return pd.DataFrame(columns=output_columns)
     if 'timestamp' not in annotations.columns:
@@ -52,9 +52,9 @@ def create_segments(
         current_label = segment_labels.mode()[0]
         if current_label != Labels.NOGESTURE:
             initial_segments.append({
-                'start_time': annotations.iloc[start_idx]['timestamp'],
-                'end_time': annotations.iloc[end_idx]['timestamp'],
-                'label': current_label,
+                SegmentColumns.START_TIME: annotations.iloc[start_idx]['timestamp'],
+                SegmentColumns.END_TIME: annotations.iloc[end_idx]['timestamp'],
+                SegmentColumns.PREDICTION: current_label,
             })
 
     if not initial_segments:
@@ -63,25 +63,25 @@ def create_segments(
     merged_segments = []
     current_segment = initial_segments[0]
     for next_segment in initial_segments[1:]:
-        time_gap = next_segment['start_time'] - current_segment['end_time']
-        same_label = current_segment['label'] == next_segment['label']
+        time_gap = next_segment[SegmentColumns.START_TIME] - current_segment[SegmentColumns.END_TIME]
+        same_label = current_segment[SegmentColumns.PREDICTION] == next_segment[SegmentColumns.PREDICTION]
         if time_gap <= min_gap_s and same_label:
-            current_segment['end_time'] = next_segment['end_time']
+            current_segment[SegmentColumns.END_TIME] = next_segment[SegmentColumns.END_TIME]
         else:
-            if current_segment['end_time'] - current_segment['start_time'] >= min_length_s:
+            if current_segment[SegmentColumns.END_TIME] - current_segment[SegmentColumns.START_TIME] >= min_length_s:
                 merged_segments.append(current_segment)
             current_segment = next_segment
 
-    if current_segment['end_time'] - current_segment['start_time'] >= min_length_s:
+    if current_segment[SegmentColumns.END_TIME] - current_segment[SegmentColumns.START_TIME] >= min_length_s:
         merged_segments.append(current_segment)
 
     return pd.DataFrame([
         {
-            'start_time': segment['start_time'],
-            'end_time': segment['end_time'],
-            'labelid': index,
-            'label': segment['label'],
-            'duration': segment['end_time'] - segment['start_time'],
+            SegmentColumns.START_TIME: segment[SegmentColumns.START_TIME],
+            SegmentColumns.END_TIME: segment[SegmentColumns.END_TIME],
+            SegmentColumns.PREDICTION_ID: index,
+            SegmentColumns.PREDICTION: segment[SegmentColumns.PREDICTION],
+            SegmentColumns.DURATION: segment[SegmentColumns.END_TIME] - segment[SegmentColumns.START_TIME],
         }
         for index, segment in enumerate(merged_segments, start=1)
     ], columns=output_columns)
