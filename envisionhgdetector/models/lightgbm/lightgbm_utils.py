@@ -1,9 +1,10 @@
-"""Expand sparse predictions over source video frames."""
 
 import numpy as np
 import pandas as pd
 
-from ..state import Labels, PredictionColumns
+from envisionhgdetector.state import Labels, PredictionColumns
+
+# TODO check if cnn and lightgbm expand consistently- have 1 utils for both
 
 def expand_predictions_to_frames(
         predictions: pd.DataFrame,
