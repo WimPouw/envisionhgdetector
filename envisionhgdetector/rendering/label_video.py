@@ -2,10 +2,12 @@
 import cv2
 import numpy as np
 import pandas as pd
+import warnings
 from tqdm import tqdm
 from pathlib import Path
 from typing import Optional
 from envisionhgdetector.state import Labels, PredictionColumns, SegmentColumns, Thresholds, color_map
+from .helpers import get_label_at_time, get_confidence_window, validate_prediction_times
 
 def label_video_batch(
     videos_input_folder: str,
@@ -148,15 +150,17 @@ def _render_labeled_video(
         missing = {PredictionColumns.TIMESTAMP, *confidence_columns} - set(predictions_df.columns)
         if missing:
             raise ValueError(f"Predictions are missing columns: {sorted(missing)}")
-        times = predictions_df[PredictionColumns.TIMESTAMP].to_numpy(dtype=float)
-        if not np.isfinite(times).all() or (times < 0).any() or (np.diff(times) < 0).any():
-            raise ValueError("Prediction timestamps must be finite, nonnegative, and sorted.")
+        times = validate_prediction_times(predictions_df[PredictionColumns.TIMESTAMP])
         confidence = predictions_df[confidence_columns].to_numpy(dtype=float)
         # NaN confidence values are allowed and skipped when drawing curves.
         if np.isinf(confidence).any():
             raise ValueError("Confidence values must not be infinite.")
         gesture_conf, move_conf, motion_conf = confidence.T
-        min_time, max_time = times.min(), times.max()
+        has_predictions = any(np.isfinite(values).sum() >= 2 for values in confidence.T)
+        if has_predictions:
+            min_time, max_time = times.min(), times.max()
+        else:
+            warnings.warn("Skipping confidence graph: fewer than two usable samples.", UserWarning, stacklevel=2)
 
     cap = out = progress_bar = None
     # Open video
@@ -207,7 +211,7 @@ def _render_labeled_video(
                 break
 
             # Add text label to frame
-            current_label = _get_label_at_time(output_time, segments)
+            current_label = get_label_at_time(output_time, segments)
             cv2.putText(
                 frame, 
                 current_label, 
@@ -242,40 +246,6 @@ def _render_labeled_video(
     
     print(f"Video labeled at {output_fps}fps saved to {output_path}")
 
-def _get_label_at_time(time: float, segments) -> str:
-    if segments.empty:
-        return Labels.NOGESTURE
-        
-    matching_segments = segments[
-        (segments[SegmentColumns.START_TIME] <= time) & 
-        (segments[SegmentColumns.END_TIME] >= time)
-    ]
-    try:
-        if not matching_segments.empty:
-            return matching_segments[SegmentColumns.PREDICTION].iloc[0]
-        else:
-            return Labels.NOGESTURE
-    except Exception as e:
-        print(f"Error determining label at time {time}: {str(e)}")
-        return Labels.NOGESTURE
-    
-def _get_confidence_window(output_time, min_time, max_time, window_duration):
-    """Return the moving graph window, keeping the original edge behavior."""
-    if output_time < min_time + window_duration * 0.2:
-        window_start = min_time
-        window_end = min(max_time, min_time + window_duration)
-    elif output_time > max_time - window_duration * 0.2:
-        window_end = max_time
-        window_start = max(min_time, max_time - window_duration)
-    else:
-        window_start = max(min_time, output_time - window_duration * 0.8)
-        window_end = min(max_time, window_start + window_duration)
-    if window_end <= window_start:
-        window_start = max(0, output_time - window_duration * 0.5)
-        window_end = window_start + window_duration
-    return window_start, window_end
-
-
 def _draw_confidence_graph(frame, graph_layout, min_time, max_time, times, output_time, window_duration, motion_conf, gesture_conf, move_conf, motion_threshold, gesture_threshold):
     # Fixed y-axis parameters for absolute scale
     y_min = 0.0
@@ -291,7 +261,7 @@ def _draw_confidence_graph(frame, graph_layout, min_time, max_time, times, outpu
     -1)
     frame = cv2.addWeighted(overlay, 0.7, frame, 0.3, 0)
     
-    window_start, window_end = _get_confidence_window(
+    window_start, window_end = get_confidence_window(
         output_time, min_time, max_time, window_duration
     )
     
@@ -387,8 +357,9 @@ def _draw_confidence_line(frame, confidence, window_times, window_start, window_
     prev_point = None
     
     for i, (t, conf) in enumerate(zip(window_times, window_motion)):
-        if conf is None or np.isnan(conf):
-            continue # TODO why is conf nan - lightgbm
+        if conf is None or not np.isfinite(conf):
+            prev_point = None # break curve on NaN or non-finite values
+            continue
         x = graph_pos_x + int(((t - window_start) / window_duration) * graph_width)
         conf_clamped = max(min(conf, y_max), y_min)
         y = graph_pos_y + graph_height - int((conf_clamped - y_min) / (y_max - y_min) * graph_height)
