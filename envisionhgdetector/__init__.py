@@ -9,7 +9,7 @@ from .models.lightgbm.model_lightgbm import LightGBMGestureModel
 
 from .detectors.detector import GestureDetector
 from .detectors.realtime_detection import RealtimeGestureDetector
-from .combined.combined_detection import CombinedGestureDetector
+from .combined_detection import CombinedGestureDetector
 
 from .rendering.label_video import label_video, label_video_batch
 

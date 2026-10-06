@@ -7,7 +7,16 @@ from typing import Dict, Optional
 
 from envisionhgdetector import GestureDetector
 from envisionhgdetector.state import Labels, ModelNames, PredictionColumns, StatsKeys, Thresholds
-from envisionhgdetector.utils import create_elan_file, create_segments, get_video_fps, label_video
+from envisionhgdetector.utils import create_elan_file, create_segments
+
+# TODO - create elan checks if model column exists and creates separate tiers for each model (CNN, LightGBM)
+# do we implement that?
+
+'''
+The distinction is that preprocessing can skip source frames, while CNN assigns sequential indices 0…len(features)-1 and ignores the returned source frame_indices. LightGBM expands its output to every original video frame.
+For example, if source frame 2 is skipped, CNN's index 2 represents source frame 3. The new strict merge rejects unequal frame sets; the previous outer merge continued, but could already align the wrong frames. So the alignment problem predates this change; rejecting unequal sets is the new behavior. If every source frame produces features, the indices match.
+
+'''
 
 class CombinedGestureDetector:
     """
