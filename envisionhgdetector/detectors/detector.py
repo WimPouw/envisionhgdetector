@@ -106,13 +106,10 @@ class GestureDetector(AnalysisMixin, DashboardMixin):
             
             print("Generating ELAN file...")
             # Create ELAN file
-            fps = get_video_fps(video_path)
             create_elan_file(
-                video_path,
-                segments,
-                elan_save_path,
-                fps=fps,
-                include_ground_truth=False
+                video_path=video_path,
+                segments_df=segments,
+                output_path=elan_save_path,
             )
 
             output['stats'] = stats
