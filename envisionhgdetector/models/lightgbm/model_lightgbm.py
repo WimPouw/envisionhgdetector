@@ -569,11 +569,11 @@ class LightGBMGestureModel(ModelTemplate):
         
         # Extract features from sequence
         sequence = np.array(list(self.landmarks_buffer))
-        features = self.extract_sequence_features(sequence)
+        features = self.extract_sequence_features(sequence, stride=1)[0]
         
         return features
 
-    def extract_features_from_landmarks(self, landmarks: np.ndarray) -> np.ndarray:
+    def extract_features_from_landmarks(self, landmarks: np.ndarray) -> Optional[np.ndarray]:
         """
         Extract features from a single frame landmarks.
         
@@ -594,7 +594,7 @@ class LightGBMGestureModel(ModelTemplate):
         
         # Extract features from sequence
         sequence = np.array(list(self.landmarks_buffer))
-        features = self.extract_sequence_features(sequence)
+        features = self.extract_sequence_features(sequence, stride=1)[0]
         
         return features
     
@@ -658,6 +658,14 @@ class LightGBMGestureModel(ModelTemplate):
         
         predictions = []
         sampled_landmarks = landmarks_per_frame[::stride]
+        usable_frames = sum(landmarks is not None for landmarks in sampled_landmarks)
+        if usable_frames < self.window_size:
+            print(f"Video contains {usable_frames} usable sampled frames; this model requires {self.window_size}. No predictions generated.")
+            return pd.DataFrame(columns=[
+                "frame_index", "prediction", "confidence",
+                "motion_confidence", "gesture_confidence",
+                "no_gesture_confidence", "move_confidence", "timestamp",
+            ])
 
         for sampled_frame_number, landmarks in enumerate(sampled_landmarks):
             frame_number = sampled_frame_number * stride
@@ -737,6 +745,8 @@ class LightGBMGestureModel(ModelTemplate):
         model_complexity: int = 1,
     ) -> Tuple[pd.DataFrame, Dict[str, float], pd.DataFrame, np.ndarray]:
         """LightGBM prediction method with CNN-compatible output."""
+        if stride < 1:
+            raise ValueError("stride must be atleast 1.")
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -744,6 +754,11 @@ class LightGBMGestureModel(ModelTemplate):
         print(f"Processing video with LightGBM: {fps:.1f}fps, {total_frames} frames")
 
         self.reset_buffer()
+        sampled_frames = (total_frames + stride - 1) // stride
+        if total_frames > 0 and sampled_frames < self.window_size:
+            print(f"Video contains {sampled_frames} sampled frames; this model requires {self.window_size}. No predictions generated.")
+            cap.release()
+            return pd.DataFrame(), {"error": "Video too short for model window size"}, pd.DataFrame(), np.empty((0, 100), dtype=np.float32), []
         
         predictions = []
         frame_number = 0
@@ -828,6 +843,8 @@ class LightGBMGestureModel(ModelTemplate):
         sparse_results_df = pd.DataFrame([prediction.to_dict() for prediction in predictions])
         
         if sparse_results_df.empty:
+            if len(self.landmarks_buffer) < self.window_size:
+                print(f"Video contains {len(self.landmarks_buffer)} usable sampled frames; this model requires {self.window_size}. No predictions generated.")
             return pd.DataFrame(), {"error": "No predictions generated"}, pd.DataFrame(), np.array([]), np.array([])
         
         print(f"Generated predictions for {len(sparse_results_df)} frames out of {total_frames} total frames.")
