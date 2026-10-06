@@ -32,10 +32,18 @@ from .analysis.segments import cut_video_by_segments
 from .rendering.label_video import label_video
 from .dashboard.folders import setup_dashboard_folders
 from .dashboard.gesture_space import create_dashboard
-from .inference.video import get_video_fps
 from .inference.validation import valid_float
 from .inference.frames import expand_predictions_to_frames
 from .inference.thresholds import get_label_from_prediction, get_prediction_at_threshold
 from .inference.segments import create_segments, create_segments_from_labels
 from .inference.elan import create_elan_file
 
+def get_video_fps(video_path: str) -> int:
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: Could not open video file {video_path}")
+        return 0
+	
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    cap.release()
+    return fps
