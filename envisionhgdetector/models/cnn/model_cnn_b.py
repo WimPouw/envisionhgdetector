@@ -12,7 +12,7 @@ import pandas as pd
 from typing import Tuple, Dict, List
 from tensorflow.keras import layers, regularizers
 
-from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_video_fps 
+from envisionhgdetector.utils import get_prediction, create_segments, get_video_fps 
 from envisionhgdetector.state import PredictionColumns, Row, Labels, CNN_B_Config, ModelNames
 from .cnn_utils import make_model, create_windows
 from .preprocessing import VideoProcessor
@@ -102,7 +102,7 @@ class GestureModel(ModelTemplate):
             no_gesture_probability = 1 - gesture_probability
             move_probability = 0.0  # CNN-B does not predict move probability
 
-            label = get_label_from_prediction(
+            label = get_prediction(
                 no_gesture_probability,
                 gesture_probability,
                 move_probability,

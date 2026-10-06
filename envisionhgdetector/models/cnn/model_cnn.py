@@ -11,7 +11,7 @@ from tensorflow.keras import layers, regularizers, Model
 from typing import Optional, Tuple, Dict, List
 import pandas as pd
 import numpy as np
-from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_video_fps
+from envisionhgdetector.utils import get_prediction, create_segments, get_video_fps
 from .cnn_utils import make_model, create_windows
 from envisionhgdetector.state import Row, Labels, CNN_Config, ModelNames
 from .preprocessing import VideoProcessor
@@ -146,7 +146,7 @@ class GestureModel(ModelTemplate):
                         move_confidence = adjusted_move
 
                 no_gesture_confidence = 1 - has_motion
-                prediction = get_label_from_prediction(
+                prediction = get_prediction(
                     no_gesture_confidence,
                     gesture_confidence,
                     move_confidence,
@@ -167,7 +167,7 @@ class GestureModel(ModelTemplate):
                 )
             else:
                 no_gesture_confidence = 1 - has_motion
-                prediction = get_label_from_prediction(
+                prediction = get_prediction(
                     no_gesture_confidence,
                     gesture_probs[0],
                     gesture_probs[1],
@@ -239,7 +239,7 @@ class GestureModel(ModelTemplate):
                         gesture_confidence = adjusted_gesture
                         move_confidence = adjusted_move
 
-                prediction = get_label_from_prediction(
+                prediction = get_prediction(
                     1 - has_motion,
                     gesture_confidence,
                     move_confidence,
@@ -257,7 +257,7 @@ class GestureModel(ModelTemplate):
                     no_gesture_confidence=1 - has_motion
                     ))
             else:
-                prediction = get_label_from_prediction(
+                prediction = get_prediction(
                     1 - has_motion,
                     gesture_probs[0],
                     gesture_probs[1],

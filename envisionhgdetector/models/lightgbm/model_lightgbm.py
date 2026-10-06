@@ -16,7 +16,7 @@ import os
 from typing import Optional, List, Dict, Any, Tuple
 from collections import deque
 from envisionhgdetector.state import LIGHTGBM_Config, Row, Labels, ModelNames, PredictionColumns
-from envisionhgdetector.utils import get_label_from_prediction, create_segments, get_prediction_at_threshold, expand_predictions_to_frames
+from envisionhgdetector.utils import get_prediction, create_segments
 from ..model_template import ModelTemplate
 from ...mediapipe_processing import HolisticProcessor, holistic
 
@@ -704,7 +704,7 @@ class LightGBMGestureModel(ModelTemplate):
                 gesture_conf = 0.0
                 move_conf = 0.0
 
-            prediction = get_label_from_prediction(
+            prediction = get_prediction(
                 nogesture_conf,
                 gesture_conf,
                 move_conf,
@@ -850,10 +850,12 @@ class LightGBMGestureModel(ModelTemplate):
         print(f"Generated predictions for {len(sparse_results_df)} frames out of {total_frames} total frames.")
         # Apply thresholds (reuse existing logic)
         sparse_results_df[PredictionColumns.PREDICTION] = sparse_results_df.apply(
-            lambda row: get_prediction_at_threshold(
-                row,
-                self.config.thresholds.motion_threshold,
-                self.config.thresholds.gesture_threshold
+            lambda row: get_prediction(
+                no_gesture_confidence=row[PredictionColumns.NO_GESTURE_CONFIDENCE],
+                gesture_confidence=row[PredictionColumns.GESTURE_CONFIDENCE],
+                move_confidence=row[PredictionColumns.MOVE_CONFIDENCE],
+                motion_threshold=self.config.thresholds.motion_threshold,
+                gesture_threshold=self.config.thresholds.gesture_threshold
             ),
             axis=1
         )
