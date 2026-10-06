@@ -20,7 +20,6 @@ from tqdm import tqdm
 
 from .state import Labels, PredictionColumns, Row, SegmentColumns
 from .state import *
-from .analysis.video_files import find_all_videos
 from .analysis.retracking import retrack_gesture_videos
 from .analysis.visualization import create_gesture_visualization
 from .analysis.features import process_hand_fingers, extract_upper_limb_features
@@ -35,6 +34,13 @@ from .dashboard.gesture_space import create_dashboard
 from .inference.validation import valid_float
 from .inference.segments import create_segments
 
+def find_all_videos(folder: str | Path, pattern: str = ".mp4") -> List[str]:
+    """Recursively return video paths below ``folder``."""
+    return [
+        str(path)
+        for path in Path(folder).rglob("*")
+        if path.is_file() and path.name.endswith(pattern)
+    ]
 
 def get_video_fps(video_path: str) -> int:
     cap = cv2.VideoCapture(video_path)
