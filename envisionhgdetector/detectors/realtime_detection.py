@@ -7,9 +7,9 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional, Tuple
 from envisionhgdetector import GestureDetector
-from envisionhgdetector.state import Labels, ModelNames, MoveMode
+from envisionhgdetector.state import Labels, ModelNames, PredictionColumns, SegmentColumns
 from envisionhgdetector.mediapipe_processing import HolisticProcessor
-from envisionhgdetector.utils import create_elan_file, create_segments_from_labels
+from envisionhgdetector.utils import create_elan_file, create_segments
 
 class RealtimeGestureDetector:
     """
@@ -41,9 +41,10 @@ class RealtimeGestureDetector:
         camera_index: int = 0,
         show_display: bool = True,
         save_video: bool = True,
-        apply_post_processing: bool = True,
+        create_gesture_segments: bool = True,
         output_folder: Optional[str] = None,
-        output_fps: float = 20.0
+        output_fps: float = 20.0,
+        verbose: bool = False,
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Process webcam feed in real-time with post-processing.
@@ -53,11 +54,16 @@ class RealtimeGestureDetector:
             camera_index: Camera device index
             show_display: Whether to show real-time display
             save_video: Whether to save annotated video
-            apply_post_processing: Whether to apply segment refinement
+            create_gesture_segments: Whether to create gesture/move segments and their exports
+            verbose: Whether to print predictions for every frame
             
         Returns:
             Tuple of (raw_results_df, segments_df)
         """
+        if not np.isfinite(output_fps) or output_fps <= 0:
+            raise ValueError("output_fps must be finite and positive.")
+        if duration is not None and (not np.isfinite(duration) or duration <= 0):
+            raise ValueError("duration must be finite and positive, or None.")
         print(f"Starting real-time webcam processing...")
         if duration:
             print(f"Duration: {duration} seconds")
@@ -75,33 +81,9 @@ class RealtimeGestureDetector:
         session_folder.mkdir(parents=True, exist_ok=True)        
         print(f"Session output folder: {session_folder}")
         
-        cap = cv2.VideoCapture(camera_index)
-        if not cap.isOpened():
-            raise ValueError(f"Could not open camera {camera_index}")
-        
-        # Optimize camera settings
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_FPS, 30)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        
-        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
-        
-        print(f"Camera: {width}x{height} at {fps:.1f}fps")
-        
-        # Setup video writer if requested
+        cap = None
         writer = None
         video_path = None
-        if save_video:
-            video_path = str(session_folder / f"webcam_session.mp4")
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            writer = cv2.VideoWriter(video_path, fourcc, output_fps, (width, height))
-            print(f"Saving video to: {video_path} at {output_fps} FPS")
-        
-        # Reset model state
-        self.model.reset_buffer()
         
         frame_results = []
         frame_count = 0
@@ -113,6 +95,31 @@ class RealtimeGestureDetector:
         print()
         
         try:
+            cap = cv2.VideoCapture(camera_index)
+            if not cap.isOpened():
+                raise ValueError(f"Could not open camera {camera_index}")
+            
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            cap.set(cv2.CAP_PROP_FPS, 30)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if width <= 0 or height <= 0:
+                raise ValueError("Camera dimensions must be positive.")
+            
+            print(f"Camera: {width}x{height} at {fps:.1f}fps")
+            if save_video:
+                video_path = str(session_folder / "webcam_session.mp4")
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                writer = cv2.VideoWriter(video_path, fourcc, output_fps, (width, height))
+                if not writer.isOpened():
+                    raise ValueError(f"Could not open video writer: {video_path}")
+                print(f"Saving video to: {video_path} at {output_fps} FPS")
+
+            self.model.reset_buffer()
             with HolisticProcessor(
                 model_complexity=1,
                 static_image_mode=False,
@@ -122,15 +129,13 @@ class RealtimeGestureDetector:
                 min_tracking_confidence=self.model.config.min_tracking_confidence,
             ) as processor:
                 while True:
+                    current_time = time.time() - start_time
+                    if duration is not None and current_time >= duration:
+                        break
+                    
                     ret, frame = cap.read()
                     if not ret:
-                        print("Failed to read frame from camera")
-                        continue
-                
-                    current_time = time.time() - start_time
-                
-                    # Check duration limit
-                    if duration and current_time > duration:
+                        print("Failed to read frame from camera; ending session and saving recorded results.")
                         break
                 
                     # Extract features and predict
@@ -147,9 +152,6 @@ class RealtimeGestureDetector:
                     
                         org_prediction = self.model.label_encoder.inverse_transform([predicted_class])[0]
                         prediction = org_prediction
-                        print(f"Frame {frame_count}: Predicted {prediction} with confidence {confidence:.3f}")
-                    
-                        # Apply confidence threshold (fixed)
                         if confidence < self.confidence_threshold:
                             prediction = Labels.NOGESTURE
                 
@@ -159,18 +161,18 @@ class RealtimeGestureDetector:
                     video_timestamp = frame_count / output_fps if save_video else current_time
                 
                     # Store results with both timestamps
-                    frame_results.append({
-                        'frame': frame_count,
-                        'timestamp': video_timestamp,  # Video-aligned timestamp for ELAN
+                    frame_result = {
+                        PredictionColumns.FRAME_INDEX: frame_count,
+                        PredictionColumns.TIMESTAMP: video_timestamp,  # Video-aligned timestamp for ELAN
+                        PredictionColumns.PREDICTION: prediction,
                         'wall_clock_time': current_time,  # Real time for user feedback
-                        'prediction': prediction,
                         'confidence': confidence,
                         'threshold': self.confidence_threshold,
                         'org_prediction': org_prediction
-                    })
+                    }
                 
                     # Display on frame
-                    if show_display:
+                    if show_display or save_video:
                         display_frame = cv2.flip(frame, 1)  # Mirror effect
                     
                         # Add text overlay (use wall clock time for display)
@@ -185,9 +187,12 @@ class RealtimeGestureDetector:
                                 (10, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                     
                         # Save frame if requested
-                        if writer:
+                        if writer is not None:
                             writer.write(display_frame)
-                    
+
+                    frame_results.append(frame_result)
+                    frame_count += 1
+                    if show_display:
                         cv2.imshow('Real-time Gesture Detection', display_frame)
                     
                         # Handle keyboard input (simplified)
@@ -200,20 +205,24 @@ class RealtimeGestureDetector:
                             print(f"Current: {prediction} ({confidence:.3f})")
                             print(f"Parameters: threshold={self.confidence_threshold:.2f}, gap={self.min_gap_s:.1f}s, minlen={self.min_length_s:.1f}s")
                 
-                    frame_count += 1
-                
                     # Periodic status updates
                     if frame_count % 1500 == 0:
                         runtime_mins = current_time / 60.0
-                        gesture_frames = len([r for r in frame_results if r['prediction'] == Labels.GESTURE])
+                        gesture_frames = len([r for r in frame_results if r[PredictionColumns.PREDICTION] == Labels.GESTURE])
                         gesture_percentage = (gesture_frames / len(frame_results)) * 100 if frame_results else 0
                         print(f"Status: {runtime_mins:.1f}m runtime, {frame_count} frames, {gesture_percentage:.1f}% gestures")
         
         except KeyboardInterrupt:
             print("\nInterrupted by user")
+        except Exception as exc:
+            if not frame_results:
+                raise
+            print(f"Session stopped due to an error: {exc}. Saving {len(frame_results)} recorded frames.")
+            traceback.print_exc()
         finally:
-            cap.release()
-            if writer:
+            if cap is not None:
+                cap.release()
+            if writer is not None:
                 writer.release()
             if show_display:
                 cv2.destroyAllWindows()
@@ -233,30 +242,22 @@ class RealtimeGestureDetector:
         # Debug timing information
         if save_video and not raw_df.empty:
             print(f"Timing alignment info:")
-            print(f"   Video duration: {raw_df['timestamp'].max():.1f}s (based on {output_fps} FPS)")
+            print(f"   Video duration: {raw_df[PredictionColumns.TIMESTAMP].max():.1f}s (based on {output_fps} FPS)")
             print(f"   Wall clock duration: {raw_df['wall_clock_time'].max():.1f}s")
             print(f"   Frame count: {len(raw_df)} frames")
             print(f"   Expected video duration: {len(raw_df) / output_fps:.1f}s")
         
-        # Apply post-processing if requested
+        # Create segments if requested
         segments_df = pd.DataFrame()
-        if apply_post_processing:
+        if create_gesture_segments:
             try:
-                print("Applying post-processing segmentation...")
-                
-                # Count gesture vs non-gesture frames
-                gesture_frames = raw_df[raw_df['prediction'].apply(
-                    lambda x: x == Labels.GESTURE
-                )].shape[0]
-                total_frames = len(raw_df)
-                
-                print(f"Frame analysis:")
-                print(f"  Total frames: {total_frames}")
-                print(f"  Gesture frames: {gesture_frames} ({gesture_frames/total_frames*100:.1f}%)")
-                print(f"  Post-processing parameters: min_gap={self.min_gap_s:.2f}s, min_length={self.min_length_s:.2f}s")
-                
                 # Apply segmentation
-                segments_df = self._create_gesture_segments(raw_df)
+                segments_df = create_segments(
+                    raw_df,
+                    min_gap_s=self.min_gap_s,
+                    min_length_s=self.min_length_s,
+                    segments_policy="separate",
+                )
                 
                 if not segments_df.empty:
                     # Save processed segments
@@ -275,8 +276,6 @@ class RealtimeGestureDetector:
                                 video_path=video_path,
                                 segments_df=segments_df,
                                 output_path=elan_path,
-                                fps=output_fps,
-                                include_ground_truth=False
                             )
                             print(f"ELAN file saved to: {elan_path}")
                         except Exception as e:
@@ -287,8 +286,8 @@ class RealtimeGestureDetector:
                     
                     # Print summary
                     total_segments = len(segments_df)
-                    total_gesture_time = segments_df['duration'].sum()
-                    avg_segment_length = segments_df['duration'].mean()
+                    total_gesture_time = segments_df[SegmentColumns.DURATION].sum()
+                    avg_segment_length = segments_df[SegmentColumns.DURATION].mean()
                     
                     print(f"\nPost-processing Summary:")
                     print(f"   Gesture segments created: {total_segments}")
@@ -317,21 +316,7 @@ class RealtimeGestureDetector:
         print(f"   Average FPS: {frame_count/total_time:.1f}")
         print(f"   Session folder: {session_folder}")
         
-        if not raw_df.empty:
-            org_prediction_frames = len(raw_df[raw_df['org_prediction'] != Labels.NOGESTURE])
-            print(f"   Original predictions detected: {org_prediction_frames} gesture frames ({org_prediction_frames/len(raw_df)*100:.1f}%)")
-        
         return raw_df, segments_df
-
-    def _create_gesture_segments(self, raw_df):
-        """Create realtime segments with the shared timestamp helper."""
-        return create_segments_from_labels(
-            raw_df['timestamp'].to_numpy(),
-            raw_df['prediction'].tolist(),
-            min_gap_s=self.min_gap_s,
-            min_length_s=self.min_length_s,
-            move_mode=MoveMode.AS_GESTURE,
-        )
     
     def _save_session_summary(self, session_folder: Path, raw_df: pd.DataFrame, segments_df: pd.DataFrame):
         """Save a summary of the session parameters and results as CSV."""        
@@ -340,9 +325,9 @@ class RealtimeGestureDetector:
             # Session info
             'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
             'total_frames': len(raw_df),
-            'duration_seconds': raw_df['timestamp'].max() if not raw_df.empty else 0,
+            'duration_seconds': raw_df[PredictionColumns.TIMESTAMP].max() if not raw_df.empty else 0,
             'wall_clock_duration_seconds': raw_df['wall_clock_time'].max() if not raw_df.empty and 'wall_clock_time' in raw_df.columns else 0,
-            'average_fps': len(raw_df) / raw_df['timestamp'].max() if not raw_df.empty and raw_df['timestamp'].max() > 0 else 0,
+            'average_fps': len(raw_df) / raw_df[PredictionColumns.TIMESTAMP].max() if not raw_df.empty and raw_df[PredictionColumns.TIMESTAMP].max() > 0 else 0,
             
             # Parameters
             'confidence_threshold': self.confidence_threshold,
@@ -353,10 +338,10 @@ class RealtimeGestureDetector:
             
             # Results
             'org_gesture_percentage': (len(raw_df[raw_df['org_prediction'] == Labels.GESTURE]) / len(raw_df) * 100) if not raw_df.empty else 0,
-            'thresholded_gesture_percentage': (len(raw_df[raw_df['prediction'] == Labels.GESTURE]) / len(raw_df) * 100) if not raw_df.empty else 0,
+            'thresholded_gesture_percentage': (len(raw_df[raw_df[PredictionColumns.PREDICTION] == Labels.GESTURE]) / len(raw_df) * 100) if not raw_df.empty else 0,
             'processed_segments': len(segments_df) if not segments_df.empty else 0,
-            'total_gesture_time': segments_df['duration'].sum() if not segments_df.empty else 0,
-            'average_segment_duration': segments_df['duration'].mean() if not segments_df.empty else 0,
+            'total_gesture_time': segments_df[SegmentColumns.DURATION].sum() if not segments_df.empty else 0,
+            'average_segment_duration': segments_df[SegmentColumns.DURATION].mean() if not segments_df.empty else 0,
             'gestures_per_minute': (len(segments_df) / (raw_df['wall_clock_time'].max() / 60)) if not raw_df.empty and 'wall_clock_time' in raw_df.columns and raw_df['wall_clock_time'].max() > 0 else 0
         }
         
@@ -375,11 +360,13 @@ class RealtimeGestureDetector:
             for idx, segment in segments_df.iterrows():
                 detailed_row = summary_data.copy()  # Include all session info
                 detailed_row.update({
-                    'segment_id': segment['prediction_id'],
-                    'segment_prediction': segment['prediction'],
-                    'segment_start_time': segment['start_time'],
-                    'segment_end_time': segment['end_time'],
-                    'segment_duration': segment['duration']
+                    SegmentColumns.SEGMENT_IDX: segment[SegmentColumns.SEGMENT_IDX],
+                    SegmentColumns.PREDICTION: segment[SegmentColumns.PREDICTION],
+                    SegmentColumns.START_TIME: segment[SegmentColumns.START_TIME],
+                    SegmentColumns.START_FRAME_IDX: segment[SegmentColumns.START_FRAME_IDX],
+                    SegmentColumns.END_TIME: segment[SegmentColumns.END_TIME],
+                    SegmentColumns.END_FRAME_IDX: segment[SegmentColumns.END_FRAME_IDX],
+                    SegmentColumns.DURATION: segment[SegmentColumns.DURATION],
                 })
                 detailed_summary.append(detailed_row)
             

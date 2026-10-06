@@ -57,7 +57,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--elan-only", action="store_true")
     parser.add_argument("--no-display", action="store_true")
     parser.add_argument("--no-save-video", action="store_true")
-    parser.add_argument("--no-post-processing", action="store_true")
+    parser.add_argument("--no-create-gesture-segments", action="store_true")
 
     # REALTIME DETECTOR ARGS
     parser.add_argument("--camera-index", type=int, default=0)
@@ -135,7 +135,7 @@ def run_from_arguments(args: argparse.Namespace):
             camera_index=args.camera_index,
             show_display=not args.no_display,
             save_video=not args.no_save_video,
-            apply_post_processing=not args.no_post_processing,
+            create_gesture_segments=not args.no_create_gesture_segments,
         )
     elif args.detector == "default":
         if not args.video:

@@ -59,7 +59,6 @@ class CombinedGestureDetector:
         segment_input = combined_results.copy()
         segments = create_segments(
             segment_input,
-            label_column="prediction",
             # Use the more conservative thresholds from both models for segmenting
             min_gap_s=max(
                 self.cnn_detector.config.thresholds.min_gap_s,
@@ -130,6 +129,27 @@ class CombinedGestureDetector:
                 predictions.to_csv(predictions_path, index=False)
                 segments.to_csv(segments_path, index=False)
 
+                for model_name, detector in (
+                    (ModelNames.CNN_B, self.cnn_detector),
+                    (ModelNames.LIGHTGBM, self.lgbm_detector),
+                ):
+                    prediction_column = f"{model_name}_{PredictionColumns.PREDICTION}"
+                    model_predictions = predictions[[
+                        PredictionColumns.FRAME_INDEX,
+                        PredictionColumns.TIMESTAMP,
+                        prediction_column,
+                    ]].rename(columns={prediction_column: PredictionColumns.PREDICTION})
+                    model_segments = create_segments(
+                        model_predictions,
+                        min_gap_s=detector.config.thresholds.min_gap_s,
+                        min_length_s=detector.config.thresholds.min_length_s,
+                        segments_policy="separate",
+                    )
+                    model_segments_path = os.path.join(
+                        output_folder, f"{video_name}_{model_name}_segments.csv"
+                    )
+                    model_segments.to_csv(model_segments_path, index=False)
+
                 if hasattr(self, "last_cnn_features") and len(self.last_cnn_features) > 0:
                     np.save(
                         os.path.join(output_folder, f"{video_name}_cnn_features.npy"),
@@ -153,11 +173,9 @@ class CombinedGestureDetector:
 
             elan_path = os.path.join(output_folder, f"{video_name}.eaf")
             create_elan_file(
-                video_path,
-                segments,
-                elan_path,
-                fps=get_video_fps(video_path),
-                include_ground_truth=False,
+                video_path=video_path,
+                output_path=elan_path,
+                segments_df=segments,
             )
 
             return {
