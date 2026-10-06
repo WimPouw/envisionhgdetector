@@ -280,7 +280,6 @@ class GestureModel(ModelTemplate):
         # Create segments
         segments = create_segments(
             results_df,
-            label_column='prediction',
             min_gap_s=self.config.thresholds.min_gap_s,
             min_length_s=self.config.thresholds.min_length_s
         )

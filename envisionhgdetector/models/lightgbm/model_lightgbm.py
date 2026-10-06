@@ -17,6 +17,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from collections import deque
 from envisionhgdetector.state import LIGHTGBM_Config, Row, Labels, ModelNames, PredictionColumns
 from envisionhgdetector.utils import get_prediction, create_segments
+from .lightgbm_utils import expand_predictions_to_frames
 from ..model_template import ModelTemplate
 from ...mediapipe_processing import HolisticProcessor, holistic
 
@@ -864,7 +865,6 @@ class LightGBMGestureModel(ModelTemplate):
         # Create segments
         segments = create_segments(
             sparse_results_df,
-            label_column=PredictionColumns.PREDICTION,
             min_gap_s=self.config.thresholds.min_gap_s,
             min_length_s=self.config.thresholds.min_length_s
         )
