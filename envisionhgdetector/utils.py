@@ -31,8 +31,10 @@ from .analysis.segments import cut_video_by_segments
 from .rendering.label_video import label_video
 from .dashboard.folders import setup_dashboard_folders
 from .dashboard.gesture_space import create_dashboard
-from .inference.validation import valid_float
 from .inference.segments import create_segments
+
+def valid_float(value: float) -> bool:
+    return value >= 0 and value <= 1.0
 
 def find_all_videos(folder: str | Path, pattern: str = ".mp4") -> List[str]:
     """Recursively return video paths below ``folder``."""
