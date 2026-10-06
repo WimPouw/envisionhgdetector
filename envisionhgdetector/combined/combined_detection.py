@@ -104,7 +104,7 @@ class CombinedGestureDetector:
         elan_only: bool = False,
         stride: int = 1,
     ) -> Dict[str, object]:
-        """Run both models and save combined video outputs."""
+        """Save fused predictions/segments and per-model segments for later rendering."""
         if not os.path.exists(video_path):
             return {"error": f"Video not found: {video_path}"}
 
@@ -161,15 +161,6 @@ class CombinedGestureDetector:
                         np.asarray(self.last_lgbm_features),
                     )
 
-                labeled_path = os.path.join(output_folder, f"{video_name}_labelled{video_extension}")
-                label_video(
-                    video_path,
-                    segments,
-                    labeled_path,
-                    predictions,
-                    valid_timestamps=timestamps,
-                    target_fps=25.0,
-                )
 
             elan_path = os.path.join(output_folder, f"{video_name}.eaf")
             create_elan_file(
@@ -282,9 +273,8 @@ class CombinedGestureDetector:
     ) -> pd.DataFrame:
         """Merge CNN and LightGBM predictions by source video frame.
 
-        The two models use different temporal windows, so rows are aligned by
-        ``frame_index``. Rows available from only one model are retained and use
-        that model's probabilities.
+        Both models must provide predictions for the same unique frame indices.
+        Rows are aligned by ``frame_index`` regardless of their input order.
 
         The canonical output columns match ``state.Row``. Model-prefixed columns
         are retained so callers can compare the individual predictions.
@@ -295,8 +285,13 @@ class CombinedGestureDetector:
         def prepare_results(results: pd.DataFrame, prefix: str) -> pd.DataFrame:
             prepared = results.copy()
 
-            if PredictionColumns.FRAME_INDEX not in prepared.columns:
-                raise ValueError(f"{prefix} results must contain '{PredictionColumns.FRAME_INDEX}' column.")
+            for column in (PredictionColumns.FRAME_INDEX, PredictionColumns.PREDICTION):
+                if column not in prepared.columns:
+                    raise ValueError(f"{prefix} results must contain '{column}' column.")
+                if prepared[column].isna().any():
+                    raise ValueError(f"{prefix} results contain missing '{column}' values.")
+            if prepared[PredictionColumns.FRAME_INDEX].duplicated().any():
+                raise ValueError(f"{prefix} results contain duplicate frame indices.")
 
             renamed = {
                 column: f"{prefix}_{column}"
@@ -307,7 +302,17 @@ class CombinedGestureDetector:
 
         cnn = prepare_results(cnn_results, ModelNames.CNN_B)
         lgbm = prepare_results(lgbm_results, ModelNames.LIGHTGBM)
-        merged = pd.merge(cnn, lgbm, on=PredictionColumns.FRAME_INDEX, how="outer", suffixes=("", f"_{ModelNames.LIGHTGBM}"))
+        cnn_frames = pd.Index(cnn[PredictionColumns.FRAME_INDEX])
+        lgbm_frames = pd.Index(lgbm[PredictionColumns.FRAME_INDEX])
+        missing_cnn = lgbm_frames.difference(cnn_frames)
+        missing_lgbm = cnn_frames.difference(lgbm_frames)
+        if len(missing_cnn) or len(missing_lgbm):
+            raise ValueError(
+                "Model frame indices must match: "
+                f"CNN is missing {len(missing_cnn)} frames; "
+                f"LightGBM is missing {len(missing_lgbm)} frames."
+            )
+        merged = pd.merge(cnn, lgbm, on=PredictionColumns.FRAME_INDEX, how="inner", validate="one_to_one", suffixes=("", f"_{ModelNames.LIGHTGBM}"))
 
         if PredictionColumns.TIMESTAMP not in merged.columns:
             merged[PredictionColumns.TIMESTAMP] = np.nan
