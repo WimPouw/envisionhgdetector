@@ -3,8 +3,6 @@ from typing import Optional, Tuple
 import numpy as np
 from dataclasses import dataclass
 from typing import Literal, get_args
-from enum import Enum
-
 
 class DIRS:
     ANALYSIS = "analysis"
@@ -25,14 +23,6 @@ color_map = {
     Labels.GESTURE: (0, 204, 204),        # Vibrant teal
     Labels.MOVE: (255, 94, 98)            # Soft coral red
 }
-
-class MoveMode(str, Enum):
-    """How segmentation should handle predictions labeled Move."""
-
-    SEPARATE = "separate"
-    AS_GESTURE = "as_gesture"
-    IGNORE = "ignore"
-
 
 LABELS_LITERAL = Literal[Labels.GESTURE, Labels.NOGESTURE, Labels.MOVE]
 LABELS = get_args(LABELS_LITERAL)
@@ -84,9 +74,11 @@ class SegmentColumns:
     """Canonical segment DataFrame column names."""
 
     START_TIME = "start_time"
+    START_FRAME_IDX = "start_frame_idx"
     END_TIME = "end_time"
+    END_FRAME_IDX = "end_frame_idx"
     PREDICTION = "prediction"
-    PREDICTION_ID = "prediction_id"
+    SEGMENT_IDX = "segment_idx"
     DURATION = "duration"
     LABEL_ID = "labelid"
 
@@ -120,7 +112,7 @@ class Segment:
     start_time: float
     end_time: float
     prediction: LABELS_LITERAL
-    prediction_id: int
+    segment_idx: int
     duration: float
 
 
