@@ -1,63 +1,87 @@
 """Build gesture segments from frame predictions."""
 
-from typing import List
+from typing import Literal
 
 import numpy as np
 import pandas as pd
 
-from envisionhgdetector.state import Labels, MoveMode, SegmentColumns
+from envisionhgdetector.state import Labels, PredictionColumns, SegmentColumns
 
-# TODO - what if we add frame index as well. will be useful for downstream processing
 def create_segments(
     annotations: pd.DataFrame,
-    label_column: str,
     min_gap_s: float,
-    min_length_s: float
+    min_length_s: float,
+    segments_policy: Literal["combine", "separate"] = "separate",
 ) -> pd.DataFrame:
     """
     Create segments from frame-by-frame annotations, merging segments that are close in time.
     
     Args:
-        annotations: DataFrame with predictions
-        label_column: Name of label column
+        annotations: DataFrame with prediction, timestamp, and original frame_index columns
         min_gap_s: Minimum gap between segments in seconds. Segments with gaps smaller 
                   than this will be merged
         min_length_s: Minimum segment length in seconds
+        segments_policy: "separate" splits Gesture/Move transitions; "combine" groups
+            consecutive active rows and uses their majority label. Ties use
+            the first label returned by pandas mode().
+
+    Segment endpoints are inclusive and use the last active sample's timestamp.
+    A segment containing one sample therefore has zero duration.
         
     Returns:
-        DataFrame with columns: start_time, end_time, labelid, label, duration.
-        Input annotations must contain a ``timestamp`` column.
+        DataFrame with start/end times, inclusive original frame indices,
+        segment_idx, prediction, and duration. Frame indices are taken from
+        frame_index, not from DataFrame row positions.
     """
-    output_columns = [SegmentColumns.START_TIME, SegmentColumns.END_TIME, SegmentColumns.PREDICTION_ID, SegmentColumns.PREDICTION, SegmentColumns.DURATION]
+    if segments_policy not in ("combine", "separate"):
+        raise ValueError("policy must be 'combine' or 'separate'.")
+    
+    output_columns = [SegmentColumns.START_TIME, SegmentColumns.START_FRAME_IDX, SegmentColumns.END_TIME, SegmentColumns.END_FRAME_IDX, SegmentColumns.SEGMENT_IDX, SegmentColumns.PREDICTION, SegmentColumns.DURATION]
     if annotations.empty:
+        print("Warning: Annotations DataFrame is empty. Returning empty segments DataFrame.")
         return pd.DataFrame(columns=output_columns)
-    if 'timestamp' not in annotations.columns:
-        raise ValueError("Annotations must contain 'timestamp'.")
+    if PredictionColumns.TIMESTAMP not in annotations.columns:
+        raise ValueError(f"Annotations must contain '{PredictionColumns.TIMESTAMP}'.")
+    if PredictionColumns.FRAME_INDEX not in annotations.columns:
+        raise ValueError(f"Annotations must contain '{PredictionColumns.FRAME_INDEX}'.")
 
-    is_gesture = annotations[label_column] == Labels.GESTURE
-    is_move = annotations[label_column] == Labels.MOVE
+    is_gesture = annotations[PredictionColumns.PREDICTION] == Labels.GESTURE
+    is_move = annotations[PredictionColumns.PREDICTION] == Labels.MOVE
     is_any_gesture = is_gesture | is_move
     if not is_any_gesture.any():
+        print("Warning: No gesture or move labels found in annotations. Returning empty segments DataFrame.")
         return pd.DataFrame(columns=output_columns)
 
-    changes = np.diff(is_any_gesture.astype(int), prepend=0)
-    start_idxs = np.where(changes == 1)[0]
-    end_idxs = np.where(changes == -1)[0]
-    if len(start_idxs) > len(end_idxs):
-        end_idxs = np.append(end_idxs, len(annotations) - 1)
+    if segments_policy == "combine":
+        changes = np.diff(is_any_gesture.astype(int), prepend=0)
+        start_idxs = np.where(changes == 1)[0]
+        # Falling edges point to the first inactive row.
+        end_idxs = np.where(changes == -1)[0] - 1
+        if len(start_idxs) > len(end_idxs):
+            end_idxs = np.append(end_idxs, len(annotations) - 1)
+    else:
+        active = is_any_gesture.to_numpy()
+        labels = annotations[PredictionColumns.PREDICTION].to_numpy()
+        label_changes = labels[1:] != labels[:-1] # compare consecutive labels
+        # Start indices are where we have an active label and either the previous label was inactive or the label changed.
+        start_idxs = np.flatnonzero(active & np.r_[True, label_changes])
+        # End indices are where we have an active label and either the next label is inactive or the label changes.
+        end_idxs = np.flatnonzero(active & np.r_[label_changes, True])
 
     initial_segments = []
     for start_idx, end_idx in zip(start_idxs, end_idxs):
-        segment_labels = annotations.iloc[start_idx:end_idx + 1][label_column]
-        current_label = segment_labels.mode()[0]
-        if current_label != Labels.NOGESTURE:
-            initial_segments.append({
-                SegmentColumns.START_TIME: annotations.iloc[start_idx]['timestamp'],
-                SegmentColumns.END_TIME: annotations.iloc[end_idx]['timestamp'],
-                SegmentColumns.PREDICTION: current_label,
-            })
+        segment_labels = annotations.iloc[start_idx:end_idx + 1][PredictionColumns.PREDICTION]
+        current_label = segment_labels.mode()[0] if segments_policy == "combine" else segment_labels.iloc[0]
+        initial_segments.append({
+            SegmentColumns.START_TIME: annotations.iloc[start_idx][PredictionColumns.TIMESTAMP],
+            SegmentColumns.START_FRAME_IDX: annotations[PredictionColumns.FRAME_INDEX].iloc[start_idx],
+            SegmentColumns.END_TIME: annotations.iloc[end_idx][PredictionColumns.TIMESTAMP],
+            SegmentColumns.END_FRAME_IDX: annotations[PredictionColumns.FRAME_INDEX].iloc[end_idx],
+            SegmentColumns.PREDICTION: current_label,
+        })
 
     if not initial_segments:
+        print("Warning: No valid segments found after initial segmentation. Returning empty segments DataFrame.")
         return pd.DataFrame(columns=output_columns)
 
     merged_segments = []
@@ -67,107 +91,24 @@ def create_segments(
         same_label = current_segment[SegmentColumns.PREDICTION] == next_segment[SegmentColumns.PREDICTION]
         if time_gap <= min_gap_s and same_label:
             current_segment[SegmentColumns.END_TIME] = next_segment[SegmentColumns.END_TIME]
+            current_segment[SegmentColumns.END_FRAME_IDX] = next_segment[SegmentColumns.END_FRAME_IDX]
         else:
             if current_segment[SegmentColumns.END_TIME] - current_segment[SegmentColumns.START_TIME] >= min_length_s:
                 merged_segments.append(current_segment)
             current_segment = next_segment
-
+    # last segment check
     if current_segment[SegmentColumns.END_TIME] - current_segment[SegmentColumns.START_TIME] >= min_length_s:
         merged_segments.append(current_segment)
 
     return pd.DataFrame([
         {
             SegmentColumns.START_TIME: segment[SegmentColumns.START_TIME],
+            SegmentColumns.START_FRAME_IDX: segment[SegmentColumns.START_FRAME_IDX],
             SegmentColumns.END_TIME: segment[SegmentColumns.END_TIME],
-            SegmentColumns.PREDICTION_ID: index,
+            SegmentColumns.END_FRAME_IDX: segment[SegmentColumns.END_FRAME_IDX],
+            SegmentColumns.SEGMENT_IDX: index,
             SegmentColumns.PREDICTION: segment[SegmentColumns.PREDICTION],
             SegmentColumns.DURATION: segment[SegmentColumns.END_TIME] - segment[SegmentColumns.START_TIME],
         }
         for index, segment in enumerate(merged_segments, start=1)
     ], columns=output_columns)
-
-def create_segments_from_labels(
-    times: np.ndarray,
-    labels: List[str],
-    min_gap_s: float = 0.3,
-    min_length_s: float = 0.5,
-    move_mode: MoveMode | str = MoveMode.SEPARATE,
-) -> pd.DataFrame:
-    """Create canonical segments from timestamped labels.
-
-    ``move_mode`` controls whether ``Move`` remains a separate label, is
-    normalized to ``Gesture``, or is treated as ``NoGesture``.
-    """
-    columns = [
-        SegmentColumns.START_TIME,
-        SegmentColumns.END_TIME,
-        SegmentColumns.PREDICTION,
-        SegmentColumns.PREDICTION_ID,
-        SegmentColumns.DURATION,
-    ]
-    if len(times) == 0 or len(labels) == 0:
-        return pd.DataFrame(columns=columns)
-    if len(times) != len(labels):
-        raise ValueError("times and labels must have the same length.")
-
-    mode = MoveMode(move_mode)
-    normalized_labels = []
-    for label in labels:
-        value = label.value if isinstance(label, Labels) else str(label)
-        if value == Labels.MOVE.value:
-            if mode is MoveMode.AS_GESTURE:
-                value = Labels.GESTURE.value
-            elif mode is MoveMode.IGNORE:
-                value = Labels.NOGESTURE.value
-        normalized_labels.append(value)
-
-    segments = []
-    start_time = None
-    current_label = None
-    for index, (time_value, label) in enumerate(zip(times, normalized_labels)):
-        is_active = label in (Labels.GESTURE.value, Labels.MOVE.value)
-        if is_active and start_time is None:
-            start_time = time_value
-            current_label = label
-        elif start_time is not None and (not is_active or label != current_label):
-            end_time = times[index - 1]
-            if end_time - start_time >= min_length_s:
-                segments.append({
-                    SegmentColumns.START_TIME: start_time,
-                    SegmentColumns.END_TIME: end_time,
-                    SegmentColumns.PREDICTION: current_label,
-                    SegmentColumns.DURATION: end_time - start_time,
-                })
-            start_time = time_value if is_active else None
-            current_label = label if is_active else None
-
-    if start_time is not None:
-        end_time = times[-1]
-        if end_time - start_time >= min_length_s:
-            segments.append({
-                SegmentColumns.START_TIME: start_time,
-                SegmentColumns.END_TIME: end_time,
-                SegmentColumns.PREDICTION: current_label,
-                SegmentColumns.DURATION: end_time - start_time,
-            })
-
-    if not segments:
-        return pd.DataFrame(columns=columns)
-
-    merged = [segments[0]]
-    for segment in segments[1:]:
-        current = merged[-1]
-        gap = segment[SegmentColumns.START_TIME] - current[SegmentColumns.END_TIME]
-        same_label = segment[SegmentColumns.PREDICTION] == current[SegmentColumns.PREDICTION]
-        if gap <= min_gap_s and same_label:
-            current[SegmentColumns.END_TIME] = segment[SegmentColumns.END_TIME]
-            current[SegmentColumns.DURATION] = (
-                current[SegmentColumns.END_TIME] - current[SegmentColumns.START_TIME]
-            )
-        else:
-            merged.append(segment)
-
-    for prediction_id, segment in enumerate(merged, start=1):
-        segment[SegmentColumns.PREDICTION_ID] = prediction_id
-    return pd.DataFrame(merged, columns=columns)
-
