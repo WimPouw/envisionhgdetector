@@ -1,24 +1,21 @@
 """Compare tracked gestures with dynamic time warping."""
 
-import glob
-import os
-from pathlib import Path
-from typing import List, Tuple
-
+import warnings
 import numpy as np
 import pandas as pd
+from pathlib import Path
+from typing import List, Tuple
 from shapedtw.shapedtw import shape_dtw
 from shapedtw.shapeDescriptors import RawSubsequenceDescriptor
 
-from .features import extract_upper_limb_features, remove_nans
+from .features import extract_upper_limb_features, prepare_upper_limb_landmarks
 from .gesture_kinematics import compute_kinematic_features
-
 
 def compute_gesture_kinematics_dtw(
     tracked_folder: str,
     output_folder: str,
     fps: float = 25.0,
-    landmark_pattern: str = "*_world_landmarks.npy"
+    max_gap: int = 3,
 ) -> Tuple[np.ndarray, List[str], pd.DataFrame]:
     """
     Compute DTW distances between all gesture pairs and extract kinematic features.
@@ -27,7 +24,7 @@ def compute_gesture_kinematics_dtw(
         tracked_folder: Folder containing tracked landmark data
         output_folder: Folder to save DTW results
         fps: Frames per second of the video
-        landmark_pattern: Pattern to match landmark files
+        max_gap: Maximum consecutive missing frames allowed per coordinate.
         
     Returns:
         Tuple containing:
@@ -35,33 +32,37 @@ def compute_gesture_kinematics_dtw(
         - List of gesture names
         - DataFrame of kinematic features
     """   
-    os.makedirs(output_folder, exist_ok=True)
+    tracked_folder = Path(tracked_folder)
+    output_folder = Path(output_folder)
+    output_folder.mkdir(parents=True, exist_ok=True)
+
+    name_suffix = "_world_landmarks"
     
     # Load all landmark files
-    landmark_files = glob.glob(os.path.join(tracked_folder, landmark_pattern))
-    gesture_data = {}
+    landmark_files = list(tracked_folder.glob(f"*{name_suffix}.npy"))
+    gesture_data = []
     gesture_names = []
     kinematic_features = []
-    
-    for idx, lm_path in enumerate(landmark_files):
-        landmarks = np.load(lm_path, allow_pickle=True)
-        
-        # Extract features for DTW
-        features = extract_upper_limb_features(landmarks)
-        features = remove_nans(features)
-        
-        gesture_data[idx] = features
-        gesture_name = Path(lm_path).stem.replace('_world_landmarks', '')
+    # TODO - do we need pickle?
+    for lm_path in landmark_files:
+        gesture_name = lm_path.stem.replace(name_suffix, '')
+        try:
+            landmarks = np.load(str(lm_path), allow_pickle=True)
+            landmarks = prepare_upper_limb_landmarks(landmarks, max_gap=max_gap)
+            features = extract_upper_limb_features(landmarks, max_gap=max_gap)
+            kin_features = compute_kinematic_features(
+                landmarks=landmarks,
+                fps=fps,
+                gesture_id=gesture_name,
+                video_id=gesture_name
+            )
+        except (ValueError, TypeError, IndexError, OSError) as exc:
+            warnings.warn(f"Skipping gesture {gesture_name}: {exc}", UserWarning, stacklevel=2)
+            continue
+
+        # TODO this can get very slow with many gestures. Consider parallelizing or optimizing the DTW computation.
+        gesture_data.append(features)
         gesture_names.append(gesture_name)
-        
-        # Compute kinematic features
-        video_id = gesture_name.split('_')[0]  # Assuming video ID is first part of filename
-        kin_features = compute_kinematic_features(
-            landmarks=landmarks,
-            fps=fps,
-            gesture_id=gesture_name,
-            video_id=video_id
-        )
         kinematic_features.append(kin_features)
     
     num_gestures = len(gesture_data)
@@ -119,8 +120,8 @@ def compute_gesture_kinematics_dtw(
     } for f in kinematic_features])
     
     # Save results
-    matrix_path = os.path.join(output_folder, "dtw_distances.csv")
-    features_path = os.path.join(output_folder, "kinematic_features.csv")
+    matrix_path = output_folder / "dtw_distances.csv"
+    features_path = output_folder / "kinematic_features.csv"
     
     np.savetxt(matrix_path, dtw_dist, delimiter=',')
     features_df.to_csv(features_path, index=False)

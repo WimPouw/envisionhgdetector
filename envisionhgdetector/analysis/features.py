@@ -1,9 +1,110 @@
 """Feature extraction helpers for gesture analysis."""
 
+import warnings
 import numpy as np
+from typing import Literal
+
+# MediaPipe pose indices; group order preserves the existing feature layout.
+UPPER_LIMB_LANDMARKS = {
+    "left_shoulder": 11,
+    "left_elbow": 13,
+    "left_wrist": 15,
+    "right_shoulder": 12,
+    "right_elbow": 14,
+    "right_wrist": 16,
+    "left_pinky": 17,
+    "left_index": 19,
+    "left_thumb": 21,
+    "right_pinky": 18,
+    "right_index": 20,
+    "right_thumb": 22,
+}
+ARM_JOINT_INDICES = tuple(
+    index for name, index in UPPER_LIMB_LANDMARKS.items()
+    if name.endswith(("shoulder", "elbow", "wrist"))
+)
+LEFT_FINGER_INDICES = tuple(
+    index for name, index in UPPER_LIMB_LANDMARKS.items()
+    if name.startswith("left_") and name.endswith(("pinky", "index", "thumb"))
+)
+RIGHT_FINGER_INDICES = tuple(
+    index for name, index in UPPER_LIMB_LANDMARKS.items()
+    if name.startswith("right_") and name.endswith(("pinky", "index", "thumb"))
+)
+UPPER_LIMB_INDICES = tuple(UPPER_LIMB_LANDMARKS.values())
+
+def fill_missing_values(values: np.ndarray, policy: Literal["zero", "interpolate"] = "interpolate", max_gap: int = 3) -> np.ndarray:
+    """Fill nonfinite values in one coordinate's equally spaced time series.
+
+    "zero" replaces NaN and positive/negative infinity with zero.
+    "interpolate" linearly fills internal gaps and copies the nearest valid
+    value at either end. An entirely missing series cannot be interpolated.
+    Interpolation rejects consecutive gaps longer than max_gap, including
+    leading/trailing gaps. Returns a floating-point copy or raises an error if
+    empty series.
+    """
+    if policy not in ("zero", "interpolate"):
+        raise ValueError("policy must be 'zero' or 'interpolate'.")
+    if max_gap < 1:
+        raise ValueError("max_gap must be a atleast 1.")
+    
+    result = np.array(values, dtype=float, copy=True) # make a float copy of the input
+    if result.ndim != 1:
+        raise ValueError("values must be a one-dimensional time series.")
+    if result.size == 0:
+        raise ValueError("Cannot fill an empty time series.")
+
+    valid = np.isfinite(result) # checks for NaN and positive/negative infinity
+    if valid.all():
+        return result
+    if policy == "zero":
+        result[~valid] = 0.0
+        return result
+    if not valid.any():
+        raise ValueError("Cannot interpolate a time series with no finite values.")
+    
+    boundaries = np.diff(np.r_[False, ~valid, False].astype(int)) # append False to start and end to ensure gaps at the edges are detected, diff ensures length matches the original series
+    lengths = np.flatnonzero(boundaries == -1) - np.flatnonzero(boundaries == 1) # gap lengths
+    if lengths.max() > max_gap:
+        raise ValueError(f"Missing gap of {lengths.max()} frames exceeds max_gap={max_gap}.")
+
+    positions = np.arange(result.size)
+    result[~valid] = np.interp(positions[~valid], positions[valid], result[valid]) # interpolate missing values using linear interpolation
+    return result
 
 
-def process_hand_fingers(landmarks, side, finger_indices):
+def prepare_upper_limb_landmarks(landmarks: np.ndarray, max_gap: int = 3) -> np.ndarray:
+    """Interpolate short gaps in upper-limb landmarks, preserving the input layout.
+
+    Warn once per trajectory with the number of filled coordinate values.
+    Empty inputs, entirely missing coordinates, and long gaps raise ValueError.
+    Other landmarks are copied unchanged.
+    """
+    result = np.array(landmarks, dtype=float, copy=True)
+    required_points = max(UPPER_LIMB_INDICES) + 1
+    if result.ndim != 3 or result.shape[2] != 3 or result.shape[1] < required_points:
+        raise ValueError(f"Expected landmarks with shape (N, at least {required_points}, 3); received {result.shape}.")
+    if result.shape[0] == 0:
+        raise ValueError("No frames available for upper-limb analysis.")
+    
+    missing_count = int((~np.isfinite(result[:, UPPER_LIMB_INDICES, :])).sum())
+    if missing_count:
+        warnings.warn(
+            f"Filled {missing_count} missing upper-limb coordinate values; internal gaps will be interpolated and edge gaps copied from the nearest valid value (max_gap={max_gap} frames).",
+            UserWarning, stacklevel=2,
+        )
+    for index in UPPER_LIMB_INDICES:
+        for coordinate in range(3):
+            try:
+                result[:, index, coordinate] = fill_missing_values(
+                    result[:, index, coordinate], max_gap=max_gap
+                )
+            except ValueError as exc:
+                raise ValueError(f"Landmark {index}, coordinate {'xyz'[coordinate]}: {exc}") from exc
+    return result
+
+
+def process_hand_fingers(landmarks, finger_indices):
     """Extract and center selected finger landmarks for one hand."""
     fingers = []
     for idx in finger_indices:
@@ -18,7 +119,7 @@ def process_hand_fingers(landmarks, side, finger_indices):
     return None
 
 
-def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
+def extract_upper_limb_features(landmarks: np.ndarray, max_gap: int = 3) -> np.ndarray:
     """
     Extract and format upper limb features from world landmarks.
     
@@ -30,72 +131,24 @@ def extract_upper_limb_features(landmarks: np.ndarray) -> np.ndarray:
         Array of upper limb features containing coordinates for shoulders, elbows,
         wrists, and mean-centered fingers.
     """
-    # Check if landmarks are the expected shape
-    print(f"Debug: Landmarks shape is {landmarks.shape}")
-    if landmarks.ndim != 3 or landmarks.shape[2] != 3:
-        print(f"Debug: Landmarks shape is not as expected! Shape: {landmarks.shape}")
-        raise ValueError("Landmarks must be a 3D array with shape [N, num_points, 3]")
-    
-    # Update the keypoint indices based on the 33 keypoints (0-32)
-    keypoint_indices = {
-        'left_shoulder': 11,  # Index 11 corresponds to left shoulder
-        'right_shoulder': 12,  # Index 12 corresponds to right shoulder
-        'left_elbow': 13,  # Index 13 corresponds to left elbow
-        'right_elbow': 14,  # Index 14 corresponds to right elbow
-        'left_wrist': 15,  # Index 15 corresponds to left wrist
-        'right_wrist': 16  # Index 16 corresponds to right wrist
-    }
-    
-    # Define finger indices separately for mean centering
-    left_finger_indices = {
-        'left_pinky': 17,  # Index 17 corresponds to left pinky
-        'left_index': 19,  # Index 19 corresponds to left index
-        'left_thumb': 21  # Index 21 corresponds to left thumb
-    }
-    
-    right_finger_indices = {
-        'right_pinky': 18,  # Index 18 corresponds to right pinky
-        'right_index': 20,  # Index 20 corresponds to right index
-        'right_thumb': 22  # Index 22 corresponds to right thumb
-    }
-
-    ordered_keypoints = [
-        ('left_shoulder', 11),
-        ('left_elbow', 13),
-        ('left_wrist', 15),
-        ('right_shoulder', 12), 
-        ('right_elbow', 14),
-        ('right_wrist', 16)
-    ]
+    landmarks = prepare_upper_limb_landmarks(landmarks, max_gap=max_gap)
     
     # Initialize list to hold the extracted features
     all_features = []
     
     # Extract features in consistent order
-    for key, index in ordered_keypoints:
-        print(f"Debug: Extracting keypoint {key} at index {index}")
+    for index in ARM_JOINT_INDICES:
         feature = landmarks[:, index]
-        if np.any(np.isnan(feature)) or feature.size == 0:
-            print(f"Debug: No data for keypoint {key}, skipping")
-        else:
-            print(f"Debug: Data for keypoint {key}: {feature}")
-            all_features.append(feature.reshape(-1, 3))
+        all_features.append(feature.reshape(-1, 3))
 
     # Process fingers with clear left/right separation
-    left_fingers = process_hand_fingers(landmarks, 'left', [17, 19, 21])
-    right_fingers = process_hand_fingers(landmarks, 'right', [18, 20, 22])
+    left_fingers = process_hand_fingers(landmarks, LEFT_FINGER_INDICES)
+    right_fingers = process_hand_fingers(landmarks, RIGHT_FINGER_INDICES)
     
     if left_fingers is not None:
         all_features.append(left_fingers)
     if right_fingers is not None:
         all_features.append(right_fingers)
 
-    features = np.concatenate(all_features, axis=1)
-    print(f"Debug: Final feature array shape: {features.shape}")
-    
+    features = np.concatenate(all_features, axis=1)    
     return features
-
-
-def remove_nans(features):
-    """Replace NaN values in a feature matrix with zeros."""
-    return np.nan_to_num(features, nan=0.0)

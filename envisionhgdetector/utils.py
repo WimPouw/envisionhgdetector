@@ -23,7 +23,7 @@ from .state import *
 from .analysis.video_files import find_all_videos
 from .analysis.retracking import retrack_gesture_videos
 from .analysis.visualization import create_gesture_visualization
-from .analysis.features import process_hand_fingers, extract_upper_limb_features, remove_nans
+from .analysis.features import process_hand_fingers, extract_upper_limb_features
 from .analysis.kinematics import ArmKinematics, calculate_derivatives, compute_limb_kinematics, find_submovements, find_movepauses, calculate_distance, calc_holds
 from .analysis.spatial import define_mcneillian_grid, get_mcneillian_mode, calc_mcneillian_space, calc_volume_size, calc_vert_height
 from .analysis.gesture_kinematics import joint_map, KinematicFeatures, compute_kinematic_features
