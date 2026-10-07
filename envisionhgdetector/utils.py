@@ -27,7 +27,6 @@ from .analysis.kinematics import ArmKinematics, calculate_derivatives, compute_l
 from .analysis.spatial import define_mcneillian_grid, get_mcneillian_mode, calc_mcneillian_space, calc_volume_size, calc_vert_height
 from .analysis.gesture_kinematics import joint_map, KinematicFeatures, compute_kinematic_features
 from .analysis.dtw import compute_gesture_kinematics_dtw
-from .analysis.segments import cut_video_by_segments
 from .rendering.label_video import label_video
 from .dashboard.folders import setup_dashboard_folders
 from .dashboard.gesture_space import create_dashboard
