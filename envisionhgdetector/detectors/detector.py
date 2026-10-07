@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from envisionhgdetector.default_config import DefaultConfig
-from envisionhgdetector.dashboard.preparation import DashboardMixin
 from envisionhgdetector.state import Thresholds, VALID_MODEL_NAMES, ModelNames
 from envisionhgdetector.utils import create_elan_file
 from envisionhgdetector import GestureModel, BinaryGestureModel, LightGBMGestureModel
@@ -15,7 +14,7 @@ from envisionhgdetector import GestureModel, BinaryGestureModel, LightGBMGesture
 import logging
 logging.getLogger("moviepy").setLevel(logging.WARNING)
 
-class GestureDetector(DashboardMixin):
+class GestureDetector():
     """Main class for gesture detection in videos - supports CNN, LightGBM, and Combined models."""
     def __init__(
         self,
