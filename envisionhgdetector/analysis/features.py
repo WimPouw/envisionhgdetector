@@ -4,34 +4,7 @@ import warnings
 import numpy as np
 from typing import Literal
 
-# MediaPipe pose indices; group order preserves the existing feature layout.
-UPPER_LIMB_LANDMARKS = {
-    "left_shoulder": 11,
-    "left_elbow": 13,
-    "left_wrist": 15,
-    "right_shoulder": 12,
-    "right_elbow": 14,
-    "right_wrist": 16,
-    "left_pinky": 17,
-    "left_index": 19,
-    "left_thumb": 21,
-    "right_pinky": 18,
-    "right_index": 20,
-    "right_thumb": 22,
-}
-ARM_JOINT_INDICES = tuple(
-    index for name, index in UPPER_LIMB_LANDMARKS.items()
-    if name.endswith(("shoulder", "elbow", "wrist"))
-)
-LEFT_FINGER_INDICES = tuple(
-    index for name, index in UPPER_LIMB_LANDMARKS.items()
-    if name.startswith("left_") and name.endswith(("pinky", "index", "thumb"))
-)
-RIGHT_FINGER_INDICES = tuple(
-    index for name, index in UPPER_LIMB_LANDMARKS.items()
-    if name.startswith("right_") and name.endswith(("pinky", "index", "thumb"))
-)
-UPPER_LIMB_INDICES = tuple(UPPER_LIMB_LANDMARKS.values())
+from .mapping import UPPER_LIMB_INDICES, ARM_JOINT_INDICES, LEFT_FINGER_INDICES, RIGHT_FINGER_INDICES
 
 def fill_missing_values(values: np.ndarray, policy: Literal["zero", "interpolate"] = "interpolate", max_gap: int = 3) -> np.ndarray:
     """Fill nonfinite values in one coordinate's equally spaced time series.
@@ -72,7 +45,6 @@ def fill_missing_values(values: np.ndarray, policy: Literal["zero", "interpolate
     result[~valid] = np.interp(positions[~valid], positions[valid], result[valid]) # interpolate missing values using linear interpolation
     return result
 
-
 def prepare_upper_limb_landmarks(landmarks: np.ndarray, max_gap: int = 3) -> np.ndarray:
     """Interpolate short gaps in upper-limb landmarks, preserving the input layout.
 
@@ -103,7 +75,6 @@ def prepare_upper_limb_landmarks(landmarks: np.ndarray, max_gap: int = 3) -> np.
                 raise ValueError(f"Landmark {index}, coordinate {'xyz'[coordinate]}: {exc}") from exc
     return result
 
-
 def process_hand_fingers(landmarks, finger_indices):
     """Extract and center selected finger landmarks for one hand."""
     fingers = []
@@ -117,7 +88,6 @@ def process_hand_fingers(landmarks, finger_indices):
         fingers_mean = np.mean(fingers, axis=0)
         return fingers - fingers_mean
     return None
-
 
 def extract_upper_limb_features(landmarks: np.ndarray, max_gap: int = 3) -> np.ndarray:
     """
