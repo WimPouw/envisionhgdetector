@@ -132,11 +132,11 @@ def find_submovements(speed_profile: np.ndarray, fps: float) -> Tuple[np.ndarray
     return peaks, peak_heights
 
 
-def find_movepauses(velocity_array):
+def find_movepauses(velocity_array, threshold: float = 0.15) -> list:
     """Find moments when velocity is below a threshold."""
     pause_ix = []
     for index, velpoint in enumerate(velocity_array):
-        if velpoint < 0.15:
+        if velpoint < threshold:
             pause_ix.append(index)
     if len(pause_ix) == 0:
         pause_ix = 0
@@ -234,7 +234,7 @@ def calc_holds(df, subslocs_L, subslocs_R, FPS, hand):
 
                 # Filter holds based on initial movement
                 try:
-                    if hand == 'B':
+                    if hand == 'B': # both hands
                         initial_move = min(np.concatenate((subslocs_L, subslocs_R)))
                     elif hand == 'L':
                         initial_move = min(subslocs_L)
