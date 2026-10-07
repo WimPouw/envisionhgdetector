@@ -21,12 +21,11 @@ from tqdm import tqdm
 from .state import Labels, PredictionColumns, Row, SegmentColumns
 from .state import *
 from .analysis.retracking import retrack_gesture_videos
-from .analysis.visualization import create_gesture_visualization
 from .analysis.features import process_hand_fingers, extract_upper_limb_features
 from .analysis.kinematics import ArmKinematics, calculate_derivatives, compute_limb_kinematics, find_submovements, find_movepauses, calculate_distance, calc_holds
 from .analysis.spatial import define_mcneillian_grid, get_mcneillian_mode, calc_mcneillian_space, calc_volume_size, calc_vert_height
 from .analysis.gesture_kinematics import joint_map, KinematicFeatures, compute_kinematic_features
-from .analysis.dtw import compute_gesture_kinematics_dtw
+from .analysis.dtw import compute_gesture_kinematics_dtw, create_gesture_visualization
 from .analysis.segments import create_segments
 from .rendering.label_video import label_video
 from .dashboard.folders import setup_dashboard_folders
@@ -34,14 +33,6 @@ from .dashboard.gesture_space import create_dashboard
 
 def valid_float(value: float) -> bool:
     return value >= 0 and value <= 1.0
-
-def find_all_videos(folder: str | Path, pattern: str = ".mp4") -> List[str]:
-    """Recursively return video paths below ``folder``."""
-    return [
-        str(path)
-        for path in Path(folder).rglob("*")
-        if path.is_file() and path.name.endswith(pattern)
-    ]
 
 def get_video_fps(video_path: str) -> int:
     cap = cv2.VideoCapture(video_path)

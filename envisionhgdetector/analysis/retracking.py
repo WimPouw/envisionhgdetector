@@ -6,7 +6,6 @@ import cv2
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-from .video_files import find_all_videos
 from envisionhgdetector.mediapipe_processing import PoseProcessor, drawing_utils, pose
 from envisionhgdetector.state import DIRS
 
@@ -36,7 +35,11 @@ def retrack_gesture_videos(
     tracked_data = {}
     
     # Find all videos recursively
-    video_paths = find_all_videos(input_folder, video_pattern)
+    video_paths = [
+        str(path)
+        for path in Path(input_folder).rglob("*")
+        if path.is_file() and path.name.endswith(video_pattern)
+    ]
     
     # Process each video
     for video_path in video_paths:

@@ -1,8 +1,10 @@
 """Compare tracked gestures with dynamic time warping."""
 
+import os
 import warnings
 import numpy as np
 import pandas as pd
+import umap.umap_ as umap
 from pathlib import Path
 from typing import List, Tuple
 from shapedtw.shapedtw import shape_dtw
@@ -10,6 +12,46 @@ from shapedtw.shapeDescriptors import RawSubsequenceDescriptor
 
 from .features import extract_upper_limb_features, prepare_upper_limb_landmarks
 from .gesture_kinematics import compute_kinematic_features
+
+'''
+Workflow:
+# Compute DTW distances and kinematic features
+print("Computing DTW distances and kinematic features...")
+dtw_matrix, gesture_names, kinematic_features = compute_gesture_kinematics_dtw(
+    tracked_folder=landmarks_folder,
+    output_folder=output_folder,
+    fps=fps
+)
+
+# Create visualization
+print("Creating visualization...")
+create_gesture_visualization(
+    dtw_matrix=dtw_matrix,
+    gesture_names=gesture_names,
+    output_folder=output_folder
+)
+
+'''
+
+def create_gesture_visualization(
+    dtw_matrix: np.ndarray,
+    gesture_names: List[str],
+    output_folder: str,
+) -> None:
+    """Save a two-dimensional UMAP projection of DTW distances as CSV."""
+    reducer = umap.UMAP(
+        n_components=2,
+        n_neighbors=15,
+        metric="precomputed",
+    )
+    projection = reducer.fit_transform(dtw_matrix)
+    viz_df = pd.DataFrame({
+        "x": projection[:, 0],
+        "y": projection[:, 1],
+        "gesture": gesture_names,
+    })
+    viz_df.to_csv(os.path.join(output_folder, "gesture_visualization.csv"), index=False)
+
 
 def compute_gesture_kinematics_dtw(
     tracked_folder: str,
