@@ -12,6 +12,7 @@ from .detectors.realtime_detection import RealtimeGestureDetector
 from .combined_detection import CombinedGestureDetector
 
 from .rendering.label_video import label_video, label_video_batch
+from .analysis.postprocessing import PostProcessing
 
 __version__ = "3.1.0"
 __author__ = "Wim Pouw, Bosco Yung, Sharjeel Shaikh, James Trujillo, Antonio Rueda-Toicen, Gerard de Melo, Babajide Owoyele"
@@ -27,4 +28,11 @@ __all__ = [
     "BinaryGestureModel",     # Binary CNN model
     "GestureModel",           # CNN model
     "LightGBMGestureModel",   # LightGBM model
+
+    # Video labeling
+    "label_video",
+    "label_video_batch",
+
+    # Post-processing
+    "PostProcessing",
 ]
