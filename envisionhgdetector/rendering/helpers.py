@@ -11,12 +11,11 @@ from envisionhgdetector.state import Labels, SegmentColumns
 def fix_codex(video_path: Path, output_path: Path) -> None:
     if not video_path.exists():
         raise FileNotFoundError(f"Video file {video_path} does not exist.")
-    suffix = video_path.suffix.lower()
 
     try:
         print(f"Converting: {video_path} to {output_path}")
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
-            temp_video_path = Path(temp_file.name)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_video_path = Path(temp_dir) / video_path.name
             video = VideoFileClip(str(video_path))
             video.write_videofile(str(temp_video_path), codec='libx264', audio=False, preset='ultrafast', fps=video.fps)
             video.close()
