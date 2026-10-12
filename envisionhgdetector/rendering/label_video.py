@@ -7,7 +7,8 @@ from tqdm import tqdm
 from pathlib import Path
 from typing import Optional
 from envisionhgdetector.state import Labels, PredictionColumns, SegmentColumns, Thresholds, color_map
-from .helpers import get_label_at_time, get_confidence_window, validate_prediction_times
+from .helpers import get_label_at_time, get_confidence_window, validate_prediction_times, fix_codex
+
 
 def label_video_batch(
     videos_input_folder: str,
@@ -102,6 +103,8 @@ def label_video(
             window_duration=window_duration,
             target_fps=target_fps
         )
+        fix_codex(labeled_video_path, labeled_video_path) # replace the video with a fixed codec version
+
     except Exception as e:
         print(f"Error labeling video {video_name}: {str(e)}")
         if labeled_video_path.exists():

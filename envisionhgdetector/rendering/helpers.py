@@ -1,9 +1,29 @@
 """Shared helpers for single-model and comparison video rendering."""
 
+import shutil
+import tempfile
 import numpy as np
+from pathlib import Path
+from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from envisionhgdetector.state import Labels, SegmentColumns
 
+def fix_codex(video_path: Path, output_path: Path) -> None:
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video file {video_path} does not exist.")
+    suffix = video_path.suffix.lower()
+
+    try:
+        print(f"Converting: {video_path} to {output_path}")
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
+            temp_video_path = Path(temp_file.name)
+            video = VideoFileClip(str(video_path))
+            video.write_videofile(str(temp_video_path), codec='libx264', audio=False, preset='ultrafast', fps=video.fps)
+            video.close()
+            # Move the temporary file to the desired output path
+            shutil.copy2(temp_video_path, output_path)
+    except Exception as e:
+        print(f"Error converting {video_path} to {output_path}: {e}")
 
 def get_label_at_time(time, segments):
     """Return the saved segment label, or NoGesture outside active segments."""
