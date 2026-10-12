@@ -1,12 +1,7 @@
 # Standard library imports
 import os
-import glob
-import json
 import time
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
-# Third-party imports
+import cv2
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -155,8 +150,12 @@ def return_path(output_type: str, output_folder: str, video_name: str, **kwargs)
             return_name = f"{video_name}_tracked.mp4"
         case "world_landmarks":
             return_name = f"{video_name}_world_landmarks.npy"
-        case "visibility_scores":
-            return_name = f"{video_name}_visibility_scores.npy"
+        case "world_visibility_scores":
+            return_name = f"{video_name}_world_visibility_scores.npy"
+        case "image_landmarks":
+            return_name = f"{video_name}_image_landmarks.npy"
+        case "image_visibility_scores":
+            return_name = f"{video_name}_image_visibility_scores.npy"
         case "segment_videos":
             try:
                 segment_idx = kwargs['segment_idx']
