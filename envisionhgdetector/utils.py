@@ -122,6 +122,71 @@ def create_segments(
 def valid_float(value: float) -> bool:
     return value >= 0 and value <= 1.0
 
+def return_path(output_type: str, output_folder: str, video_name: str, **kwargs) -> str | None:
+    '''
+    Args:
+        output_type (str): Type of output file ("features", "segments", "labeled_video", "elan", "predictions", "retracked_video", "world_landmarks", "visibility_scores", "segment_videos", "segment_features").
+        output_folder (str): Path to the output folder.
+        video_name (str): Name of the video file.
+        **kwargs: Additional keyword arguments for segment videos.
+    **kwargs:
+        segment_idx (int): Index of the segment (required for "segment_videos").
+        prediction (str): Prediction label for the segment (required for "segment_videos").
+        start_time (float): Start time of the segment in seconds (required for "segment_videos").
+        end_time (float): End time of the segment in seconds (required for "segment_videos").
+    Returns:
+        Path: The path to the output file.
+    '''
+    output_folder = Path(output_folder)
+    video_output_folder = output_folder / video_name
+
+    match output_type:
+        case "features":
+            return_name = f"{video_name}_features.npy"
+        case "segments":
+            return_name = f"{video_name}_segments.csv"
+        case "labeled_video":
+            return_name = f"{video_name}_labeled.mp4"
+        case "elan":
+            return_name = f"{video_name}_elan.eaf"
+        case "predictions":
+            return_name = f"{video_name}_predictions.csv"
+        case "retracked_video":
+            return_name = f"{video_name}_tracked.mp4"
+        case "world_landmarks":
+            return_name = f"{video_name}_world_landmarks.npy"
+        case "visibility_scores":
+            return_name = f"{video_name}_visibility_scores.npy"
+        case "segment_videos":
+            try:
+                segment_idx = kwargs['segment_idx']
+                prediction = kwargs['prediction']
+                start_time = kwargs['start_time']
+                end_time = kwargs['end_time']
+                return_name = Path("segments") / f"{video_name}_segment_{segment_idx}_{prediction}_{start_time:.2f}_{end_time:.2f}.mp4"
+
+            except KeyError as e:
+                print(f"Error: Missing required keyword argument {e}")
+                return None
+        case "segment_features":
+            try:
+                segment_idx = kwargs['segment_idx']
+                prediction = kwargs['prediction']
+                start_time = kwargs['start_time']
+                end_time = kwargs['end_time']
+                return_name = Path("segments") / f"{video_name}_segment_{segment_idx}_{prediction}_{start_time:.2f}_{end_time:.2f}.npy"
+
+            except KeyError as e:
+                print(f"Error: Missing required keyword argument {e}")
+                return None
+        case _:
+            print(f"Unknown type: {output_type}. Returning output folder path.")
+            return None
+
+    return_path = video_output_folder / return_name
+    return_path.parent.mkdir(parents=True, exist_ok=True) # create all missing parents
+    return str(return_path)
+
 def get_video_fps(video_path: str) -> int:
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
