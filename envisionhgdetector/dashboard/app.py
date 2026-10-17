@@ -8,38 +8,7 @@ import os
 from moviepy import VideoFileClip
 import dash
 from dash.dependencies import ALL
-
-def convert_videos_for_web(data_folder: str, assets_folder: str) -> None:
-    """Convert videos to web-compatible format using MoviePy."""
-    converted_folder = os.path.join(assets_folder, 'videos_rerendered')
-    os.makedirs(converted_folder, exist_ok=True)
-
-    root_dir = os.path.dirname(data_folder)  
-    source_folder = os.path.join(root_dir, 'retracked', 'tracked_videos')
-
-    if not os.path.exists(source_folder):
-        raise FileNotFoundError(f"Source folder not found: {source_folder}")
-
-    video_files = [f for f in os.listdir(source_folder) if f.endswith('.mp4')]
-    print(f"Found {len(video_files)} videos to convert...")
-
-    for video_file in video_files:
-        input_path = os.path.join(source_folder, video_file)
-        output_path = os.path.join(converted_folder, video_file)
-
-        if os.path.exists(output_path):
-            print(f"Skipping existing video: {video_file}")
-            continue
-
-        try:
-            print(f"Converting: {video_file}")
-            video = VideoFileClip(input_path)
-            video.write_videofile(output_path, codec='libx264', audio=False, preset='ultrafast', fps=video.fps)
-            video.close()
-        except Exception as e:
-            print(f"Error converting {video_file}: {e}")
-
-    print("Video conversion complete.")
+from pathlib import Path
 
 def create_kinematic_plot(df, feature, selected_gesture=None):
     """Create a violin plot with overlaid box plot and jittered points for a kinematic feature."""
@@ -163,7 +132,7 @@ def run_dashboard_server(data_folder: str, assets_folder: str = "./assets", debu
     """Run the dashboard server with gesture similarity space and kinematic feature plots."""
     os.makedirs(assets_folder, exist_ok=True)
     
-    # Load datasets
+    # Load datasets - TODO maybe take these as input directly instead
     gesture_viz_df = pd.read_csv(os.path.join(data_folder, "gesture_visualization.csv"))
     kinematic_df = pd.read_csv(os.path.join(data_folder, "kinematic_features.csv"))
     
@@ -400,6 +369,5 @@ if __name__ == '__main__':
     OUTPUT_DIR = './'
     ANALYSIS_DIR = os.path.join(OUTPUT_DIR, 'analysis')
     ASSETS_DIR = './assets'
-    debug = True
-    
-    run_dashboard_server(ANALYSIS_DIR, ASSETS_DIR, debug)
+    # TODO cleanup -- user calls this functions with required folder or paths and we run it. show the port etc... maybe we take that as input too
+    run_dashboard_server(ANALYSIS_DIR, ASSETS_DIR, debug=True)

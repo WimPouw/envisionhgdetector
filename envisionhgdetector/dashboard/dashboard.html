@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EnvisionHGdetector Dashboard</title>
+  <style>
+    body { margin: 0; padding: 2rem; background: #111; color: #eee; font-family: sans-serif; }
+    main { max-width: 900px; margin: auto; }
+    label { display: block; margin-bottom: 0.75rem; }
+    #folder-status { margin-top: 1rem; }
+    #file-list { max-height: 350px; overflow: auto; line-height: 1.6; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>EnvisionHGdetector Dashboard</h1>
+    <label for="assets-folder">Select the assets folder containing your data and videos.</label>
+    <input id="assets-folder" type="file" webkitdirectory multiple>
+    <p id="folder-status" role="status">No folder selected.</p>
+    <ul id="file-list" aria-label="Selected files"></ul>
+  </main>
+  <script>
+    // Keep File objects for later data reading and video playback.
+    // Keys are paths inside the selected folder, excluding its root name.
+    const assetsFiles = new Map();
+
+    function indexAssetsFolder(event) {
+      assetsFiles.clear();
+      const fileList = document.getElementById("file-list");
+      const status = document.getElementById("folder-status");
+      fileList.replaceChildren();
+      const files = event.target.files;
+
+      if (!files || files.length === 0) {
+        status.textContent = "No files selected. Choose a folder containing your data and videos.";
+        return;
+      }
+
+      const entries = document.createDocumentFragment();
+      for (const file of files) {
+        const relativePath = file.webkitRelativePath;
+        const path = relativePath.slice(relativePath.indexOf("/") + 1);
+        assetsFiles.set(path, file);
+        const item = document.createElement("li");
+        item.textContent = path;
+        entries.appendChild(item);
+      }
+      fileList.appendChild(entries);
+      const folderName = files[0].webkitRelativePath.split("/")[0];
+      status.textContent = `${folderName}: ${assetsFiles.size} files available locally. No files copied or uploaded.`;
+    }
+
+    document.getElementById("assets-folder").addEventListener("change", indexAssetsFolder);
+  </script>
+</body>
+</html>

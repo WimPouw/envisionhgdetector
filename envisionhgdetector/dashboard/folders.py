@@ -2,6 +2,15 @@
 
 import os
 
+'''
+TODO
+sholdnt we allow any videos? just rglob mp4?
+
+and why do we need to copy anything? just read
+does dash require this?
+
+'''
+
 def setup_dashboard_folders(data_folder: str, assets_folder: str) -> None:
     """
     Set up necessary folders for the dashboard.

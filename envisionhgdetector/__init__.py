@@ -12,6 +12,7 @@ from .detectors.realtime_detection import RealtimeGestureDetector
 from .combined_detection import CombinedGestureDetector
 
 from .rendering.label_video import label_video, label_video_batch
+from .rendering.render_pose_video import render_pose_video
 from .analysis.postprocessing import PostProcessing
 
 __version__ = "3.1.0"
@@ -35,4 +36,6 @@ __all__ = [
 
     # Post-processing
     "PostProcessing",
+    # Rendering
+    "render_pose_video",
 ]
