@@ -80,7 +80,7 @@ def extract_pose_from_video(video_name: str, video_path: str, data_folder: str, 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise ValueError(f"Could not open video file: {video_path}")
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    fps = cap.get(cv2.CAP_PROP_FPS)
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
