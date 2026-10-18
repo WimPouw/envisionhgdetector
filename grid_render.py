@@ -5,7 +5,7 @@ from typing import Optional
 
 from envisionhgdetector import GestureDetector, PostProcessing, label_video
 from envisionhgdetector.utils import return_path
-from envisionhgdetector.rendering.render_pose_video import create_gif_from_video
+from envisionhgdetector.rendering.helpers import create_gif_from_video
 
 def render_grid_pipeline(
     video_path: str,
