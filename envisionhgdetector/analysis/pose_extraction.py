@@ -9,7 +9,7 @@ from envisionhgdetector.rendering.helpers import fix_codex
 from envisionhgdetector.mediapipe_processing import PoseProcessor, drawing_utils, pose
 
 
-def extract_pose_from_videos_batch(videos_folder: str | None, data_folder: str, video_pattern: str):
+def extract_pose_from_videos_batch(videos_folder: str | None, data_folder: str, video_pattern: str, blank_frame: bool = False):
     '''
     Extracts pose from all videos in the videos_folder (matching the video_pattern) and saves the results in the data_folder.
     Note: video has detected landmarks while landmarks file has smoothed landmarks and visibility scores.
@@ -17,6 +17,7 @@ def extract_pose_from_videos_batch(videos_folder: str | None, data_folder: str, 
         videos_folder: Path to the input videos folder. If None then labeled videos in data_folder is used.
         data_folder: Path where tracked data will be saved.
         video_pattern: Pattern to match video files (ex: .mp4).
+        blank_frame: True: blank frame, False: original frame.
     '''
     data_folder = Path(data_folder)
     if not data_folder.exists():
@@ -52,13 +53,14 @@ def extract_pose_from_videos_batch(videos_folder: str | None, data_folder: str, 
             extract_pose_from_video(
                 video_name=video_name,
                 video_path=str(video_path),
-                data_folder=str(data_folder)
+                data_folder=str(data_folder),
+                blank_frame=blank_frame
             )
         except Exception as e:
             print(f"Error processing video {video_path}: {e}")
             continue
 
-def extract_pose_from_video(video_name: str, video_path: str, data_folder: str):
+def extract_pose_from_video(video_name: str, video_path: str, data_folder: str, blank_frame: bool = False):
     """
     Extracts pose from a single video and saves the results in the data_folder.
     Note: video has detected landmarks while landmarks file has smoothed landmarks and visibility scores.
@@ -67,6 +69,13 @@ def extract_pose_from_video(video_name: str, video_path: str, data_folder: str):
         video_name: Name of the video
         video_path: Path to the input video
         data_folder: Folder to save tracked data
+        blank_frame: True: blank frame, False: original frame.
+
+    Saves:
+        - world_landmarks.npy: Smoothed world landmarks (x, y, z) for each frame. Shape is (num_frames, num_landmarks*(x, y, z))
+        - world_visibility_scores.npy: Visibility scores for world landmarks for each frame. Shape is (num_frames, num_landmarks)
+        - image_landmarks.npy: Smoothed image landmarks (x, y) for each frame. Shape is (num_frames, num_landmarks*(x, y))
+        - image_visibility_scores.npy: Visibility scores for image landmarks for each frame. Shape is (num_frames, num_landmarks)
     """
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -138,6 +147,8 @@ def extract_pose_from_video(video_name: str, video_path: str, data_folder: str):
 
                     # Draw pose on frame
                     annotated_frame = frame.copy()
+                    if blank_frame: # TODO test
+                        annotated_frame = np.zeros_like(frame)  # Create a blank frame
                     drawing_utils.draw_landmarks(
                         annotated_frame,
                         results.pose_landmarks,

@@ -47,31 +47,36 @@ class PostProcessing:
 
     def extract_pose_from_videos_batch(self, 
             videos_folder: Optional[str] = None,
-            video_pattern: Optional[str] = ".mp4"):
+            video_pattern: Optional[str] = ".mp4",
+            blank_frame: bool = False):
         '''
         Extracts pose from all videos in the videos_folder (matching the video_pattern) and saves the results in the output_folder.
         Args:
             videos_folder (Optional[str]): Path to the folder containing original videos. If None, uses data_folder which stores labeled videos.
             video_pattern (Optional[str]): Pattern to match video files (default is ".mp4").
+            blank_frame (bool): If True, a blank frame will be added to the beginning of each video.
         '''
         extract_pose_from_videos_batch(
             videos_folder=videos_folder,
             data_folder=self.data_folder,
             video_pattern=video_pattern,
+            blank_frame=blank_frame
         )
     
-    def extract_pose_from_video(self, video_path: str, video_name: Optional[str] = None):
+    def extract_pose_from_video(self, video_path: str, video_name: Optional[str] = None, blank_frame: bool = False):
         '''
         Extracts pose from a single video and saves the results in the output_folder.
         Args:
             video_path (str): Path to the input video file.
             video_name (Optional[str]): Name of the video (without extension). If None, the name is derived from the video_path.
+            blank_frame (bool): If True, a blank frame will be added to the beginning of the video.
         '''
         if video_name is None:
             video_name = Path(video_path).stem
         extract_pose_from_video(
             video_name=video_name,
             video_path=video_path,
-            data_folder=self.data_folder
+            data_folder=self.data_folder,
+            blank_frame=blank_frame
         )
             
