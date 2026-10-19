@@ -7,7 +7,7 @@ from typing import Dict, Optional
 
 from envisionhgdetector import GestureDetector
 from envisionhgdetector.state import Labels, ModelNames, PredictionColumns, StatsKeys, Thresholds
-from envisionhgdetector.utils import create_elan_file, create_segments
+from envisionhgdetector.utils import create_elan_file, create_segments, return_path
 
 # TODO - create elan checks if model column exists and creates separate tiers for each model (CNN, LightGBM)
 # do we implement that?
@@ -129,12 +129,8 @@ class CombinedGestureDetector:
                 return {"error": "No predictions generated"}
 
             if not elan_only:
-                predictions_path = os.path.join(
-                    output_folder, f"{video_name}_predictions.csv"
-                )
-                segments_path = os.path.join(
-                    output_folder, f"{video_name}_segments.csv"
-                )
+                predictions_path = return_path("predictions", output_folder, video_name)
+                segments_path = return_path("segments", output_folder, video_name)
                 predictions.to_csv(predictions_path, index=False)
                 segments.to_csv(segments_path, index=False)
 
@@ -154,24 +150,24 @@ class CombinedGestureDetector:
                         min_length_s=detector.config.thresholds.min_length_s,
                         segments_policy="separate",
                     )
-                    model_segments_path = os.path.join(
-                        output_folder, f"{video_name}_{model_name}_segments.csv"
+                    model_segments_path = return_path(
+                        "segments", output_folder, video_name, model_name=model_name,
                     )
                     model_segments.to_csv(model_segments_path, index=False)
 
                 if hasattr(self, "last_cnn_features") and len(self.last_cnn_features) > 0:
                     np.save(
-                        os.path.join(output_folder, f"{video_name}_cnn_features.npy"),
+                        return_path("features", output_folder, video_name, model_name="cnn"),
                         np.asarray(self.last_cnn_features),
                     )
                 if hasattr(self, "last_lgbm_features") and len(self.last_lgbm_features) > 0:
                     np.save(
-                        os.path.join(output_folder, f"{video_name}_lightgbm_features.npy"),
+                        return_path("features", output_folder, video_name, model_name="lightgbm"),
                         np.asarray(self.last_lgbm_features),
                     )
 
 
-            elan_path = os.path.join(output_folder, f"{video_name}.eaf")
+            elan_path = return_path("elan", output_folder, video_name)
             create_elan_file(
                 video_path=video_path,
                 output_path=elan_path,

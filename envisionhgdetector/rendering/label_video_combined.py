@@ -10,6 +10,7 @@ import warnings
 from pathlib import Path
 from tqdm import tqdm
 from envisionhgdetector.state import Labels, ModelNames, PredictionColumns, SegmentColumns
+from envisionhgdetector.utils import return_path
 from .helpers import get_label_at_time, get_confidence_window, validate_prediction_times
 
 
@@ -134,8 +135,8 @@ def label_video_combined(
     
     Args:
         video_path: Path to input video
-        video_output_folder: Folder containing the saved combined output CSVs.
-            Writes <video_name>_comparison.mp4 to this folder.
+        video_output_folder: Per-video folder containing inference/ with the combined output CSVs.
+            Writes <video_name>_comparison.mp4 inside postprocessing/.
         cnn_motion_threshold: Motion threshold line for the CNN graph
         cnn_gesture_threshold: Gesture threshold line for the CNN graph
         lgbm_threshold: Confidence threshold line for the LightGBM graph
@@ -152,9 +153,17 @@ def label_video_combined(
     for threshold in (cnn_motion_threshold, cnn_gesture_threshold, lgbm_threshold):
         if not np.isfinite(threshold) or not 0 <= threshold <= 1:
             raise ValueError("Graph thresholds must be finite and between 0 and 1.")
-    predictions_df = pd.read_csv(video_output_folder / f"{video_name}_predictions.csv")
-    cnn_segments = pd.read_csv(video_output_folder / f"{video_name}_{ModelNames.CNN_B}_segments.csv")
-    lgbm_segments = pd.read_csv(video_output_folder / f"{video_name}_{ModelNames.LIGHTGBM}_segments.csv")
+    predictions_df = pd.read_csv(return_path(
+        "predictions", video_output_folder.parent, video_name, create_parents=False,
+    ))
+    cnn_segments = pd.read_csv(return_path(
+        "segments", video_output_folder.parent, video_name,
+        model_name=ModelNames.CNN_B, create_parents=False,
+    ))
+    lgbm_segments = pd.read_csv(return_path(
+        "segments", video_output_folder.parent, video_name,
+        model_name=ModelNames.LIGHTGBM, create_parents=False,
+    ))
     required_segments = {SegmentColumns.START_TIME, SegmentColumns.END_TIME, SegmentColumns.PREDICTION}
     for name, segments in ((ModelNames.CNN_B, cnn_segments), (ModelNames.LIGHTGBM, lgbm_segments)):
         missing = required_segments - set(segments.columns)
@@ -168,7 +177,7 @@ def label_video_combined(
     if PredictionColumns.TIMESTAMP not in predictions_df.columns:
         raise ValueError("Predictions must contain timestamps.")
     times = validate_prediction_times(predictions_df[PredictionColumns.TIMESTAMP])
-    output_path = str(video_output_folder / f"{video_name}_comparison.mp4")
+    output_path = return_path("comparison_video", video_output_folder.parent, video_name)
     cap = out = progress_bar = None
     try:
         # Open video

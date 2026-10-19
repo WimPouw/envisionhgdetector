@@ -117,14 +117,22 @@ def create_segments(
 def valid_float(value: float) -> bool:
     return value >= 0 and value <= 1.0
 
-def return_path(output_type: str, output_folder: str, video_name: str, **kwargs) -> str | None:
+def return_path(output_type: str, output_folder: str, video_name: str, *, create_parents: bool = True, **kwargs) -> str | None:
     '''
     Args:
-        output_type (str): Type of output file ("features", "segments", "labeled_video", "elan", "predictions", "retracked_video", "world_landmarks", "visibility_scores", "segment_videos", "segment_features").
+        output_type (str): Inference files ("features", "segments", "elan", "predictions"),
+            rendered videos ("labeled_video", "comparison_video"), retracking outputs
+            ("retracked_video", "world_landmarks", "world_visibility_scores",
+            "image_landmarks", "image_visibility_scores"), or segment outputs
+            ("segment_videos", "segment_features").
         output_folder (str): Path to the output folder.
         video_name (str): Name of the video file.
+        create_parents (bool): Create output directories. Use False for input lookups.
         **kwargs: Additional keyword arguments for segment videos.
     **kwargs:
+        model_name (str): Optional model suffix for "features" and "segments".
+        segment_video_path (str | Path): Source clip path when locating segment
+            retracking outputs. Outputs are placed beside this clip.
         segment_idx (int): Index of the segment (required for "segment_videos").
         prediction (str): Prediction label for the segment (required for "segment_videos").
         start_time (float): Start time of the segment in seconds (required for "segment_videos").
@@ -134,14 +142,31 @@ def return_path(output_type: str, output_folder: str, video_name: str, **kwargs)
     '''
     output_folder = Path(output_folder)
     video_output_folder = output_folder / video_name
+    if output_type in ("features", "segments", "predictions", "elan"):
+        video_output_folder = video_output_folder / DIRS.INFERENCE
+    elif output_type in ("labeled_video", "comparison_video"):
+        video_output_folder = video_output_folder / DIRS.POSTPROCESSING
+    elif output_type in (
+        "retracked_video", "world_landmarks", "world_visibility_scores",
+        "image_landmarks", "image_visibility_scores",
+    ):
+        segment_video_path = kwargs.get("segment_video_path")
+        if segment_video_path is not None:
+            video_output_folder = Path(segment_video_path).parent
+        else:
+            video_output_folder = video_output_folder / DIRS.POSTPROCESSING / DIRS.RETRACKED
 
     match output_type:
         case "features":
-            return_name = f"{video_name}_features.npy"
+            model_suffix = f"_{kwargs['model_name']}" if kwargs.get("model_name") else ""
+            return_name = f"{video_name}{model_suffix}_features.npy"
         case "segments":
-            return_name = f"{video_name}_segments.csv"
+            model_suffix = f"_{kwargs['model_name']}" if kwargs.get("model_name") else ""
+            return_name = f"{video_name}{model_suffix}_segments.csv"
         case "labeled_video":
             return_name = f"{video_name}_labeled.mp4"
+        case "comparison_video":
+            return_name = f"{video_name}_comparison.mp4"
         case "elan":
             return_name = f"{video_name}_elan.eaf"
         case "predictions":
@@ -162,7 +187,8 @@ def return_path(output_type: str, output_folder: str, video_name: str, **kwargs)
                 prediction = kwargs['prediction']
                 start_time = kwargs['start_time']
                 end_time = kwargs['end_time']
-                return_name = Path("segments") / f"{video_name}_segment_{segment_idx}_{prediction}_{start_time:.2f}_{end_time:.2f}.mp4"
+                segment_name = f"{video_name}_segment_{segment_idx}_{prediction}_{start_time:.2f}_{end_time:.2f}"
+                return_name = Path(DIRS.POSTPROCESSING) / DIRS.SEGMENTS / segment_name / f"{segment_name}.mp4"
 
             except KeyError as e:
                 print(f"Error: Missing required keyword argument {e}")
@@ -173,7 +199,8 @@ def return_path(output_type: str, output_folder: str, video_name: str, **kwargs)
                 prediction = kwargs['prediction']
                 start_time = kwargs['start_time']
                 end_time = kwargs['end_time']
-                return_name = Path("segments") / f"{video_name}_segment_{segment_idx}_{prediction}_{start_time:.2f}_{end_time:.2f}.npy"
+                segment_name = f"{video_name}_segment_{segment_idx}_{prediction}_{start_time:.2f}_{end_time:.2f}"
+                return_name = Path(DIRS.POSTPROCESSING) / DIRS.SEGMENTS / segment_name / f"{segment_name}_features.npy"
 
             except KeyError as e:
                 print(f"Error: Missing required keyword argument {e}")
@@ -183,7 +210,8 @@ def return_path(output_type: str, output_folder: str, video_name: str, **kwargs)
             return None
 
     return_path = video_output_folder / return_name
-    return_path.parent.mkdir(parents=True, exist_ok=True) # create all missing parents
+    if create_parents:
+        return_path.parent.mkdir(parents=True, exist_ok=True)
     return str(return_path)
 
 def get_video_fps(video_path: str) -> int:

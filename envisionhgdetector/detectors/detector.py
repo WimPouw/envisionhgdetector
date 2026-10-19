@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Tuple
 
 from envisionhgdetector.default_config import DefaultConfig
 from envisionhgdetector.state import Thresholds, VALID_MODEL_NAMES, ModelNames
-from envisionhgdetector.utils import create_elan_file
+from envisionhgdetector.utils import create_elan_file, return_path
 from envisionhgdetector import GestureModel, BinaryGestureModel, LightGBMGestureModel
 
 
@@ -72,10 +72,10 @@ class GestureDetector():
         video_output_folder = output_folder / video_name
         video_output_folder.mkdir(parents=True, exist_ok=True)
 
-        elan_save_path = video_output_folder / f"{video_name}.eaf"
-        segments_save_path = video_output_folder / f"{video_name}_segments.csv"
-        predictions_save_path = video_output_folder / f"{video_name}_predictions.csv"
-        features_save_path = video_output_folder / f"{video_name}_features.npy"
+        elan_save_path = Path(return_path("elan", output_folder, video_name))
+        segments_save_path = Path(return_path("segments", output_folder, video_name))
+        predictions_save_path = Path(return_path("predictions", output_folder, video_name))
+        features_save_path = Path(return_path("features", output_folder, video_name))
         print(f"\nProcessing {video_name} with {self.model_type} model...")
         
         try:

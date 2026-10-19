@@ -7,6 +7,7 @@ from tqdm import tqdm
 from pathlib import Path
 from typing import Optional
 from envisionhgdetector.state import Labels, PredictionColumns, SegmentColumns, Thresholds, color_map
+from envisionhgdetector.utils import return_path
 from .helpers import get_label_at_time, get_confidence_window, validate_prediction_times, fix_codex
 
 
@@ -62,9 +63,9 @@ def label_video(
     video_output_folder = Path(video_output_folder)
     video_name = video_path.stem
 
-    segments_save_path = video_output_folder / f"{video_name}_segments.csv"
-    predictions_save_path = video_output_folder / f"{video_name}_predictions.csv"
-    labeled_video_path = video_output_folder / f"{video_name}_labeled.mp4"
+    segments_save_path = Path(return_path("segments", video_output_folder.parent, video_name, create_parents=False))
+    predictions_save_path = Path(return_path("predictions", video_output_folder.parent, video_name, create_parents=False))
+    labeled_video_path = Path(return_path("labeled_video", video_output_folder.parent, video_name, create_parents=False))
 
     if not video_path.exists():
         print(f"Video not found: {video_path}")
@@ -75,6 +76,8 @@ def label_video(
     if not segments_save_path.exists():
         print(f"Segments file not found: {segments_save_path}")
         return
+
+    labeled_video_path.parent.mkdir(parents=True, exist_ok=True)
 
     predictions_df = None
     if plot_confidence:

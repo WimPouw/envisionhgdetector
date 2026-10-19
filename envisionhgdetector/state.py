@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from typing import Literal, get_args
 
 class DIRS:
+    INFERENCE = "inference"
+    POSTPROCESSING = "postprocessing"
+    SEGMENTS = "segments"
     ANALYSIS = "analysis"
     RETRACKED = "retracked"
     TRACKED_VIDEOS = "tracked_videos" # retracked/tracked_videos
