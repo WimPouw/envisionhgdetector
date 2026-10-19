@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal, Optional
 from .segments import cut_by_segments_batch, cut_by_segments
 from .pose_extraction import extract_pose_from_videos_batch, extract_pose_from_video
-from .dtw import compute_gesture_kinematics_dtw
+from .dtw import compute_gesture_kinematics_dtw, create_gesture_visualization
 
 class PostProcessing:
     def __init__(self, data_folder: str):
@@ -48,11 +48,19 @@ class PostProcessing:
             retracked world landmarks before analysis starts.
             Each segment video's frame rate is read automatically for kinematics.
         """
-        return compute_gesture_kinematics_dtw(
+        analysis_folder = Path(analysis_folder) if analysis_folder is not None else self.data_folder.parent / "analysis"
+
+        dtw_dist, gesture_names, features_df =  compute_gesture_kinematics_dtw(
             data_folder=self.data_folder,
             max_gap=max_gap,
             analysis_folder=analysis_folder,
         )
+        create_gesture_visualization(
+            dtw_matrix=dtw_dist,
+            gesture_names=gesture_names,
+            output_folder= analysis_folder,
+        )
+        return dtw_dist, gesture_names, features_df
 
     def cut_by_segments(self, video_path: str, video_name: Optional[str] = None,
             video_scope: Literal["full", "segments"] = "full"):

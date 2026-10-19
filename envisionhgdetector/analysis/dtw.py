@@ -59,7 +59,7 @@ def compute_gesture_kinematics_dtw(
     data_folder = Path(data_folder)
     if not data_folder.is_dir():
         raise ValueError(f"Data folder does not exist: {data_folder}")
-    analysis_folder = Path(analysis_folder) if analysis_folder is not None else data_folder.parent / "analysis"
+    analysis_folder = Path(analysis_folder)
     if analysis_folder.resolve() == data_folder.resolve():
         raise ValueError("analysis_folder must differ from data_folder")
 
