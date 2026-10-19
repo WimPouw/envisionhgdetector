@@ -2,34 +2,44 @@
 import cv2
 import numpy as np
 from pathlib import Path
+from typing import Literal
 from scipy.ndimage import gaussian_filter1d
 
-from envisionhgdetector.utils import return_path
+from envisionhgdetector.utils import filter_segment_source_paths, filter_video_paths, return_path
 from envisionhgdetector.rendering.helpers import fix_codex
 from envisionhgdetector.mediapipe_processing import PoseProcessor, drawing_utils, pose
 
 
-def extract_pose_from_videos_batch(videos_folder: str | None, data_folder: str, video_pattern: str, blank_frame: bool = False):
+def extract_pose_from_videos_batch(
+    videos_folder: str | None,
+    data_folder: str,
+    video_pattern: str,
+    blank_frame: bool = False,
+    video_scope: Literal["full", "segments"] = "segments",
+):
     '''
     Extracts pose from all videos in the videos_folder (matching the video_pattern) and saves the results in the data_folder.
     Note: video has detected landmarks while landmarks file has smoothed landmarks and visibility scores.
     Args:
-        videos_folder: Path to the input videos folder. If None then labeled videos in data_folder is used.
+        videos_folder: Input folder. If None, searches data_folder for labeled full videos or segment videos.
         data_folder: Path where tracked data will be saved.
         video_pattern: Pattern to match video files (ex: .mp4).
         blank_frame: True: blank frame, False: original frame.
+        video_scope: "full" excludes segment folders; "segments" includes only segment folders.
     '''
+    filter_video_paths([], video_scope)  # Validate before discovering or processing videos.
     data_folder = Path(data_folder)
     if not data_folder.exists():
         raise ValueError(f"data folder does not exist: {data_folder}")
     
     remove_suffix = None
     if videos_folder is None:
-        # use labeled videos in data_folder
-        remove_suffix = "_labeled"
+        # Full videos are labeled; generated segment videos have no labeled suffix.
+        remove_suffix = "_labeled" if video_scope == "full" else None
+        search_pattern = f"*{remove_suffix}.mp4" if remove_suffix else f"*{video_pattern}"
         video_paths = [
             path
-            for path in data_folder.rglob(f"*{remove_suffix}.mp4")
+            for path in data_folder.rglob(search_pattern)
             if path.is_file()
         ]
     else:
@@ -44,7 +54,9 @@ def extract_pose_from_videos_batch(videos_folder: str | None, data_folder: str, 
         ]
 
     # Process each video
-    for video_path in video_paths:
+    if video_scope == "segments":
+        video_paths = filter_segment_source_paths(video_paths)
+    for video_path in filter_video_paths(video_paths, video_scope):
         try:
             video_name = video_path.stem
             if remove_suffix and video_name.endswith(remove_suffix):
@@ -54,13 +66,20 @@ def extract_pose_from_videos_batch(videos_folder: str | None, data_folder: str, 
                 video_name=video_name,
                 video_path=str(video_path),
                 data_folder=str(data_folder),
-                blank_frame=blank_frame
+                blank_frame=blank_frame,
+                video_scope=video_scope,
             )
         except Exception as e:
             print(f"Error processing video {video_path}: {e}")
             continue
 
-def extract_pose_from_video(video_name: str, video_path: str, data_folder: str, blank_frame: bool = False):
+def extract_pose_from_video(
+    video_name: str,
+    video_path: str,
+    data_folder: str,
+    blank_frame: bool = False,
+    video_scope: Literal["full", "segments"] = "segments",
+):
     """
     Extracts pose from a single video and saves the results in the data_folder.
     Note: video has detected landmarks while landmarks file has smoothed landmarks and visibility scores.
@@ -70,6 +89,7 @@ def extract_pose_from_video(video_name: str, video_path: str, data_folder: str, 
         video_path: Path to the input video
         data_folder: Folder to save tracked data
         blank_frame: True: blank frame, False: original frame.
+        video_scope: Required path scope; mismatches raise ValueError.
 
     Saves:
         - world_landmarks.npy: Smoothed world landmarks (x, y, z) for each frame. Shape is (num_frames, num_landmarks*(x, y, z))
@@ -77,6 +97,9 @@ def extract_pose_from_video(video_name: str, video_path: str, data_folder: str, 
         - image_landmarks.npy: Smoothed image landmarks (x, y) for each frame. Shape is (num_frames, num_landmarks*(x, y))
         - image_visibility_scores.npy: Visibility scores for image landmarks for each frame. Shape is (num_frames, num_landmarks)
     """
+    if not filter_video_paths([Path(video_path)], video_scope):
+        raise ValueError(f"Video path does not match video_scope={video_scope!r}: {video_path}")
+    path_kwargs = {"segment_video_path": video_path} if video_scope == "segments" else {}
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise ValueError(f"Could not open video file: {video_path}")
@@ -86,7 +109,7 @@ def extract_pose_from_video(video_name: str, video_path: str, data_folder: str, 
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     # Create output video writer
-    out_path = return_path("retracked_video", data_folder, video_name)
+    out_path = return_path("retracked_video", data_folder, video_name, **path_kwargs)
     if out_path is None:
         raise ValueError(f"Could not determine output path for video: {video_name}")
     

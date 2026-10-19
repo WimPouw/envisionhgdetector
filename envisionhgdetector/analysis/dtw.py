@@ -2,6 +2,8 @@
 
 import os
 import warnings
+import cv2
+from math import isfinite
 import numpy as np
 import pandas as pd
 import umap.umap_ as umap
@@ -12,26 +14,7 @@ from shapedtw.shapeDescriptors import RawSubsequenceDescriptor
 
 from .features import extract_upper_limb_features, prepare_upper_limb_landmarks
 from .gesture_kinematics import compute_kinematic_features
-
-'''
-Workflow:
-# Compute DTW distances and kinematic features
-print("Computing DTW distances and kinematic features...")
-dtw_matrix, gesture_names, kinematic_features = compute_gesture_kinematics_dtw(
-    tracked_folder=landmarks_folder,
-    output_folder=output_folder,
-    fps=fps
-)
-
-# Create visualization
-print("Creating visualization...")
-create_gesture_visualization(
-    dtw_matrix=dtw_matrix,
-    gesture_names=gesture_names,
-    output_folder=output_folder
-)
-
-'''
+from envisionhgdetector.utils import filter_segment_source_paths, return_path
 
 def create_gesture_visualization(
     dtw_matrix: np.ndarray,
@@ -54,42 +37,74 @@ def create_gesture_visualization(
 
 
 def compute_gesture_kinematics_dtw(
-    tracked_folder: str,
-    output_folder: str,
-    fps: float = 25.0,
+    data_folder: str,
     max_gap: int = 3,
+    analysis_folder: str | Path | None = None,
 ) -> Tuple[np.ndarray, List[str], pd.DataFrame]:
     """
     Compute DTW distances between all gesture pairs and extract kinematic features.
+    Kinematics use the frame rate read from each segment video.
     
     Args:
-        tracked_folder: Folder containing tracked landmark data
-        output_folder: Folder to save DTW results
-        fps: Frames per second of the video
+        data_folder: Results folder containing segment videos and their retracked landmarks.
         max_gap: Maximum consecutive missing frames allowed per coordinate.
+        analysis_folder: CSV output folder. Defaults to data_folder.parent / "analysis".
         
     Returns:
         Tuple containing:
         - DTW distance matrix
         - List of gesture names
         - DataFrame of kinematic features
-    """   
-    tracked_folder = Path(tracked_folder)
-    output_folder = Path(output_folder)
-    output_folder.mkdir(parents=True, exist_ok=True)
+    """
+    data_folder = Path(data_folder)
+    if not data_folder.is_dir():
+        raise ValueError(f"Data folder does not exist: {data_folder}")
+    analysis_folder = Path(analysis_folder) if analysis_folder is not None else data_folder.parent / "analysis"
+    if analysis_folder.resolve() == data_folder.resolve():
+        raise ValueError("analysis_folder must differ from data_folder")
 
-    name_suffix = "_world_landmarks"
-    
-    # Load all landmark files
-    landmark_files = list(tracked_folder.glob(f"*{name_suffix}.npy"))
+    segment_videos = filter_segment_source_paths(
+        sorted(path for path in data_folder.rglob("*.mp4") if path.is_file()),
+    )
+    if not segment_videos:
+        raise ValueError(f"No segment videos found in {data_folder}")
+
+    # Check every input before loading landmarks or computing any features/distances.
+    landmark_files = []
+    missing_landmarks = []
+    for video_path in segment_videos:
+        landmark_path = Path(return_path(
+            "world_landmarks", data_folder, video_path.stem,
+            segment_video_path=video_path, create_parents=False,
+        ))
+        if not landmark_path.is_file():
+            missing_landmarks.append(f"{video_path} -> {landmark_path}")
+        landmark_files.append((video_path, landmark_path))
+    if missing_landmarks:
+        raise FileNotFoundError(
+            "Missing retracked world landmarks for segment videos. "
+            "Retrack all segments before running DTW:\n" + "\n".join(missing_landmarks)
+        )
+    segment_inputs = []
+    for video_path, landmark_path in landmark_files:
+        cap = cv2.VideoCapture(str(video_path))
+        try:
+            if not cap.isOpened():
+                raise ValueError(f"Could not open segment video: {video_path}")
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if not isfinite(fps) or fps <= 0:
+                raise ValueError(f"Invalid FPS {fps!r} for segment video: {video_path}")
+        finally:
+            cap.release()
+        segment_inputs.append((video_path.stem, landmark_path, fps))
+
     gesture_data = []
     gesture_names = []
     kinematic_features = []
-    # TODO - do we need pickle?
-    for lm_path in landmark_files:
-        gesture_name = lm_path.stem.replace(name_suffix, '')
+
+    for gesture_name, lm_path, fps in segment_inputs:
         try:
-            landmarks = np.load(str(lm_path), allow_pickle=True)
+            landmarks = np.load(str(lm_path), allow_pickle=True) # TODO - do we need pickle?
             landmarks = prepare_upper_limb_landmarks(landmarks, max_gap=max_gap)
             features = extract_upper_limb_features(landmarks, max_gap=max_gap)
             kin_features = compute_kinematic_features(
@@ -162,8 +177,9 @@ def compute_gesture_kinematics_dtw(
     } for f in kinematic_features])
     
     # Save results
-    matrix_path = output_folder / "dtw_distances.csv"
-    features_path = output_folder / "kinematic_features.csv"
+    analysis_folder.mkdir(parents=True, exist_ok=True)
+    matrix_path = analysis_folder / "dtw_distances.csv"
+    features_path = analysis_folder / "kinematic_features.csv"
     
     np.savetxt(matrix_path, dtw_dist, delimiter=',')
     features_df.to_csv(features_path, index=False)

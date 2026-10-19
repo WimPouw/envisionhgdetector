@@ -6,7 +6,33 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Literal
-from .state import Labels, SegmentColumns, PredictionColumns
+from .state import DIRS, Labels, SegmentColumns, PredictionColumns
+
+def filter_video_paths(
+    video_paths: list[Path],
+    video_scope: Literal["full", "segments"],
+) -> list[Path]:
+    """Select videos by exact segment folder name in their parent paths.
+
+    Includes all ancestors, so a search rooted inside a segments folder works.
+    The video filename itself is not used to determine its scope.
+    """
+    if video_scope not in ("full", "segments"):
+        raise ValueError("video_scope must be 'full' or 'segments'")
+
+    return [
+        path
+        for path in video_paths
+        if (DIRS.SEGMENTS in path.absolute().parent.parts)
+        == (video_scope == "segments")
+    ]
+
+def filter_segment_source_paths(video_paths: list[Path]) -> list[Path]:
+    """Select source clips named after their segment folder, excluding retracked videos."""
+    return [
+        path for path in filter_video_paths(video_paths, "segments")
+        if path.stem == path.parent.name
+    ]
 
 def create_segments(
     annotations: pd.DataFrame,

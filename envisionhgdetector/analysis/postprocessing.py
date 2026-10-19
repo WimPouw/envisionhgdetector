@@ -1,14 +1,16 @@
 
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 from .segments import cut_by_segments_batch, cut_by_segments
 from .pose_extraction import extract_pose_from_videos_batch, extract_pose_from_video
+from .dtw import compute_gesture_kinematics_dtw
 
 class PostProcessing:
     def __init__(self, data_folder: str):
         '''
         Args:
-            data_folder (str): Path to the folder where inference results are saved and analysis results will be saved.
+            data_folder (str): Results root containing per-video inference/ and postprocessing/ folders.
+                DTW analysis outputs use a separate analysis_folder.
         '''
         self.data_folder = Path(data_folder)
         if not self.data_folder.exists():
@@ -16,60 +18,92 @@ class PostProcessing:
 
     def cut_by_segments_batch(self, 
             videos_folder: Optional[str] = None,
-            video_pattern: Optional[str] = ".mp4"):
+            video_pattern: Optional[str] = ".mp4",
+            video_scope: Literal["full", "segments"] = "full"):
         '''
         Cuts all videos in the videos_folder (matching the video_pattern), and feature files in data folder into segments based on the matching segment files in data_folder.
         Args:
-            videos_folder (Optional[str]): Path to the folder containing original videos. If None, uses data_folder which stores labeled videos.
+            videos_folder (Optional[str]): Input folder. If None, searches data_folder for labeled full videos or segment videos.
             video_pattern (Optional[str]): Pattern to match video files (default is ".mp4").
+            video_scope: "full" excludes segment folders; "segments" includes only segment folders.
         '''
         cut_by_segments_batch(
             data_folder=self.data_folder,
             videos_folder=videos_folder,
             video_pattern=video_pattern,
+            video_scope=video_scope,
         )
 
-    def cut_by_segments(self, video_path: str, video_name: Optional[str] = None):
+    def compute_gesture_kinematics_dtw(self, max_gap: int = 3,
+            analysis_folder: str | Path | None = None):
+        """Compare retracked segments and save DTW distances and kinematics CSVs.
+
+        Args:
+            max_gap: Maximum consecutive missing frames allowed per coordinate.
+            analysis_folder: CSV output folder. Defaults to data_folder.parent / "analysis".
+
+        Returns:
+            DTW distance matrix, gesture names, and kinematic features DataFrame.
+            CSV files are saved in analysis_folder. Every segment video must have
+            retracked world landmarks before analysis starts.
+            Each segment video's frame rate is read automatically for kinematics.
+        """
+        return compute_gesture_kinematics_dtw(
+            data_folder=self.data_folder,
+            max_gap=max_gap,
+            analysis_folder=analysis_folder,
+        )
+
+    def cut_by_segments(self, video_path: str, video_name: Optional[str] = None,
+            video_scope: Literal["full", "segments"] = "full"):
         '''
         Cuts a video and feature file into segments based on the matching segment file in data_folder.
         Saves the segmented video and features in the data_folder.
         Args:
             video_path (str): Path to the video file to be segmented.
             video_name (Optional[str]): Name of the video (without extension). If None, the name is derived from the video_path.
+            video_scope: Required path scope; mismatches raise ValueError.
         '''
         if video_name is None:
             video_name = Path(video_path).stem
         cut_by_segments(
             video_name=video_name,
             video_path=video_path,
-            data_folder=self.data_folder
+            data_folder=self.data_folder,
+            video_scope=video_scope,
         )
 
     def extract_pose_from_videos_batch(self, 
             videos_folder: Optional[str] = None,
             video_pattern: Optional[str] = ".mp4",
-            blank_frame: bool = False):
+            blank_frame: bool = False,
+            video_scope: Literal["full", "segments"] = "segments"):
         '''
         Extracts pose from all videos in the videos_folder (matching the video_pattern) and saves the results in the output_folder.
         Args:
-            videos_folder (Optional[str]): Path to the folder containing original videos. If None, uses data_folder which stores labeled videos.
+            videos_folder (Optional[str]): Input folder. If None, searches data_folder for labeled full videos or segment videos.
             video_pattern (Optional[str]): Pattern to match video files (default is ".mp4").
-            blank_frame (bool): If True, a blank frame will be added to the beginning of each video.
+            blank_frame (bool): If True, draws detected poses on a blank background.
+            video_scope: "full" excludes segment folders; "segments" includes only segment folders.
         '''
         extract_pose_from_videos_batch(
             videos_folder=videos_folder,
             data_folder=self.data_folder,
             video_pattern=video_pattern,
-            blank_frame=blank_frame
+            blank_frame=blank_frame,
+            video_scope=video_scope,
         )
     
-    def extract_pose_from_video(self, video_path: str, video_name: Optional[str] = None, blank_frame: bool = False):
+    def extract_pose_from_video(self, video_path: str, video_name: Optional[str] = None,
+            blank_frame: bool = False,
+            video_scope: Literal["full", "segments"] = "segments"):
         '''
         Extracts pose from a single video and saves the results in the output_folder.
         Args:
             video_path (str): Path to the input video file.
             video_name (Optional[str]): Name of the video (without extension). If None, the name is derived from the video_path.
-            blank_frame (bool): If True, a blank frame will be added to the beginning of the video.
+            blank_frame (bool): If True, draws detected poses on a blank background.
+            video_scope: Required path scope; mismatches raise ValueError.
         '''
         if video_name is None:
             video_name = Path(video_path).stem
@@ -77,6 +111,6 @@ class PostProcessing:
             video_name=video_name,
             video_path=video_path,
             data_folder=self.data_folder,
-            blank_frame=blank_frame
+            blank_frame=blank_frame,
+            video_scope=video_scope,
         )
-            

@@ -4,33 +4,41 @@ import tempfile
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional
+from typing import Literal
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from envisionhgdetector.state import SegmentColumns
-from envisionhgdetector.utils import return_path
+from envisionhgdetector.utils import filter_segment_source_paths, filter_video_paths, return_path
 
-def cut_by_segments_batch(data_folder: str, video_pattern: str, videos_folder: str | None):
+def cut_by_segments_batch(
+    data_folder: str,
+    video_pattern: str,
+    videos_folder: str | None,
+    video_scope: Literal["full", "segments"] = "full",
+):
     '''
     Batch: Cuts videos and features into segments based on the matching segments files.
 
     Args:
-        videos_folder: Path to the input videos folder. If None then labeled videos in data_folder is used.
+        videos_folder: Input folder. If None, searches data_folder for labeled full videos or segment videos.
         data_folder: 
             - Path where segments and features files is stored. 
             - Path where segmented video and features will be saved.
         video_pattern: Pattern to match video files (ex: .mp4).
+        video_scope: "full" excludes segment folders; "segments" includes only segment folders.
     '''
+    filter_video_paths([], video_scope)  # Validate before discovering or processing videos.
     data_folder = Path(data_folder)
     if not data_folder.exists():
         raise ValueError(f"data folder does not exist: {data_folder}")
 
     remove_suffix = None
     if videos_folder is None:
-        # use labeled videos in data_folder
-        remove_suffix = "_labeled"
+        # Full videos are labeled; generated segment videos have no labeled suffix.
+        remove_suffix = "_labeled" if video_scope == "full" else None
+        search_pattern = f"*{remove_suffix}.mp4" if remove_suffix else f"*{video_pattern}"
         video_paths = [
             path
-            for path in data_folder.rglob(f"*{remove_suffix}.mp4")
+            for path in data_folder.rglob(search_pattern)
             if path.is_file()
         ]
     else:
@@ -44,7 +52,9 @@ def cut_by_segments_batch(data_folder: str, video_pattern: str, videos_folder: s
             if path.is_file()
         ]
 
-    for video_path in video_paths:
+    if video_scope == "segments":
+        video_paths = filter_segment_source_paths(video_paths)
+    for video_path in filter_video_paths(video_paths, video_scope):
         video_name = video_path.stem
         if remove_suffix and video_name.endswith(remove_suffix):
             video_name = video_name[:-len(remove_suffix)]
@@ -53,22 +63,31 @@ def cut_by_segments_batch(data_folder: str, video_pattern: str, videos_folder: s
                 video_name=video_name,
                 video_path=str(video_path),
                 data_folder=str(data_folder),
+                video_scope=video_scope,
             )
         except Exception as e:
             print(f"Error processing video {video_path}: {e}")
             continue
 
-def cut_by_segments(video_name: str, video_path: str, data_folder: str):
+def cut_by_segments(
+    video_name: str,
+    video_path: str,
+    data_folder: str,
+    video_scope: Literal["full", "segments"] = "full",
+):
     """
     Cuts a single video and features file into segments based on the matching the segment file.
     
     Args:
         video_name: Name of the video (without extension)
         video_path: Path to the input video file
+        video_scope: Required path scope; mismatches raise ValueError.
         data_folder: 
             - Path where segments and features files is stored. 
             - Path where segmented video and features will be saved.
     """
+    if not filter_video_paths([Path(video_path)], video_scope):
+        raise ValueError(f"Video path does not match video_scope={video_scope!r}: {video_path}")
     segments_csv_path = return_path("segments", data_folder, video_name)
     features_npy_path = return_path("features", data_folder, video_name)
     if segments_csv_path is None:
