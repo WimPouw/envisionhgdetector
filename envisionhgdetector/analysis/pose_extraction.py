@@ -198,22 +198,22 @@ def extract_pose_from_video(
 
     if world_landmarks:
         smoothed_world, world_visibility = _smooth_results(world_landmarks, world_visibility_scores, world_frame_indices, total_frames, n_coords=3)
-        landmarks_save_path = return_path("world_landmarks", data_folder, video_name)
+        landmarks_save_path = return_path("world_landmarks", data_folder, video_name, **path_kwargs)
         if landmarks_save_path is None:
             raise ValueError(f"Could not determine output path for world landmarks: {video_name}")
         np.save(landmarks_save_path, smoothed_world)
-        visibility_save_path = return_path("world_visibility_scores", data_folder, video_name)
+        visibility_save_path = return_path("world_visibility_scores", data_folder, video_name, **path_kwargs)
         if visibility_save_path is None:
             raise ValueError(f"Could not determine output path for visibility scores: {video_name}")
         np.save(visibility_save_path, world_visibility)
     if image_landmarks:
         smoothed_image, image_visibility = _smooth_results(image_landmarks, image_visibility_scores, image_frame_indices, total_frames, n_coords=2)
-        image_landmarks_save_path = return_path("image_landmarks", data_folder, video_name)
+        image_landmarks_save_path = return_path("image_landmarks", data_folder, video_name, **path_kwargs)
         if image_landmarks_save_path is None:
             raise ValueError(f"Could not determine output path for image landmarks: {video_name}")
         np.save(image_landmarks_save_path, smoothed_image)
         
-        visibility_save_path = return_path("image_visibility_scores", data_folder, video_name)
+        visibility_save_path = return_path("image_visibility_scores", data_folder, video_name, **path_kwargs)
         if visibility_save_path is None:
             raise ValueError(f"Could not determine output path for visibility scores: {video_name}")
         np.save(visibility_save_path, image_visibility)
