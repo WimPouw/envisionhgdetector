@@ -1,3 +1,4 @@
+# from parent folder: python -m tests.test_inference
 import numpy as np
 from pathlib import Path
 
@@ -5,26 +6,31 @@ from envisionhgdetector import GestureDetector, CombinedGestureDetector, Realtim
 from envisionhgdetector import label_video
 
 def main():
-    video_path = Path("path/to/input/video.mp4")  # Replace with the desired video file path
-    npz_path = Path("path/to/input/data.npz")
+    # ------------------- Test Video -------------------
+    video_folder = Path("path/to/video_folder")  # Replace with the desired video folder path
+    if not video_folder.exists():
+        raise FileNotFoundError(f"Video folder {video_folder} does not exist.")
 
-    if not video_path.exists():
-        raise FileNotFoundError(f"Video file {video_path} does not exist.")
-    if not npz_path.exists():
-        raise FileNotFoundError(f"NPZ file {npz_path} does not exist.")
-
-    output_folder = Path("path/to/output/folder")  # Replace with the desired output folder path
+    output_folder = Path("path/to/output_folder")  # Replace with the desired output folder path
     output_folder.mkdir(parents=True, exist_ok=True)
 
-    # Uncomment if you only want to test one functionality.
-    # video_path = None # skip video testing for now
-    # npz_path = None # skip npz testing for now
+    video_paths = list(video_folder.glob("*.mp4")) # find all the videos in folder
+    for video_path in video_paths:
+        test_gesture_detector(output_folder, model_name="cnn_b", video_path=video_path)
+        test_gesture_detector(output_folder, model_name="lightgbm", video_path=video_path)
+        test_combined_gesture_detector(output_folder, video_path=video_path)
 
-    # Comment any line to skip the detector
-    test_gesture_detector(output_folder, model_name="cnn_b", video_path=video_path, npz_path=npz_path)
-    test_gesture_detector(output_folder, model_name="lightgbm", video_path=video_path, npz_path=npz_path)
-    test_combined_gesture_detector(output_folder, video_path=video_path, npz_path=npz_path)
+    # ------------------- Test NPZ -------------------
+    npz_path = Path("path/to/data.npz")
+    if npz_path is not None and not npz_path.exists():
+        raise FileNotFoundError(f"NPZ file {npz_path} does not exist.")
+    test_gesture_detector(output_folder, model_name="cnn_b", npz_path=npz_path)
+    test_gesture_detector(output_folder, model_name="lightgbm", npz_path=npz_path)
+    test_combined_gesture_detector(output_folder, npz_path=npz_path)
+
+    # ------------------- Test Realtime -------------------
     test_realtime_gesture_detector()
+
 
 def test_video(video_path: str, output_folder: str, detector, name:str):
     print(f"testing video: {video_path} with detector: {name} saving results to: {output_folder}")
@@ -33,7 +39,10 @@ def test_video(video_path: str, output_folder: str, detector, name:str):
         output_folder,
     ) 
     output_folder = Path(output_folder) / video_path.stem
-    label_video(video_path=video_path, video_output_folder=str(output_folder))
+    label_video(
+        video_path=video_path,
+        video_output_folder=str(output_folder),
+    )
 
 def test_npz(npz_path: str, output_folder: str, detector, name:str):
     print(f"testing npz: {npz_path} with detector: {name} saving results to: {output_folder}")
@@ -57,27 +66,36 @@ def test_npz(npz_path: str, output_folder: str, detector, name:str):
     (output_folder / npz_path.stem).mkdir(parents=True, exist_ok=True)
 
     results_df = detector.predict_labels_from_landmarks(stripped_features, fps=fps)
-    results_df.to_csv(output_folder / npz_path.stem / f"{npz_path.stem}_predictions.csv", index=False) # save results to csv
+    results_df.to_csv(output_folder / npz_path.stem / f"{npz_path.stem}_predictions.csv", index=False)
 
 def test_combined_gesture_detector(output_folder: str, video_path: str = None, npz_path: str = None):
     output_folder = output_folder / "combined_results"
-    output_folder.mkdir(parents=True, exist_ok=True)
+    output_folder_video = output_folder / "video"
+    output_folder_npz = output_folder / "npz"
+
+    output_folder_video.mkdir(parents=True, exist_ok=True)
+    output_folder_npz.mkdir(parents=True, exist_ok=True)
 
     detector = CombinedGestureDetector()
     if video_path:
-        test_video(video_path, output_folder, detector, name="Combined")
+        test_video(video_path, output_folder_video, detector, name="Combined")
     if npz_path:
-        test_npz(npz_path, output_folder, detector, name="Combined")
+        test_npz(npz_path, output_folder_npz, detector, name="Combined")
 
 def test_gesture_detector(output_folder: str, model_name: str, video_path: str = None, npz_path: str = None):
     output_folder = output_folder / model_name
-    output_folder.mkdir(parents=True, exist_ok=True)
+    output_folder_video = output_folder / "video"
+    output_folder_npz = output_folder / "npz"
 
+    output_folder_video.mkdir(parents=True, exist_ok=True)
+    output_folder_npz.mkdir(parents=True, exist_ok=True)
+
+    # running on default thresholds
     detector = GestureDetector(model_type=model_name)
     if video_path:
-        test_video(video_path, output_folder, detector, name=model_name)
+        test_video(video_path, output_folder_video, detector, name=model_name)
     if npz_path:
-        test_npz(npz_path, output_folder, detector, name=model_name)
+        test_npz(npz_path, output_folder_npz, detector, name=model_name)
 
 def test_realtime_gesture_detector():
     detector = RealtimeGestureDetector(
