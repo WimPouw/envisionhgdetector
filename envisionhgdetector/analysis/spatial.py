@@ -2,30 +2,32 @@
 
 import statistics
 
+from .mapping import JointNames, joint_map
+
 
 def define_mcneillian_grid(df, frame):
     """Define the grid based on original implementation."""
-    bodycent = df['Neck'][frame][1] - (df['Neck'][frame][1] - df['MidHip'][frame][1])/2
-    face_width = (df['LEye'][frame][0] - df['REye'][frame][0])*2
+    bodycent = df[JointNames.NECK][frame][1] - (df[JointNames.NECK][frame][1] - df[JointNames.MID_HIP][frame][1])/2
+    face_width = (df[JointNames.LEFT_EYE][frame][0] - df[JointNames.RIGHT_EYE][frame][0])*2
     # Use shoulders instead of hips for more reliable body width
-    body_width = df['LShoulder'][frame][0] - df['RShoulder'][frame][0]
+    body_width = df[JointNames.LEFT_SHOULDER][frame][0] - df[JointNames.RIGHT_SHOULDER][frame][0]
 
     # Center-center boundaries
-    cc_xmin = df['RShoulder'][frame][0]
-    cc_xmax = df['LShoulder'][frame][0]
+    cc_xmin = df[JointNames.RIGHT_SHOULDER][frame][0]
+    cc_xmax = df[JointNames.LEFT_SHOULDER][frame][0]
     cc_len = cc_xmax - cc_xmin
     cc_ymin = bodycent - cc_len/2
     cc_ymax = bodycent + cc_len/2
 
     # Center boundaries
-    c_xmin = df['RShoulder'][frame][0] - body_width/2
-    c_xmax = df['LShoulder'][frame][0] + body_width/2
+    c_xmin = df[JointNames.RIGHT_SHOULDER][frame][0] - body_width/2
+    c_xmax = df[JointNames.LEFT_SHOULDER][frame][0] + body_width/2
     c_len = c_xmax - c_xmin
     c_ymin = bodycent - c_len/2
     c_ymax = bodycent + c_len/2
 
     # Periphery boundaries
-    p_ymax = df['LEye'][frame][1] + (df['LEye'][frame][1] - df['Nose'][frame][1])
+    p_ymax = df[JointNames.LEFT_EYE][frame][1] + (df[JointNames.LEFT_EYE][frame][1] - df[JointNames.NOSE][frame][1])
     p_ymin = bodycent - (p_ymax - bodycent)
     p_xmin = c_xmin - face_width
     p_xmax = c_xmax + face_width
@@ -52,15 +54,15 @@ def calc_mcneillian_space(df, visibility=None, visibility_threshold=0.5):
     Space_L = []
     Space_R = []
     
-    for frame in range(len(df['MidHip'])):
+    for frame in range(len(df[JointNames.MID_HIP])):
         try:
             # Get grid boundaries
             cc_xmin, cc_xmax, cc_ymin, cc_ymax, c_xmin, c_xmax, c_ymin, c_ymax, p_xmin, p_xmax, p_ymin, p_ymax = \
                 define_mcneillian_grid(df, frame)
             
             # Process left hand if visible
-            if visibility is None or visibility[frame, 15] >= visibility_threshold:
-                left_hand = df['L_Hand'][frame]
+            if visibility is None or visibility[frame, joint_map[JointNames.LEFT_WRIST]] >= visibility_threshold:
+                left_hand = df[JointNames.LEFT_WRIST][frame]
                 x, y = left_hand[0], left_hand[1]
                 
                 # Assign zone with subsections
@@ -111,8 +113,8 @@ def calc_mcneillian_space(df, visibility=None, visibility_threshold=0.5):
                             Space_L.append(45)
             
             # Process right hand similarly
-            if visibility is None or visibility[frame, 16] >= visibility_threshold:
-                right_hand = df['R_Hand'][frame]
+            if visibility is None or visibility[frame, joint_map[JointNames.RIGHT_WRIST]] >= visibility_threshold:
+                right_hand = df[JointNames.RIGHT_WRIST][frame]
                 x, y = right_hand[0], right_hand[1]
                 
                 # Same zone assignment logic for right hand
@@ -197,22 +199,22 @@ def calc_volume_size(df, hand):
     """
     # Initialize boundaries from first frame
     if hand == 'B':
-        x_max = max([df['R_Hand'][0][0], df['L_Hand'][0][0]])
-        x_min = min([df['R_Hand'][0][0], df['L_Hand'][0][0]])
-        y_max = max([df['R_Hand'][0][1], df['L_Hand'][0][1]])  # Fixed y coordinate selection
-        y_min = min([df['R_Hand'][0][1], df['L_Hand'][0][1]])  # Fixed y coordinate selection
-        if len(df['R_Hand'][0]) > 2:  # If 3D
-            z_max = max([df['R_Hand'][0][2], df['L_Hand'][0][2]])
-            z_min = min([df['R_Hand'][0][2], df['L_Hand'][0][2]])
+        x_max = max([df[JointNames.RIGHT_WRIST][0][0], df[JointNames.LEFT_WRIST][0][0]])
+        x_min = min([df[JointNames.RIGHT_WRIST][0][0], df[JointNames.LEFT_WRIST][0][0]])
+        y_max = max([df[JointNames.RIGHT_WRIST][0][1], df[JointNames.LEFT_WRIST][0][1]])  # Fixed y coordinate selection
+        y_min = min([df[JointNames.RIGHT_WRIST][0][1], df[JointNames.LEFT_WRIST][0][1]])  # Fixed y coordinate selection
+        if len(df[JointNames.RIGHT_WRIST][0]) > 2:  # If 3D
+            z_max = max([df[JointNames.RIGHT_WRIST][0][2], df[JointNames.LEFT_WRIST][0][2]])
+            z_min = min([df[JointNames.RIGHT_WRIST][0][2], df[JointNames.LEFT_WRIST][0][2]])
     else:
-        hand_str = hand + '_Hand'
+        hand_str = (JointNames.LEFT_WRIST if hand == 'L' else JointNames.RIGHT_WRIST)
         x_min = x_max = df[hand_str][0][0]
         y_min = y_max = df[hand_str][0][1]  # Fixed y coordinate selection
         if len(df[hand_str][0]) > 2:  # If 3D
             z_min = z_max = df[hand_str][0][2]
 
     # Process all frames to find extremes
-    hand_list = ['R_Hand', 'L_Hand'] if hand == 'B' else [hand + '_Hand']
+    hand_list = [JointNames.RIGHT_WRIST, JointNames.LEFT_WRIST] if hand == 'B' else [(JointNames.LEFT_WRIST if hand == 'L' else JointNames.RIGHT_WRIST)]
     
     for frame in range(len(df)):
         for hand_idx in hand_list:
@@ -242,23 +244,23 @@ def calc_vert_height(df, visibility=None, visibility_threshold=0.5):
     H_L = []
     H_R = []
     
-    for frame in range(len(df['MidHip'])):  # Iterate using range instead of index
+    for frame in range(len(df[JointNames.MID_HIP])):  # Iterate using range instead of index
         # Get reference points for normalization
         try:
             # Note: MediaPipe uses y-down coordinate system, so smaller y values are higher
-            mid_hip_y = df['MidHip'][frame][1]
-            neck_y = df['Neck'][frame][1]
-            nose_y = df['Nose'][frame][1]
-            left_eye_y = df['LEye'][frame][1]
-            right_eye_y = df['REye'][frame][1]
+            mid_hip_y = df[JointNames.MID_HIP][frame][1]
+            neck_y = df[JointNames.NECK][frame][1]
+            nose_y = df[JointNames.NOSE][frame][1]
+            left_eye_y = df[JointNames.LEFT_EYE][frame][1]
+            right_eye_y = df[JointNames.RIGHT_EYE][frame][1]
             
             # Calculate body-scaled reference heights
             body_height = mid_hip_y - neck_y
             head_height = neck_y - nose_y
             
             # Process left hand if visible
-            if visibility is None or visibility[frame, 15] >= visibility_threshold:
-                left_hand_y = df['L_Hand'][frame][1]
+            if visibility is None or visibility[frame, joint_map[JointNames.LEFT_WRIST]] >= visibility_threshold:
+                left_hand_y = df[JointNames.LEFT_WRIST][frame][1]
                 
                 # Normalize height relative to body proportions
                 if left_hand_y >= mid_hip_y:  # Below hip
@@ -278,8 +280,8 @@ def calc_vert_height(df, visibility=None, visibility_threshold=0.5):
                 H_L.append(0)
                 
             # Process right hand if visible
-            if visibility is None or visibility[frame, 16] >= visibility_threshold:
-                right_hand_y = df['R_Hand'][frame][1]
+            if visibility is None or visibility[frame, joint_map[JointNames.RIGHT_WRIST]] >= visibility_threshold:
+                right_hand_y = df[JointNames.RIGHT_WRIST][frame][1]
                 
                 # Normalize height relative to body proportions
                 if right_hand_y >= mid_hip_y:  # Below hip

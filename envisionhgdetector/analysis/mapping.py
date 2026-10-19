@@ -27,19 +27,38 @@ RIGHT_FINGER_INDICES = tuple(
 )
 UPPER_LIMB_INDICES = tuple(UPPER_LIMB_LANDMARKS.values())
 
-# Define mapping from joint names to MediaPipe indices
+class JointNames:
+    """Canonical DataFrame column names shared by gesture analysis helpers."""
+
+    LEFT_WRIST = "L_Wrist"
+    RIGHT_WRIST = "R_Wrist"
+    LEFT_ELBOW = "L_Elbow"
+    RIGHT_ELBOW = "R_Elbow"
+    LEFT_SHOULDER = "L_Shoulder"
+    RIGHT_SHOULDER = "R_Shoulder"
+    NECK = "Neck"
+    MID_HIP = "MidHip"
+    LEFT_EYE = "L_Eye"
+    RIGHT_EYE = "R_Eye"
+    NOSE = "Nose"
+    LEFT_HIP = "L_Hip"
+    RIGHT_HIP = "R_Hip"
+
+
+# Existing index assignments are preserved here. Neck and MidHip are legacy
+# references to individual hips, not derived shoulder/hip midpoints.
 joint_map = {
-    'L_Wrist': 15,      # Left wrist
-    'R_Wrist': 16,      # Right wrist
-    'L_Elbow': 13,        # Left elbow
-    'R_Elbow': 14,        # Right elbow
-    'L_Shoulder': 11,   # Left shoulder
-    'R_Shoulder': 12,   # Right shoulder
-    'Neck': 23,        # Neck (approximated as top of spine)
-    'MidHip': 24,      # Mid hip
-    'L_Eye': 2,         # Left eye
-    'R_Eye': 5,         # Right eye
-    'Nose': 0,         # Nose
-    'L_Hip': 23,        # Left hip
-    'R_Hip': 24         # Right hip
+    JointNames.LEFT_WRIST: UPPER_LIMB_LANDMARKS["left_wrist"],
+    JointNames.RIGHT_WRIST: UPPER_LIMB_LANDMARKS["right_wrist"],
+    JointNames.LEFT_ELBOW: UPPER_LIMB_LANDMARKS["left_elbow"],
+    JointNames.RIGHT_ELBOW: UPPER_LIMB_LANDMARKS["right_elbow"],
+    JointNames.LEFT_SHOULDER: UPPER_LIMB_LANDMARKS["left_shoulder"],
+    JointNames.RIGHT_SHOULDER: UPPER_LIMB_LANDMARKS["right_shoulder"],
+    JointNames.NECK: 23,
+    JointNames.MID_HIP: 24,
+    JointNames.LEFT_EYE: 2,
+    JointNames.RIGHT_EYE: 5,
+    JointNames.NOSE: 0,
+    JointNames.LEFT_HIP: 23,
+    JointNames.RIGHT_HIP: 24,
 }

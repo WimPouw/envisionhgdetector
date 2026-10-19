@@ -1,6 +1,8 @@
 """Kinematic calculations for tracked gestures."""
 
 import statistics
+
+from .mapping import JointNames
 from typing import NamedTuple, Tuple
 
 import numpy as np
@@ -166,9 +168,9 @@ def calc_holds(df, subslocs_L, subslocs_R, FPS, hand):
             subslocs_R = np.array([0])
             
         # Calculate hold features with safety checks
-        _, RE_S = calculate_distance(df["RElb"], FPS)
+        _, RE_S = calculate_distance(df[JointNames.RIGHT_ELBOW], FPS)
         GERix = find_movepauses(RE_S)
-        _, RH_S = calculate_distance(df["R_Hand"], FPS)
+        _, RH_S = calculate_distance(df[JointNames.RIGHT_WRIST], FPS)
         GRix = find_movepauses(RH_S)
         GFRix = GRix  # Default to hand if no finger data
 
@@ -184,9 +186,9 @@ def calc_holds(df, subslocs_L, subslocs_R, FPS, hand):
                         GR.append(handhold)
 
         # Process left side
-        _, LE_S = calculate_distance(df["LElb"], FPS)
+        _, LE_S = calculate_distance(df[JointNames.LEFT_ELBOW], FPS)
         GELix = find_movepauses(LE_S)
-        _, LH_S = calculate_distance(df["L_Hand"], FPS)
+        _, LH_S = calculate_distance(df[JointNames.LEFT_WRIST], FPS)
         GLix = find_movepauses(LH_S)
         GFLix = GLix  # Default to hand if no finger data
 

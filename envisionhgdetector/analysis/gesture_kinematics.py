@@ -5,7 +5,7 @@ import pandas as pd
 from typing import List
 from dataclasses import dataclass
 
-from .mapping import joint_map
+from .mapping import JointNames, joint_map
 from .kinematics import calc_holds, compute_limb_kinematics
 from .spatial import calc_mcneillian_space, calc_volume_size, calc_vert_height
 
@@ -65,13 +65,12 @@ def compute_kinematic_features(
     """
     # Convert landmarks to DataFrame format first
     df = pd.DataFrame()
-    for joint in ['L_Wrist', 'R_Wrist', 'L_Elbow', 'R_Elbow', 'L_Shoulder', 'R_Shoulder', 
-                 'Neck', 'MidHip', 'L_Eye', 'R_Eye', 'Nose']:
+    for joint in joint_map:
         df[joint] = [landmarks[i, joint_map[joint]] for i in range(len(landmarks))]
     
     # Analyze movement for this specific gesture
-    left_hand = landmarks[:, joint_map['L_Wrist']]  # Left wrist
-    right_hand = landmarks[:, joint_map['R_Wrist']]  # Right wrist
+    left_hand = landmarks[:, joint_map[JointNames.LEFT_WRIST]]  # Left wrist
+    right_hand = landmarks[:, joint_map[JointNames.RIGHT_WRIST]]  # Right wrist
     
     # Calculate total movement (speed) for each hand
     left_speeds = np.linalg.norm(np.diff(left_hand, axis=0), axis=1)
@@ -80,12 +79,12 @@ def compute_kinematic_features(
     # Apply visibility masking if available
     if visibility is not None:
         visibility_threshold = 0.5
-        left_vis_mask = visibility[:-1, joint_map['L_Wrist']] >= visibility_threshold
-        right_vis_mask = visibility[:-1, joint_map['R_Wrist']] >= visibility_threshold
+        left_vis_mask = visibility[:-1, joint_map[JointNames.LEFT_WRIST]] >= visibility_threshold
+        right_vis_mask = visibility[:-1, joint_map[JointNames.RIGHT_WRIST]] >= visibility_threshold
         
         # Count frames where each hand is visible
-        left_visible_frames = np.sum(visibility[:, joint_map['L_Wrist']] >= visibility_threshold)
-        right_visible_frames = np.sum(visibility[:, joint_map['R_Wrist']] >= visibility_threshold)
+        left_visible_frames = np.sum(visibility[:, joint_map[JointNames.LEFT_WRIST]] >= visibility_threshold)
+        right_visible_frames = np.sum(visibility[:, joint_map[JointNames.RIGHT_WRIST]] >= visibility_threshold)
         
         # Apply visibility masks
         left_speeds = left_speeds * left_vis_mask
@@ -103,8 +102,8 @@ def compute_kinematic_features(
     print(f"Gesture {gesture_id}: {active_hand} hand showed more movement")
     
     # Get keys for the active hand
-    hand_key = 'L_Wrist' if active_hand == 'L' else 'R_Wrist'
-    elbow_key = 'L_Elbow' if active_hand == 'L' else 'R_Elbow'
+    hand_key = JointNames.LEFT_WRIST if active_hand == 'L' else JointNames.RIGHT_WRIST
+    elbow_key = JointNames.LEFT_ELBOW if active_hand == 'L' else JointNames.RIGHT_ELBOW
     
     # Calculate spatial features
     mcn_space = calc_mcneillian_space(df, visibility)
