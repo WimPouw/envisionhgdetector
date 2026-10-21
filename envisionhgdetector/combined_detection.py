@@ -22,8 +22,6 @@ class CombinedGestureDetector:
     """
     A combined gesture detector that merges predictions from CNN and LightGBM models.
 
-    NOTE: Post-processing wrappers currently delegate through the CNN detector
-    and remain CNN-focused in naming/configuration.
     """
     def __init__(self,
         cnn_weight: float = 0.5,
@@ -239,35 +237,6 @@ class CombinedGestureDetector:
             self.cnn_detector.model.reset_buffer()
         if hasattr(self.lgbm_detector.model, "reset_buffer"):
             self.lgbm_detector.model.reset_buffer()
-
-    def retrack_gestures(
-        self,
-        input_folder: str,
-        output_folder: str,
-    ) -> Dict[str, str]:
-        """Retrack gesture segments using the existing detector utility."""
-        return self.cnn_detector.retrack_gestures(input_folder, output_folder)
-
-    def analyze_dtw_kinematics(
-        self,
-        landmarks_folder: str,
-        output_folder: str,
-        fps: float = 25.0,
-    ) -> Dict[str, str]:
-        """Run DTW and kinematic analysis using the existing utility."""
-        return self.cnn_detector.analyze_dtw_kinematics(
-            landmarks_folder,
-            output_folder,
-            fps,
-        )
-
-    def prepare_gesture_dashboard(
-        self,
-        data_folder: str,
-        assets_folder: Optional[str] = None,
-    ) -> None:
-        """Prepare the existing gesture dashboard for combined outputs."""
-        self.cnn_detector.prepare_gesture_dashboard(data_folder, assets_folder)
 
     def combine_frame_predictions(
         self,
