@@ -38,10 +38,9 @@ def test_video(video_path: str, output_folder: str, detector, name:str):
         video_path,
         output_folder,
     ) 
-    output_folder = Path(output_folder) / video_path.stem
     label_video(
         video_path=video_path,
-        video_output_folder=str(output_folder),
+        output_folder=str(output_folder),
     )
 
 def test_npz(npz_path: str, output_folder: str, detector, name:str):
