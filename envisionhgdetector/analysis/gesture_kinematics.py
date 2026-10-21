@@ -12,7 +12,6 @@ from .spatial import calc_mcneillian_space, calc_volume_size, calc_vert_height
 @dataclass
 class KinematicFeatures:
     """Data class to store comprehensive kinematic features for a gesture."""
-    gesture_id: str
     video_id: str
     
     # Which hand was more active in this specific gesture
@@ -56,7 +55,6 @@ def compute_kinematic_features(
     landmarks: np.ndarray,
     visibility: np.ndarray = None,
     fps: float = 25.0,
-    gesture_id: str = "",
     video_id: str = ""
 ) -> KinematicFeatures:
     """
@@ -99,7 +97,7 @@ def compute_kinematic_features(
     
     # Select the more active hand for this specific gesture
     active_hand = 'L' if left_total > right_total else 'R'
-    print(f"Gesture {gesture_id}: {active_hand} hand showed more movement")
+    print(f"Gesture {video_id}: {active_hand} hand showed more movement")
     
     # Get keys for the active hand
     hand_key = JointNames.LEFT_WRIST if active_hand == 'L' else JointNames.RIGHT_WRIST
@@ -141,7 +139,6 @@ def compute_kinematic_features(
     def safe_norm(arr, axis=1): return np.linalg.norm(arr, axis=axis) if len(arr) > 0 else np.zeros(1)
     
     return KinematicFeatures(
-        gesture_id=gesture_id,
         video_id=video_id,
         active_hand=active_hand,
         

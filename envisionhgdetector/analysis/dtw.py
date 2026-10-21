@@ -28,9 +28,9 @@ def create_gesture_visualization(
     )
     projection = reducer.fit_transform(dtw_matrix)
     viz_df = pd.DataFrame({
+        "video_id": gesture_names,
         "x": projection[:, 0],
         "y": projection[:, 1],
-        "gesture": gesture_names,
     })
     viz_df.to_csv(return_path("gesture_visualization", output_folder), index=False)
 
@@ -105,7 +105,6 @@ def compute_gesture_kinematics_dtw(
             kin_features = compute_kinematic_features(
                 landmarks=landmarks,
                 fps=fps,
-                gesture_id=gesture_name,
                 video_id=gesture_name
             )
         except (ValueError, TypeError, IndexError, OSError) as exc:
@@ -141,7 +140,6 @@ def compute_gesture_kinematics_dtw(
     
     # Convert kinematic features to DataFrame
     features_df = pd.DataFrame([{
-        'gesture_id': f.gesture_id,
         'video_id': f.video_id,
         'active_hand': f.active_hand,
         'space_use': f.space_use,
@@ -175,7 +173,7 @@ def compute_gesture_kinematics_dtw(
     matrix_path = return_path("dtw_distances", data_folder)
     features_path = return_path("kinematic_features", data_folder)
     
-    np.savetxt(matrix_path, dtw_dist, delimiter=',')
+    np.save(matrix_path, np.ascontiguousarray(dtw_dist), allow_pickle=False)
     features_df.to_csv(features_path, index=False)
     
     return dtw_dist, gesture_names, features_df

@@ -34,14 +34,14 @@ class PostProcessing:
         )
 
     def compute_gesture_kinematics_dtw(self, max_gap: int = 3):
-        """Compare retracked segments and save DTW distances and kinematics CSVs.
+        """Compare retracked segments and save the DTW NPY matrix and kinematics CSV.
 
         Args:
             max_gap: Maximum consecutive missing frames allowed per coordinate.
 
         Returns:
             DTW distance matrix, gesture names, and kinematic features DataFrame.
-            CSV files are saved under data_folder/analysis/. Every segment video must have
+            Analysis files are saved under data_folder/analysis/. Every segment video must have
             retracked world landmarks before analysis starts.
             Each segment video's frame rate is read automatically for kinematics.
         """

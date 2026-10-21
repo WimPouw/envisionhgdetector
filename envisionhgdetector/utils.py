@@ -150,7 +150,7 @@ def return_path(output_type: str, output_folder: str | Path, video_name: str | N
             rendered videos ("labeled_video", "comparison_video", "grid_video", "grid_gif"), retracking outputs
             ("retracked_video", "world_landmarks", "world_visibility_scores",
             "image_landmarks", "image_visibility_scores"), or segment outputs
-            ("segment_videos", "segment_features"), analysis CSVs
+            ("segment_videos", "segment_features"), analysis files
             ("dtw_distances", "kinematic_features", "gesture_visualization"),
             or directories ("videos_folder", "video_folder", "analysis_folder").
         output_folder: Dataset output root containing videos/ and analysis/.
@@ -172,7 +172,8 @@ def return_path(output_type: str, output_folder: str | Path, video_name: str | N
     analysis_types = {"dtw_distances", "kinematic_features", "gesture_visualization"}
     if output_type in analysis_types or output_type == "analysis_folder":
         folder = output_folder / DIRS.ANALYSIS
-        target = folder if output_type == "analysis_folder" else folder / f"{output_type}.csv"
+        extension = ".npy" if output_type == "dtw_distances" else ".csv"
+        target = folder if output_type == "analysis_folder" else folder / f"{output_type}{extension}"
         if create_parents:
             (target if output_type == "analysis_folder" else target.parent).mkdir(parents=True, exist_ok=True)
         return str(target)
