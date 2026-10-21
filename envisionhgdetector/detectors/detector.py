@@ -69,8 +69,6 @@ class GestureDetector():
         
         output_folder.mkdir(parents=True, exist_ok=True)
         video_name = video_path.stem
-        video_output_folder = output_folder / video_name
-        video_output_folder.mkdir(parents=True, exist_ok=True)
 
         elan_save_path = Path(return_path("elan", output_folder, video_name))
         segments_save_path = Path(return_path("segments", output_folder, video_name))

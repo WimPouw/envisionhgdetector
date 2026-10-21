@@ -37,9 +37,10 @@ def extract_pose_from_videos_batch(
         # Full videos are labeled; generated segment videos have no labeled suffix.
         remove_suffix = "_labeled" if video_scope == "full" else None
         search_pattern = f"*{remove_suffix}.mp4" if remove_suffix else f"*{video_pattern}"
+        video_folder = Path(return_path("videos_folder", data_folder, create_parents=False))
         video_paths = [
             path
-            for path in data_folder.rglob(search_pattern)
+            for path in video_folder.rglob(search_pattern)
             if path.is_file()
         ]
     else:

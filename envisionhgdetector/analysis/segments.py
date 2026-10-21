@@ -36,9 +36,10 @@ def cut_by_segments_batch(
         # Full videos are labeled; generated segment videos have no labeled suffix.
         remove_suffix = "_labeled" if video_scope == "full" else None
         search_pattern = f"*{remove_suffix}.mp4" if remove_suffix else f"*{video_pattern}"
+        video_folder = Path(return_path("videos_folder", data_folder, create_parents=False))
         video_paths = [
             path
-            for path in data_folder.rglob(search_pattern)
+            for path in video_folder.rglob(search_pattern)
             if path.is_file()
         ]
     else:
@@ -88,8 +89,8 @@ def cut_by_segments(
     """
     if not filter_video_paths([Path(video_path)], video_scope):
         raise ValueError(f"Video path does not match video_scope={video_scope!r}: {video_path}")
-    segments_csv_path = return_path("segments", data_folder, video_name)
-    features_npy_path = return_path("features", data_folder, video_name)
+    segments_csv_path = return_path("segments", data_folder, video_name, create_parents=False)
+    features_npy_path = return_path("features", data_folder, video_name, create_parents=False)
     if segments_csv_path is None:
         raise ValueError(f"Could not find segments CSV for video: {video_name}")
     if features_npy_path is None:

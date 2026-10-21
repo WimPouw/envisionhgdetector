@@ -13,7 +13,7 @@ from .helpers import get_label_at_time, get_confidence_window, validate_predicti
 
 def label_video_batch(
     videos_input_folder: str,
-    videos_output_folder: str,
+    output_folder: str,
     plot_confidence: Optional[bool] = True, # predictions_df is required
     target_fps: Optional[float] = None,
     motion_threshold: Optional[float] = None,
@@ -21,28 +21,29 @@ def label_video_batch(
     window_duration: Optional[float] = None,
     video_extension: Optional[str] = ".mp4"
 ):
+    """Render input videos using inference saved beneath the dataset output root."""
     videos_input_folder = Path(videos_input_folder)
-    videos_output_folder = Path(videos_output_folder)
+    output_folder = Path(output_folder)
 
     if not videos_input_folder.exists():
         print(f"Input folder not found: {videos_input_folder}")
         return
-    if not videos_output_folder.exists():
-        print(f"Output folder not found: {videos_output_folder}")
+    if not output_folder.exists():
+        print(f"Output folder not found: {output_folder}")
         return
 
     for video_file in videos_input_folder.glob(f"*{video_extension}"):
         video_name = video_file.stem
         print(f"Labeling video: {video_name}")
 
-        video_output_folder = videos_output_folder / video_name
+        video_output_folder = Path(return_path("video_folder", output_folder, video_name, create_parents=False))
         if not video_output_folder.exists():
             print(f"Output folder for video not found: {video_output_folder}. Skipping video.")
             continue
 
         label_video(
             str(video_file),
-            str(video_output_folder),
+            str(output_folder),
             plot_confidence=plot_confidence,
             target_fps=target_fps,
             motion_threshold=motion_threshold,
@@ -52,20 +53,22 @@ def label_video_batch(
 
 def label_video(
     video_path: str,
-    video_output_folder: str,
+    output_folder: str,
     plot_confidence: Optional[bool] = True,
     target_fps: Optional[float] = None,
     motion_threshold: Optional[float] = None,
     gesture_threshold: Optional[float] = None,
     window_duration: Optional[float] = None
 ):
+    """Render a video using inference files under output_folder/videos/<video stem>/."""
     video_path = Path(video_path)
-    video_output_folder = Path(video_output_folder)
+    output_folder = Path(output_folder)
     video_name = video_path.stem
+    video_output_folder = Path(return_path("video_folder", output_folder, video_name, create_parents=False))
 
-    segments_save_path = Path(return_path("segments", video_output_folder.parent, video_name, create_parents=False))
-    predictions_save_path = Path(return_path("predictions", video_output_folder.parent, video_name, create_parents=False))
-    labeled_video_path = Path(return_path("labeled_video", video_output_folder.parent, video_name, create_parents=False))
+    segments_save_path = Path(return_path("segments", output_folder, video_name, create_parents=False))
+    predictions_save_path = Path(return_path("predictions", output_folder, video_name, create_parents=False))
+    labeled_video_path = Path(return_path("labeled_video", output_folder, video_name, create_parents=False))
 
     if not video_path.exists():
         print(f"Video not found: {video_path}")

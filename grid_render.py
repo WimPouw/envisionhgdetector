@@ -42,15 +42,14 @@ def render_grid_pipeline(
             raise ValueError("gif_fps must be greater than zero and at most 100.")
 
     video_name = video_path.stem
-    video_output_folder = output_folder / video_name
-    grid_path = video_output_folder / f"{video_name}_grid.mp4"
-    gif_path = grid_path.with_suffix(".gif") if make_gif else None
+    grid_path = Path(return_path("grid_video", output_folder, video_name, create_parents=False))
+    gif_path = Path(return_path("grid_gif", output_folder, video_name, create_parents=False)) if make_gif else None
     for path in (grid_path, gif_path):
         if path is not None and path.exists():
             raise ValueError(f"Output already exists: {path}")
         if path is not None and path.resolve() == video_path.resolve():
             raise ValueError("Output must differ from the input video.")
-    video_output_folder.mkdir(parents=True, exist_ok=True)
+    grid_path.parent.mkdir(parents=True, exist_ok=True)
 
     labeled_path = None
     retracked_path = None
@@ -61,7 +60,7 @@ def render_grid_pipeline(
             raise RuntimeError(f"Detection failed: {result.get('error')}")
         label_video(
             video_path=str(video_path),
-            video_output_folder=str(video_output_folder),
+            output_folder=str(output_folder),
         )
         labeled_path = Path(return_path("labeled_video", str(output_folder), video_name))
         if not labeled_path.is_file():

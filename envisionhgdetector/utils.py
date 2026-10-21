@@ -143,16 +143,18 @@ def create_segments(
 def valid_float(value: float) -> bool:
     return value >= 0 and value <= 1.0
 
-def return_path(output_type: str, output_folder: str, video_name: str, *, create_parents: bool = True, **kwargs) -> str | None:
+def return_path(output_type: str, output_folder: str | Path, video_name: str | None = None, *, create_parents: bool = True, **kwargs) -> str | None:
     '''
     Args:
         output_type (str): Inference files ("features", "segments", "elan", "predictions"),
-            rendered videos ("labeled_video", "comparison_video"), retracking outputs
+            rendered videos ("labeled_video", "comparison_video", "grid_video", "grid_gif"), retracking outputs
             ("retracked_video", "world_landmarks", "world_visibility_scores",
             "image_landmarks", "image_visibility_scores"), or segment outputs
-            ("segment_videos", "segment_features").
-        output_folder (str): Path to the output folder.
-        video_name (str): Name of the video file.
+            ("segment_videos", "segment_features"), analysis CSVs
+            ("dtw_distances", "kinematic_features", "gesture_visualization"),
+            or directories ("videos_folder", "video_folder", "analysis_folder").
+        output_folder: Dataset output root containing videos/ and analysis/.
+        video_name: Video stem, required only for per-video outputs.
         create_parents (bool): Create output directories. Use False for input lookups.
         **kwargs: Additional keyword arguments for segment videos.
     **kwargs:
@@ -164,13 +166,32 @@ def return_path(output_type: str, output_folder: str, video_name: str, *, create
         start_time (float): Start time of the segment in seconds (required for "segment_videos").
         end_time (float): End time of the segment in seconds (required for "segment_videos").
     Returns:
-        Path: The path to the output file.
+        str | None: Resolved file/directory path; None for unknown output types.
     '''
     output_folder = Path(output_folder)
-    video_output_folder = output_folder / video_name
+    analysis_types = {"dtw_distances", "kinematic_features", "gesture_visualization"}
+    if output_type in analysis_types or output_type == "analysis_folder":
+        folder = output_folder / DIRS.ANALYSIS
+        target = folder if output_type == "analysis_folder" else folder / f"{output_type}.csv"
+        if create_parents:
+            (target if output_type == "analysis_folder" else target.parent).mkdir(parents=True, exist_ok=True)
+        return str(target)
+    if output_type == "videos_folder":
+        folder = output_folder / DIRS.VIDEOS
+        if create_parents:
+            folder.mkdir(parents=True, exist_ok=True)
+        return str(folder)
+    
+    if not video_name:
+        raise ValueError(f"video_name is required for {output_type!r}")
+    video_output_folder = output_folder / DIRS.VIDEOS / video_name
+    if output_type == "video_folder":
+        if create_parents:
+            video_output_folder.mkdir(parents=True, exist_ok=True)
+        return str(video_output_folder)
     if output_type in ("features", "segments", "predictions", "elan"):
         video_output_folder = video_output_folder / DIRS.INFERENCE
-    elif output_type in ("labeled_video", "comparison_video"):
+    elif output_type in ("labeled_video", "comparison_video", "grid_video", "grid_gif"):
         video_output_folder = video_output_folder / DIRS.POSTPROCESSING
     elif output_type in (
         "retracked_video", "world_landmarks", "world_visibility_scores",
@@ -193,6 +214,10 @@ def return_path(output_type: str, output_folder: str, video_name: str, *, create
             return_name = f"{video_name}_labeled.mp4"
         case "comparison_video":
             return_name = f"{video_name}_comparison.mp4"
+        case "grid_video":
+            return_name = f"{video_name}_grid.mp4"
+        case "grid_gif":
+            return_name = f"{video_name}_grid.gif"
         case "elan":
             return_name = f"{video_name}_elan.eaf"
         case "predictions":

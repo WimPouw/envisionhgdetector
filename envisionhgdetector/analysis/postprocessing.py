@@ -9,8 +9,7 @@ class PostProcessing:
     def __init__(self, data_folder: str):
         '''
         Args:
-            data_folder (str): Results root containing per-video inference/ and postprocessing/ folders.
-                DTW analysis outputs use a separate analysis_folder.
+            data_folder (str): Dataset output root containing videos/ and analysis/.
         '''
         self.data_folder = Path(data_folder)
         if not self.data_folder.exists():
@@ -34,31 +33,26 @@ class PostProcessing:
             video_scope=video_scope,
         )
 
-    def compute_gesture_kinematics_dtw(self, max_gap: int = 3,
-            analysis_folder: str | Path | None = None):
+    def compute_gesture_kinematics_dtw(self, max_gap: int = 3):
         """Compare retracked segments and save DTW distances and kinematics CSVs.
 
         Args:
             max_gap: Maximum consecutive missing frames allowed per coordinate.
-            analysis_folder: CSV output folder. Defaults to data_folder.parent / "analysis".
 
         Returns:
             DTW distance matrix, gesture names, and kinematic features DataFrame.
-            CSV files are saved in analysis_folder. Every segment video must have
+            CSV files are saved under data_folder/analysis/. Every segment video must have
             retracked world landmarks before analysis starts.
             Each segment video's frame rate is read automatically for kinematics.
         """
-        analysis_folder = Path(analysis_folder) if analysis_folder is not None else self.data_folder.parent / "analysis"
-
         dtw_dist, gesture_names, features_df =  compute_gesture_kinematics_dtw(
             data_folder=self.data_folder,
             max_gap=max_gap,
-            analysis_folder=analysis_folder,
         )
         create_gesture_visualization(
             dtw_matrix=dtw_dist,
             gesture_names=gesture_names,
-            output_folder= analysis_folder,
+            output_folder=self.data_folder,
         )
         return dtw_dist, gesture_names, features_df
 

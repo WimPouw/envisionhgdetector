@@ -1,6 +1,5 @@
 """Compare tracked gestures with dynamic time warping."""
 
-import os
 import warnings
 import cv2
 from math import isfinite
@@ -21,7 +20,7 @@ def create_gesture_visualization(
     gesture_names: List[str],
     output_folder: str,
 ) -> None:
-    """Save a two-dimensional UMAP projection of DTW distances as CSV."""
+    """Save UMAP coordinates in the dataset output root's analysis directory."""
     reducer = umap.UMAP(
         n_components=2,
         n_neighbors=15,
@@ -33,22 +32,20 @@ def create_gesture_visualization(
         "y": projection[:, 1],
         "gesture": gesture_names,
     })
-    viz_df.to_csv(os.path.join(output_folder, "gesture_visualization.csv"), index=False)
+    viz_df.to_csv(return_path("gesture_visualization", output_folder), index=False)
 
 
 def compute_gesture_kinematics_dtw(
     data_folder: str,
     max_gap: int = 3,
-    analysis_folder: str | Path | None = None,
 ) -> Tuple[np.ndarray, List[str], pd.DataFrame]:
     """
     Compute DTW distances between all gesture pairs and extract kinematic features.
     Kinematics use the frame rate read from each segment video.
     
     Args:
-        data_folder: Results folder containing segment videos and their retracked landmarks.
+        data_folder: Dataset output root containing videos/ and analysis/.
         max_gap: Maximum consecutive missing frames allowed per coordinate.
-        analysis_folder: CSV output folder. Defaults to data_folder.parent / "analysis".
         
     Returns:
         Tuple containing:
@@ -59,12 +56,10 @@ def compute_gesture_kinematics_dtw(
     data_folder = Path(data_folder)
     if not data_folder.is_dir():
         raise ValueError(f"Data folder does not exist: {data_folder}")
-    analysis_folder = Path(analysis_folder)
-    if analysis_folder.resolve() == data_folder.resolve():
-        raise ValueError("analysis_folder must differ from data_folder")
 
+    videos_folder = Path(return_path("videos_folder", data_folder, create_parents=False))
     segment_videos = filter_segment_source_paths(
-        sorted(path for path in data_folder.rglob("*.mp4") if path.is_file()),
+        sorted(path for path in videos_folder.rglob("*.mp4") if path.is_file()),
     )
     if not segment_videos:
         raise ValueError(f"No segment videos found in {data_folder}")
@@ -177,9 +172,8 @@ def compute_gesture_kinematics_dtw(
     } for f in kinematic_features])
     
     # Save results
-    analysis_folder.mkdir(parents=True, exist_ok=True)
-    matrix_path = analysis_folder / "dtw_distances.csv"
-    features_path = analysis_folder / "kinematic_features.csv"
+    matrix_path = return_path("dtw_distances", data_folder)
+    features_path = return_path("kinematic_features", data_folder)
     
     np.savetxt(matrix_path, dtw_dist, delimiter=',')
     features_df.to_csv(features_path, index=False)
