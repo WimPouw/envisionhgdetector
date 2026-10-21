@@ -1,0 +1,110 @@
+﻿<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EnvisionHGdetector Dashboard</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="scripts/theme.js?v=video-id-1"></script>
+    <script src="scripts/vendor/plotly-3.7.0.min.js" defer></script>
+    <script src="scripts/npy.js?v=video-id-1" defer></script>
+    <script src="scripts/data.js?v=video-id-1" defer></script>
+    <script src="scripts/folders.js?v=video-id-1" defer></script>
+    <script src="scripts/plots.js?v=video-id-1" defer></script>
+    <script src="scripts/video.js?v=video-id-1" defer></script>
+    <script src="scripts/main.js?v=video-id-1" defer></script>
+  </head>
+  <body>
+    <main>
+      <header class="dashboard-header">
+        <h1>EnvisionHGdetector Kinematic Visualizer</h1>
+        <div class="folder-actions">
+          <!-- Load from persistent memory -->
+          <button id="reconnect-data-folder" type="button" hidden>Reconnect saved folder</button>
+          <button
+            id="choose-data-folder"
+            class="icon-button"
+            aria-label="Choose data folder"
+            type="button"
+            title="Choose a folder containing analysis/ data and videos/ clips"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-5"/></svg>
+          </button>
+          <button 
+            id="theme-toggle" 
+            class="icon-button" 
+            type="button" 
+            aria-label="Switch to light mode" 
+            title="Switch to light mode"
+          >
+            <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg>
+            <svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13A9 9 0 0 1 11 3.5 9 9 0 1 0 20.5 13Z"/></svg>
+          </button>
+        </div>
+      </header>
+        <!-- webkitdirectory attribute allows the user to select a directory and all subdirectories -->
+        <!-- multiple attribute allows input to collect multiple files -->
+      <input
+        id="data-folder"
+        type="file"
+        aria-label="Data folder"
+        webkitdirectory
+        multiple
+        hidden
+      />
+
+      <div class="overview">
+        <div class="analysis-content">
+            <!-- Gesture DTW similarity Plot -->
+          <section aria-labelledby="similarity-heading">
+            <h2 id="similarity-heading">Gesture DTW similarity</h2>
+            <p id="similarity-status" role="status">Load analysis to compare gestures.</p>
+            <div id="similarity-plot" hidden></div>
+          </section>
+          <!-- Kinematic features section -->
+          <section aria-labelledby="features-heading">
+            <div class="section-heading">
+              <h2 id="features-heading">Kinematic features</h2>
+              <button id="toggle-all-features" type="button" disabled>Select all</button>
+            </div>
+            <p>
+              Violins show the distribution, boxes show the middle 50% and median, and whiskers reach the furthest observations within 1.5 Inter Quatile Range of the box. The dashed green line shows the mean. Constant features have no violin.
+            </p>
+            <div id="feature-options" class="feature-options"></div>
+            <p id="plot-status" role="status">Load analysis to view features.</p>
+            <div id="kinematic-plots" class="plots"></div>
+          </section>
+        </div>
+        <!-- Video preview section -->
+        <section class="video-panel" aria-label="Gesture preview">
+          <h2 id="selected-gesture-name" aria-live="polite">No gesture selected</h2>
+          <fieldset class="video-variants" aria-label="Choose Video Variant">
+            <span class="video-variant-label" aria-hidden="true">Choose Video Variant:</span>
+            <label>
+              <input
+                id="video-tracked"
+                type="radio"
+                name="video-variant"
+                value="tracked"
+                checked
+              />
+              Tracked
+            </label>
+            <label>
+              <input
+                id="video-untracked"
+                type="radio"
+                name="video-variant"
+                value="untracked"
+              />
+              Untracked
+            </label>
+          </fieldset>
+          <p id="video-load-summary" role="status" hidden></p>
+          <p id="video-status" role="status">Load folders to preview videos.</p>
+          <video id="video-player" controls autoplay muted loop playsinline hidden></video>
+        </section>
+      </div>
+    </main>
+  </body>
+</html>
